@@ -51,7 +51,7 @@ curl -s -o /dev/null -w "public: %{http_code}\n" https://sequentiatestnet.com/em
 
 echo "== admin account =="
 if [ ! -f /root/emissio-admin.txt ]; then
-    PW=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 24)
+    PW=$(openssl rand -hex 12)
     printf 'emissio admin\nemail: aejkohl@gmail.com\npassword: %s\n' "$PW" > /root/emissio-admin.txt
     chmod 600 /root/emissio-admin.txt
     echo "$PW" | EMISSIO_DB=/var/lib/emissio/emissio.db ./emissio createadmin aejkohl@gmail.com
