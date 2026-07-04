@@ -45,6 +45,12 @@ func (a *App) handleAdminReview(w http.ResponseWriter, r *http.Request) {
 			a.redirect(w, r, "/admin/submissions", "", err.Error())
 			return
 		}
+		if action == "approve" {
+			var userID int64
+			if a.db.QueryRow("SELECT user_id FROM submissions WHERE id = ?", id).Scan(&userID) == nil {
+				a.processReferrals(userID)
+			}
+		}
 		a.redirect(w, r, "/admin/submissions", fmt.Sprintf("Submission %d %sd.", id, action), "")
 	case "recheck":
 		var txid string
@@ -187,6 +193,10 @@ func (a *App) handleAdminAward(w http.ResponseWriter, r *http.Request) {
 		a.redirect(w, r, back, "", err.Error())
 		return
 	}
+	var userID int64
+	if a.db.QueryRow("SELECT user_id FROM entries WHERE id = ?", entryID).Scan(&userID) == nil {
+		a.processReferrals(userID)
+	}
 	a.redirect(w, r, back, fmt.Sprintf("Awarded place %d (%s SEQ).", place, formatSEQ(prizes[place-1])), "")
 }
 
@@ -264,6 +274,12 @@ func (a *App) handleAdminReportReview(w http.ResponseWriter, r *http.Request) {
 		a.redirect(w, r, fmt.Sprintf("/admin/reports/%d", id), "", err.Error())
 		return
 	}
+	if status == "accepted" && award > 0 {
+		var userID int64
+		if a.db.QueryRow("SELECT user_id FROM reports WHERE id = ?", id).Scan(&userID) == nil {
+			a.processReferrals(userID)
+		}
+	}
 	a.redirect(w, r, "/admin/reports", fmt.Sprintf("Report %d marked %s.", id, status), "")
 }
 
@@ -293,6 +309,9 @@ func (a *App) handleAdminAdjust(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.serverError(w, err)
 		return
+	}
+	if amount > 0 {
+		a.processReferrals(userID)
 	}
 	a.redirect(w, r, "/admin/users", fmt.Sprintf("Adjusted user %d by %s SEQ.", userID, formatSEQ(amount)), "")
 }

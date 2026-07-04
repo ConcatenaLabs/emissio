@@ -249,6 +249,22 @@ func runCommand(db *sql.DB, args []string) {
 			log.Fatal(err)
 		}
 		fmt.Printf("created admin %s (id %d)\n", email, id)
+	case "reseed-tasks":
+		// Refresh title, category and body of the seeded tasks from the
+		// current seed copy. Rewards, caps and active flags are left alone so
+		// admin tuning survives.
+		n := 0
+		for _, t := range seedTasks {
+			res, err := db.Exec("UPDATE tasks SET title = ?, category = ?, body = ? WHERE slug = ?",
+				t.title, t.category, t.body, t.slug)
+			if err != nil {
+				log.Fatal(err)
+			}
+			if c, _ := res.RowsAffected(); c > 0 {
+				n++
+			}
+		}
+		fmt.Printf("updated copy of %d seeded tasks\n", n)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n", args[0])
 		os.Exit(2)
@@ -277,6 +293,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("GET /rules", a.handleRules)
 	mux.HandleFunc("GET /account", a.handleAccount)
 	mux.HandleFunc("POST /account/address", a.handleAddress)
+	mux.HandleFunc("GET /r/{code}", a.handleReferral)
 	mux.HandleFunc("GET /register", a.handleRegisterForm)
 	mux.HandleFunc("POST /register", a.handleRegister)
 	mux.HandleFunc("GET /login", a.handleLoginForm)

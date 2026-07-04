@@ -76,8 +76,8 @@ func TestUserFlow(t *testing.T) {
 	}
 	resp.Body.Close()
 	acct := get(t, client, srv.URL+"/account")
-	if !strings.Contains(acct, "Claim code") {
-		t.Fatal("account page missing claim code after registration")
+	if !strings.Contains(acct, "Account code") || !strings.Contains(acct, "/r/") {
+		t.Fatal("account page missing account code or referral link after registration")
 	}
 
 	// Save a valid mainnet address; then a testnet one, which must be refused.
@@ -198,6 +198,99 @@ func TestUserFlow(t *testing.T) {
 	csv := get(t, client, srv.URL+"/admin/allocations.csv")
 	if !strings.Contains(csv, "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4") || !strings.Contains(csv, ",3010") {
 		t.Fatalf("allocation csv wrong:\n%s", csv)
+	}
+}
+
+func TestReferrals(t *testing.T) {
+	app, srv, referrer := newTestServer(t)
+
+	// Referrer registers.
+	referrer.PostForm(srv.URL+"/register", url.Values{
+		"email": {"referrer@example.com"}, "password": {"a-long-password"},
+	})
+	var refCode string
+	if err := app.db.QueryRow("SELECT claim_code FROM users WHERE email = 'referrer@example.com'").Scan(&refCode); err != nil {
+		t.Fatal(err)
+	}
+
+	// Referee follows the referral link, then registers.
+	jar2, _ := cookiejar.New(nil)
+	referee := &http.Client{Jar: jar2}
+	get(t, referee, srv.URL+"/r/"+refCode) // follows redirect to /register
+	referee.PostForm(srv.URL+"/register", url.Values{
+		"email": {"referee@example.com"}, "password": {"a-long-password"},
+	})
+	var referredBy int64
+	if err := app.db.QueryRow("SELECT referred_by FROM users WHERE email = 'referee@example.com'").Scan(&referredBy); err != nil {
+		t.Fatal(err)
+	}
+	if referredBy != 1 {
+		t.Fatalf("referred_by = %d, want 1", referredBy)
+	}
+
+	// Promote the referrer to admin so it can make adjustments.
+	app.db.Exec("UPDATE users SET is_admin = 1 WHERE id = 1")
+	csrf := csrfOf(t, referrer, srv.URL+"/account")
+
+	// Referrer reaches the threshold: no bonus yet (referee has not).
+	referrer.PostForm(srv.URL+"/admin/adjust", url.Values{
+		"csrf": {csrf}, "user": {"1"}, "amount": {"50"}, "note": {"test credit"},
+	})
+	var bonuses int64
+	app.db.QueryRow("SELECT COUNT(*) FROM ledger WHERE kind IN ('referral','referral-welcome')").Scan(&bonuses)
+	if bonuses != 0 {
+		t.Fatalf("bonus paid before referee qualified")
+	}
+
+	// Referee crosses the threshold: both sides get the bonus, exactly once.
+	referrer.PostForm(srv.URL+"/admin/adjust", url.Values{
+		"csrf": {csrf}, "user": {"2"}, "amount": {"50"}, "note": {"test credit"},
+	})
+	var refBal, refereeBal int64
+	app.db.QueryRow("SELECT SUM(amount) FROM ledger WHERE user_id = 1").Scan(&refBal)
+	app.db.QueryRow("SELECT SUM(amount) FROM ledger WHERE user_id = 2").Scan(&refereeBal)
+	if refBal != 50+referralBonus || refereeBal != 50+referralBonus {
+		t.Fatalf("balances after qualification: referrer %d, referee %d", refBal, refereeBal)
+	}
+
+	// Another credit must not pay the same referral twice.
+	referrer.PostForm(srv.URL+"/admin/adjust", url.Values{
+		"csrf": {csrf}, "user": {"2"}, "amount": {"5"}, "note": {"more"},
+	})
+	app.db.QueryRow("SELECT COUNT(*) FROM ledger WHERE kind IN ('referral','referral-welcome')").Scan(&bonuses)
+	if bonuses != 2 {
+		t.Fatalf("expected 2 referral ledger rows, got %d", bonuses)
+	}
+
+	// Self-referral is ignored: a fresh client using its own future code
+	// cannot exist, but a referral cookie pointing at the new account itself
+	// must not link. Covered implicitly by attachReferrer's id check.
+}
+
+func TestDuplicateTxidRejected(t *testing.T) {
+	app, srv, alice := newTestServer(t)
+	alice.PostForm(srv.URL+"/register", url.Values{
+		"email": {"alice@example.com"}, "password": {"a-long-password"},
+	})
+	csrfA := csrfOf(t, alice, srv.URL+"/account")
+	txid := strings.Repeat("ef", 32)
+	alice.PostForm(srv.URL+"/tasks/first-transaction/submit", url.Values{
+		"csrf": {csrfA}, "txid": {txid},
+	})
+
+	jar2, _ := cookiejar.New(nil)
+	bob := &http.Client{Jar: jar2}
+	bob.PostForm(srv.URL+"/register", url.Values{
+		"email": {"bob@example.com"}, "password": {"a-long-password"},
+	})
+	csrfB := csrfOf(t, bob, srv.URL+"/account")
+	bob.PostForm(srv.URL+"/tasks/first-transaction/submit", url.Values{
+		"csrf": {csrfB}, "txid": {txid},
+	})
+	var n int
+	app.db.QueryRow("SELECT COUNT(*) FROM submissions").Scan(&n)
+	if n != 1 {
+		t.Fatalf("recycled txid accepted: %d submissions", n)
 	}
 }
 

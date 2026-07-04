@@ -224,6 +224,21 @@ func (a *App) handleTaskSubmit(w http.ResponseWriter, r *http.Request) {
 		a.redirect(w, r, back, "", "Enter the transaction id: 64 hex characters.")
 		return
 	}
+	if txid != "" {
+		// A transaction proves work for one account only; recycling someone
+		// else's txid is the main farming vector.
+		var claimed int64
+		if err := a.db.QueryRow(`SELECT COUNT(*) FROM submissions
+			WHERE txid = ? AND user_id != ? AND status != 'rejected'`,
+			strings.ToLower(txid), user.ID).Scan(&claimed); err != nil {
+			a.serverError(w, err)
+			return
+		}
+		if claimed > 0 {
+			a.redirect(w, r, back, "", "This transaction has already been submitted by another account. Submit a transaction made by your own wallet.")
+			return
+		}
+	}
 	chainNote := ""
 	if txid != "" {
 		chainNote = a.chainCheck(txid)
@@ -368,9 +383,14 @@ func (a *App) handleRules(w http.ResponseWriter, r *http.Request) {
 }
 
 type accountData struct {
-	Balance     int64
-	Ledger      []LedgerEntry
-	Submissions []*Submission
+	Balance      int64
+	Ledger       []LedgerEntry
+	Submissions  []*Submission
+	RefLink      string
+	RefCount     int64
+	RefBonus     int64
+	RefThreshold int64
+	RefCap       int
 }
 
 func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
@@ -393,7 +413,20 @@ func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
 		a.serverError(w, err)
 		return
 	}
-	a.render(w, r, "account", "Your account", accountData{Balance: bal, Ledger: led, Submissions: subs})
+	refCount, err := qualifiedReferralCount(a.db, user.ID)
+	if err != nil {
+		a.serverError(w, err)
+		return
+	}
+	scheme := "http"
+	if a.cfg.SecureCookies || r.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	a.render(w, r, "account", "Your account", accountData{
+		Balance: bal, Ledger: led, Submissions: subs,
+		RefLink:  scheme + "://" + r.Host + a.cfg.BasePath + "/r/" + user.ClaimCode,
+		RefCount: refCount, RefBonus: referralBonus, RefThreshold: referralThreshold, RefCap: referralCap,
+	})
 }
 
 func (a *App) handleAddress(w http.ResponseWriter, r *http.Request) {
@@ -420,6 +453,41 @@ func (a *App) handleAddress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.redirect(w, r, "/account", "Payout address saved. Keep the keys for it safe until launch.", "")
+}
+
+// ---------- referrals ----------
+
+const refCookie = "emissio_ref"
+
+// handleReferral records the referral code in a cookie and sends the visitor
+// to registration. The code is only attached to the account at register time.
+func (a *App) handleReferral(w http.ResponseWriter, r *http.Request) {
+	code := r.PathValue("code")
+	var refID int64
+	if err := a.db.QueryRow("SELECT id FROM users WHERE claim_code = ?", code).Scan(&refID); err == nil {
+		http.SetCookie(w, &http.Cookie{
+			Name: refCookie, Value: code, Path: a.cookiePath(),
+			HttpOnly: true, Secure: a.cfg.SecureCookies, SameSite: http.SameSiteLaxMode,
+			MaxAge: 30 * 24 * 3600,
+		})
+	}
+	a.redirect(w, r, "/register", "", "")
+}
+
+// attachReferrer links a fresh account to the referrer in the cookie, if any.
+func (a *App) attachReferrer(r *http.Request, newUserID int64) {
+	c, err := r.Cookie(refCookie)
+	if err != nil || c.Value == "" {
+		return
+	}
+	var refID int64
+	if err := a.db.QueryRow("SELECT id FROM users WHERE claim_code = ?", c.Value).Scan(&refID); err != nil {
+		return
+	}
+	if refID == newUserID {
+		return
+	}
+	a.db.Exec("UPDATE users SET referred_by = ? WHERE id = ?", refID, newUserID)
 }
 
 // ---------- auth ----------
@@ -454,6 +522,7 @@ func (a *App) handleRegister(w http.ResponseWriter, r *http.Request) {
 		a.redirect(w, r, "/login", "", "An account with that email already exists. Sign in instead.")
 		return
 	}
+	a.attachReferrer(r, id)
 	if err := a.createSession(w, id); err != nil {
 		a.serverError(w, err)
 		return

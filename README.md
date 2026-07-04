@@ -10,6 +10,7 @@ Live instance: https://sequentiatestnet.com/emissio/
 - **Testnet tasks.** A catalog of tasks with per-task SEQ rewards, optional first-come caps, and one submission per account. Submissions carry a txid; the app checks it against the testnet explorer (esplora API) and records an advisory chain note. A human reviewer approves or rejects; approval credits the ledger atomically, with a unique index that makes double credits impossible.
 - **Competitions.** Judged contests with ranked prize ladders (for example 2,000 / 750 / 250 SEQ). One entry per account, editable until close. Admins assign places; each award is a ledger credit.
 - **Security reports.** Private vulnerability reports with severity tiers. Only the reporter and admins see a report. Accepting a report credits the award.
+- **Referrals.** Every account's public code doubles as a referral code (`/r/<code>`). A referral pays 10 SEQ to each side, but only after both accounts have earned at least 50 SEQ from tasks, competitions or security reports (referral and pre-sale credits do not count), and for at most 20 referrals per referrer. Qualification is checked automatically whenever a credit lands; unique indexes make each referral pay exactly once. Together with txid uniqueness (one on-chain transaction can only ever be evidence for one account), this keeps automated farming uneconomical.
 - **Mainnet payout address.** Users register a Sequentia mainnet address (bech32/bech32m, HRP `bc`, segwit v0 or v1), validated with a full checksum check and helpful errors for testnet (`tb1`), confidential (`sqb1`), Liquid, and legacy formats. A guide explains safe key generation; because Sequentia uses Bitcoin's seed phrases, derivation, and address formats, any audited Bitcoin wallet works.
 - **Admin desk.** Review queues for submissions and reports, task and competition management, manual ledger adjustments (always visible to the user), and a CSV export of `(user, address, balance)` for the launch allocation.
 - **Pre-sales.** The rules and home page announce future short pre-sale windows for account holders below the launch price; the ledger has a reserved `presale` kind. No sale mechanics are implemented yet by design.
@@ -50,6 +51,8 @@ First run seeds the task catalog and the opening competition. Create an admin (p
 ```
 echo 'the-password' | ./emissio createadmin you@example.com
 ```
+
+After editing the seeded task copy in `seed.go`, refresh an existing database with `./emissio reseed-tasks` (rewards, caps and active flags set by admins are left untouched).
 
 Deploy: see `deploy/emissio.service` for the systemd unit and reverse-proxy notes. Tests: `go test ./...` covers address validation, auth, the full submission and review lifecycle, prize awards, report awards, CSRF, and double-credit protection.
 

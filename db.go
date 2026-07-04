@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
 	is_admin INTEGER NOT NULL DEFAULT 0,
 	mainnet_address TEXT NOT NULL DEFAULT '',
 	address_updated_at INTEGER NOT NULL DEFAULT 0,
+	referred_by INTEGER NOT NULL DEFAULT 0,
 	created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sessions (
@@ -97,6 +98,8 @@ CREATE TABLE IF NOT EXISTS ledger (
 CREATE INDEX IF NOT EXISTS ledger_user ON ledger(user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS ledger_ref ON ledger(kind, ref_id)
 	WHERE kind IN ('submission', 'entry', 'report');
+CREATE UNIQUE INDEX IF NOT EXISTS ledger_referral ON ledger(kind, ref_id)
+	WHERE kind IN ('referral', 'referral-welcome');
 `
 
 func mustOpenDB(path string) *sql.DB {
@@ -109,6 +112,10 @@ func mustOpenDB(path string) *sql.DB {
 	if _, err := db.Exec(schema); err != nil {
 		panic(err)
 	}
+	// Migration for databases created before referrals existed. On fresh
+	// databases the column is already in CREATE TABLE and this errors, which
+	// is fine.
+	db.Exec("ALTER TABLE users ADD COLUMN referred_by INTEGER NOT NULL DEFAULT 0")
 	return db
 }
 
@@ -123,20 +130,21 @@ type User struct {
 	IsAdmin          bool
 	MainnetAddress   string
 	AddressUpdatedAt int64
+	ReferredBy       int64
 	CreatedAt        int64
 }
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
 	err := row.Scan(&u.ID, &u.Email, &u.PassHash, &u.DisplayName, &u.ClaimCode,
-		&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.CreatedAt)
+		&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
 	return &u, nil
 }
 
-const userCols = "id, email, pass_hash, display_name, claim_code, is_admin, mainnet_address, address_updated_at, created_at"
+const userCols = "id, email, pass_hash, display_name, claim_code, is_admin, mainnet_address, address_updated_at, referred_by, created_at"
 
 func getUserByEmail(db *sql.DB, email string) (*User, error) {
 	return scanUser(db.QueryRow("SELECT "+userCols+" FROM users WHERE email = ?", email))
@@ -622,7 +630,7 @@ func listUsers(db *sql.DB, limit int) ([]*UserRow, error) {
 	for rows.Next() {
 		var u UserRow
 		if err := rows.Scan(&u.ID, &u.Email, &u.PassHash, &u.DisplayName, &u.ClaimCode,
-			&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.CreatedAt, &u.Balance); err != nil {
+			&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.CreatedAt, &u.Balance); err != nil {
 			return nil, err
 		}
 		out = append(out, &u)
@@ -644,7 +652,7 @@ func allocationRows(db *sql.DB) ([]*UserRow, error) {
 	for rows.Next() {
 		var u UserRow
 		if err := rows.Scan(&u.ID, &u.Email, &u.PassHash, &u.DisplayName, &u.ClaimCode,
-			&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.CreatedAt, &u.Balance); err != nil {
+			&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.CreatedAt, &u.Balance); err != nil {
 			return nil, err
 		}
 		out = append(out, &u)

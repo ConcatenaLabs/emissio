@@ -43,9 +43,9 @@ Any Sequentia wallet works: the web wallet at sequentiatestnet.com/wallet, the A
 - Create a wallet and copy your testnet address (it starts with tb1).
 - Claim tSEQ from the faucet at sequentiatestnet.com.
 - Send any amount to another address. Sending to a second wallet of your own is fine.
-- Paste your claim code (shown on your Emissio account page) into the notes field below, and submit the txid of the send.
+- Submit the txid of the send below.
 
-We check that the transaction exists on the testnet and pays a fee from your address.`,
+We check that the transaction exists on the testnet. Submit a transaction your own wallet made: each transaction counts as evidence for one account only.`,
 	},
 	{
 		slug: "issue-asset", title: "Issue your own asset", category: "Assets",
@@ -114,7 +114,7 @@ Every Sequentia block is anchored to a Bitcoin block, which is what makes these 
 Full-node sovereignty is a core Sequentia principle: block producers cannot force rule changes on nodes that validate everything themselves.
 
 - Sync a full node from sequentiatestnet.com downloads or by building from source.
-- After seven days of uptime, send a transaction from the node's wallet with your claim code in the notes field of this submission, and submit that txid.
+- After seven days of uptime, send a transaction from the node's wallet and submit that txid.
 - In the notes, include your node's uptime and the output of getblockchaininfo (blocks and bestblockhash).`,
 	},
 }
