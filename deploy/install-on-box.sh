@@ -50,14 +50,8 @@ curl -s -o /dev/null -w "local: %{http_code}\n" http://127.0.0.1:8095/emissio/
 curl -s -o /dev/null -w "public: %{http_code}\n" https://sequentiatestnet.com/emissio/
 
 echo "== admin account =="
-if [ ! -f /root/emissio-admin.txt ]; then
-    PW=$(openssl rand -hex 12)
-    printf 'emissio admin\nemail: aejkohl@gmail.com\npassword: %s\n' "$PW" > /root/emissio-admin.txt
-    chmod 600 /root/emissio-admin.txt
-    echo "$PW" | EMISSIO_DB=/var/lib/emissio/emissio.db ./emissio createadmin aejkohl@gmail.com
-    echo "admin created; credentials in /root/emissio-admin.txt (box only, do not commit)"
-else
-    echo "admin credentials already exist at /root/emissio-admin.txt"
-fi
+echo "Create the admin from your own machine so the password never lives on this server:"
+echo "  openssl rand -hex 12   (keep it in a local password store)"
+echo "  printf '%s\n' 'that-password' | ssh root@<box> 'cd /root/sequentia/emissio && EMISSIO_DB=/var/lib/emissio/emissio.db ./emissio createadmin you@example.com'"
 
 echo "== done: https://sequentiatestnet.com/emissio/ =="
