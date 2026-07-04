@@ -1,0 +1,14 @@
+{{define "content"}}
+<div class="eyebrow">Create an account</div>
+<h1>Open your ledger</h1>
+<p class="muted" style="max-width:32rem">An account is a ledger in your name. Everything you earn on the testnet is entered here and paid in Sequence tokens (SEQ) at mainnet launch.</p>
+<form class="stack" method="post" action="{{base}}/register">
+  <label for="email">Email</label>
+  <input type="email" id="email" name="email" required autocomplete="email">
+  <div class="field-note">Used to sign in and for program announcements, including pre-sale windows. Nothing else.</div>
+  <label for="password">Password</label>
+  <input type="password" id="password" name="password" required minlength="10" autocomplete="new-password">
+  <div class="field-note">At least 10 characters. There is no reset email yet, so keep it in a password manager.</div>
+  <div class="actions"><button class="btn" type="submit">Create account</button></div>
+</form>
+{{end}}

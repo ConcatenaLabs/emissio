@@ -1,0 +1,38 @@
+# Sequentia Emissio systemd unit.
+#
+# Install on the box:
+#   git clone https://github.com/GracedEternalKingCabbageMan/emissio /root/sequentia/emissio
+#   cd /root/sequentia/emissio && go build .
+#   mkdir -p /var/lib/emissio
+#   cp deploy/emissio.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now emissio
+#   echo 'a-strong-password' | ./emissio createadmin you@example.com   (uses EMISSIO_DB below)
+#
+# Caddy route (inside the sequentiatestnet.com site block):
+#   handle_path /emissio/* {
+#       reverse_proxy 127.0.0.1:8095
+#   }
+#   redir /emissio /emissio/
+#
+# Note: with handle_path the prefix is stripped before proxying, but the app
+# still needs EMISSIO_BASEPATH=/emissio to generate correct links; it strips
+# the prefix itself if present, so both setups work.
+
+[Unit]
+Description=Sequentia Emissio community rewards platform
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/root/sequentia/emissio
+ExecStart=/root/sequentia/emissio/emissio
+Environment=EMISSIO_LISTEN=127.0.0.1:8095
+Environment=EMISSIO_DB=/var/lib/emissio/emissio.db
+Environment=EMISSIO_BASEPATH=/emissio
+Environment=EMISSIO_ESPLORA=http://127.0.0.1:3003
+Environment=EMISSIO_SECURE=1
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

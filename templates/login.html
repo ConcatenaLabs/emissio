@@ -1,0 +1,12 @@
+{{define "content"}}
+<div class="eyebrow">Sign in</div>
+<h1>Welcome back</h1>
+<form class="stack" method="post" action="{{base}}/login">
+  <label for="email">Email</label>
+  <input type="email" id="email" name="email" required autocomplete="email">
+  <label for="password">Password</label>
+  <input type="password" id="password" name="password" required autocomplete="current-password">
+  <div class="actions"><button class="btn" type="submit">Sign in</button></div>
+</form>
+<p class="small muted" style="margin-top:1.4rem">No account yet? <a href="{{base}}/register">Create one</a>. Forgot your password? Write to the team from the email on your account.</p>
+{{end}}

@@ -1,0 +1,67 @@
+{{define "content"}}
+<div class="eyebrow">Security rewards</div>
+<h1>Break it on the testnet, not at launch</h1>
+<p class="lede muted">Report vulnerabilities in the Sequentia node, the wallets, SeqDEX, SeqLN, or the project infrastructure. Reports are private: only you and the review team can see them. Accepted reports are credited in SEQ according to severity, and a proposed fix raises the award within its tier.</p>
+
+<div class="section">
+  <h2>Severity tiers</h2>
+  <div class="ledger wide">
+    {{range .Data.Tiers}}
+    <div class="ledger-row">
+      <span class="label"><strong>{{.Name}}</strong><span class="sub">{{.Desc}}</span></span>
+      <span class="leader"></span>
+      <span class="amount">{{seq .Reward}} <small>SEQ</small></span>
+    </div>
+    {{end}}
+  </div>
+  <p class="small muted" style="margin-top:.8rem">Amounts are the reference award for a clear, reproducible report in that tier. The review team sets the final award. The first reporter of an issue is the one rewarded; later reports of the same issue are marked duplicates.</p>
+</div>
+
+<div class="section">
+  <h2>Ground rules</h2>
+  <ul>
+    <li>Test against your own nodes and wallets, or the public testnet. Never against other users or their funds.</li>
+    <li>No denial of service against shared infrastructure beyond the minimum needed to prove the issue.</li>
+    <li>Report privately here first. Public disclosure before a fix ships forfeits the reward.</li>
+    <li>Include steps to reproduce. A working proof of concept and a proposed fix both raise the award.</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h2>Submit a report</h2>
+  {{if not .User}}
+    <p class="muted"><a href="{{base}}/login">Sign in</a> or <a href="{{base}}/register">create an account</a> to submit a report.</p>
+  {{else}}
+  <form class="stack wide" method="post" action="{{base}}/security/report">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label for="title">Title</label>
+    <input type="text" id="title" name="title" maxlength="200" required placeholder="One line: what breaks, where">
+    <label for="severity">Severity you would assign</label>
+    <select id="severity" name="severity">
+      <option value="low">Low</option>
+      <option value="medium">Medium</option>
+      <option value="high">High</option>
+      <option value="critical">Critical</option>
+    </select>
+    <label for="body">Report</label>
+    <textarea id="body" name="body" required style="min-height:12rem" placeholder="What is affected, steps to reproduce, impact, and your proposed fix if you have one."></textarea>
+    <div class="actions"><button class="btn" type="submit">Send report privately</button></div>
+  </form>
+  {{end}}
+
+  {{if .Data.Mine}}
+  <h3 style="margin-top:2rem">Your reports</h3>
+  <div class="table-scroll"><table class="table">
+    <tr><th>Title</th><th>Sent</th><th>Status</th><th>Award</th></tr>
+    {{range .Data.Mine}}
+    <tr>
+      <td>{{.Title}}{{if .ReviewNote}}<div class="small muted">{{.ReviewNote}}</div>{{end}}</td>
+      <td>{{date .CreatedAt}}</td>
+      <td><span class="pill {{.Status}}">{{.Status}}</span></td>
+      <td class="amount">{{if .Award}}{{seq .Award}} SEQ{{end}}</td>
+    </tr>
+    {{end}}
+  </table></div>
+  {{end}}
+</div>
+{{end}}

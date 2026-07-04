@@ -1,0 +1,49 @@
+{{define "content"}}
+<div class="eyebrow">Guide</div>
+<h1>Generate a mainnet address safely</h1>
+<p class="lede muted">Your Emissio balance is paid at launch to a Sequentia mainnet address that you control. Generating one is exactly as easy, and exactly as serious, as generating a Bitcoin keypair: Sequentia uses the same seed phrases, the same key derivation, and the same address format as Bitcoin.</p>
+
+<div class="section">
+  <h2>What you are making</h2>
+  <p>A <strong>seed phrase</strong> (12 or 24 words) from which your keys derive, and from it a <strong>receiving address that starts with bc1</strong>. The address is public and safe to share: you paste it into your Emissio account. The seed phrase is the money itself: anyone who reads it can take everything the address ever receives. Nothing else in this process matters as much as keeping those words private.</p>
+  <p>Because Sequentia's transparent addresses use Bitcoin's own format, any well-audited Bitcoin wallet can generate your Sequentia mainnet address. You do not need Sequentia software for this step.</p>
+</div>
+
+<div class="section">
+  <h2>Recommended: a hardware wallet</h2>
+  <ol>
+    <li>Use a hardware signing device from a reputable vendor (bought new, direct from the vendor).</li>
+    <li>Create a <strong>new</strong> wallet on the device and write the seed phrase on paper as the device shows it. Two paper copies, two places.</li>
+    <li>Take the first <strong>native segwit</strong> receiving address. It starts with <code>bc1q</code>.</li>
+    <li>Paste that address into your <a href="{{base}}/account">Emissio account</a>, then re-read it character by character against the device screen.</li>
+  </ol>
+</div>
+
+<div class="section">
+  <h2>Also fine: a desktop wallet, generated offline</h2>
+  <ol>
+    <li>Pick a well-known open-source Bitcoin wallet: Sparrow, Electrum, or Bitcoin Core. Download it from the project's official site and verify the download signature if you can.</li>
+    <li>Disconnect from the internet, then create a <strong>new</strong> wallet with a fresh seed phrase.</li>
+    <li>Write the seed phrase on paper. Not in a file, not in a screenshot, not in a password manager synced to the cloud, not in email.</li>
+    <li>Copy one receiving address (it starts with <code>bc1q</code>), reconnect, and paste it into your <a href="{{base}}/account">Emissio account</a>.</li>
+  </ol>
+  <p class="small muted">Taproot addresses (they start with <code>bc1p</code>) are also accepted.</p>
+</div>
+
+<div class="section">
+  <h2>Rules that protect you</h2>
+  <ul>
+    <li><strong>Use a fresh seed</strong>, not the seed of a Bitcoin wallet you already use. It works either way, but a fresh seed keeps your existing coins and your allocation unlinked, on both chains.</li>
+    <li><strong>Never type your seed phrase into a website.</strong> Emissio never asks for your seed, your private keys, or a signature. Anyone who does is stealing from you.</li>
+    <li><strong>Submit a transparent address.</strong> Sequentia is transparent by default and that is what the launch payout uses. Confidential addresses exist on Sequentia as an opt-in feature, but they use a different format and are not accepted here.</li>
+    <li><strong>Test your backup.</strong> Before you rely on the address, wipe the wallet (or use a second device) and restore it from your paper words. If the same bc1 address comes back, your backup works.</li>
+    <li><strong>Keep it until launch.</strong> The payout goes to the address on your account at the launch snapshot. You can update the address any time before then.</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h2>At launch</h2>
+  <p>Your balance is paid on the Sequentia mainnet to the address on your account. To see and spend it, restore your seed phrase in a Sequentia wallet. Sequentia wallets are dual-chain: the same seed gives you your Sequentia assets and a Bitcoin wallet side by side, sharing the same address format.</p>
+  <p style="margin-top:1.2rem"><a class="btn" href="{{base}}/account">Add your address</a></p>
+</div>
+{{end}}

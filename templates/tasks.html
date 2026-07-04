@@ -1,0 +1,16 @@
+{{define "content"}}
+<div class="eyebrow">Testnet tasks</div>
+<h1>Earn by using the testnet</h1>
+<p class="lede muted">Each task pays once per account, after a reviewer approves your evidence. Tasks with a cap pay the first accounts whose evidence is approved.</p>
+<div class="ledger" style="margin-top:1.6rem">
+  {{range .Data}}
+  <div class="ledger-row">
+    <span class="label"><a href="{{base}}/tasks/{{.Slug}}">{{.Title}}</a>
+      <span class="sub">{{.Category}}{{if .Cap}} · {{seq .Awarded}} of {{seq .Cap}} rewards claimed{{end}}</span></span>
+    <span class="leader"></span>
+    <span class="amount">{{seq .Reward}} <small>SEQ</small></span>
+  </div>
+  {{end}}
+</div>
+<p class="small muted" style="margin-top:1.2rem">Need testnet funds? The faucet at <a href="https://sequentiatestnet.com">sequentiatestnet.com</a> pays tSEQ and test assets.</p>
+{{end}}

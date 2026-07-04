@@ -1,0 +1,17 @@
+{{define "content"}}
+<div class="eyebrow">Competitions</div>
+<h1>Judged work, ranked prizes</h1>
+<p class="lede muted">Competitions reward work that takes more than a transaction: design, writing, tooling, research. Enter before the closing date; winners are chosen by the Sequentia team and credited in SEQ.</p>
+<div class="ledger" style="margin-top:1.6rem">
+  {{range .Data}}
+  <div class="ledger-row">
+    <span class="label"><a href="{{base}}/competitions/{{.Slug}}">{{.Title}}</a>
+      <span class="sub"><span class="pill {{.Status}}">{{.Status}}</span> {{if eq .Status "open"}}closes {{date .ClosesAt}}{{end}} · {{.Entries}} entries</span></span>
+    <span class="leader"></span>
+    <span class="amount">{{range $i, $p := prizes .Prizes}}{{if $i}} / {{end}}{{seq $p}}{{end}} <small>SEQ</small></span>
+  </div>
+  {{else}}
+  <div class="ledger-row"><span class="label muted">No competitions yet. New ones are announced here.</span></div>
+  {{end}}
+</div>
+{{end}}

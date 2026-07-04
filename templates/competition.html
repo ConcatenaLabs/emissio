@@ -1,0 +1,46 @@
+{{define "content"}}
+<div class="eyebrow">Competition · <span class="pill {{.Data.Comp.Status}}">{{.Data.Comp.Status}}</span></div>
+<h1>{{.Data.Comp.Title}}</h1>
+<div class="ledger" style="margin:1.2rem 0">
+  {{range $i, $p := prizes .Data.Comp.Prizes}}
+  <div class="ledger-row"><span class="label">Place {{add $i 1}}</span><span class="leader"></span><span class="amount">{{seq $p}} <small>SEQ</small></span></div>
+  {{end}}
+  <div class="ledger-row"><span class="label">{{if eq .Data.Comp.Status "open"}}Closes{{else}}Closed{{end}}</span><span class="leader"></span><span class="amount plain">{{date .Data.Comp.ClosesAt}}</span></div>
+</div>
+
+{{body .Data.Comp.Body}}
+
+{{if .Data.Winners}}
+<div class="section">
+  <h2>Winners</h2>
+  <div class="ledger">
+    {{range .Data.Winners}}
+    <div class="ledger-row"><span class="label">Place {{.Place}} · <a href="{{.URL}}" rel="nofollow noopener">entry</a></span><span class="leader"></span><span class="amount plain">awarded</span></div>
+    {{end}}
+  </div>
+</div>
+{{end}}
+
+<div class="section">
+  <h2>Your entry</h2>
+  {{if not .User}}
+    <p class="muted"><a href="{{base}}/login">Sign in</a> or <a href="{{base}}/register">create an account</a> to enter.</p>
+  {{else if .Data.Open}}
+    <form class="stack wide" method="post" action="{{base}}/competitions/{{.Data.Comp.Slug}}/enter">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label for="url">Link to your work</label>
+      <input type="url" id="url" name="url" placeholder="https://..." required value="{{if .Data.Mine}}{{.Data.Mine.URL}}{{end}}">
+      <div class="field-note">Host the work anywhere public. The link must stay reachable until judging ends.</div>
+      <label for="notes">Notes for the judges</label>
+      <textarea id="notes" name="notes">{{if .Data.Mine}}{{.Data.Mine.Notes}}{{end}}</textarea>
+      <div class="actions"><button class="btn" type="submit">{{if .Data.Mine}}Update entry{{else}}Enter competition{{end}}</button></div>
+    </form>
+    {{if .Data.Mine}}<p class="small muted">Entered {{date .Data.Mine.CreatedAt}}. You can update your entry until the competition closes.</p>{{end}}
+  {{else if .Data.Mine}}
+    <p>Your entry is in: <a href="{{.Data.Mine.URL}}" rel="nofollow noopener">{{.Data.Mine.URL}}</a>
+    {{if .Data.Mine.Place}}<span class="pill awarded">place {{.Data.Mine.Place}}</span>{{end}}</p>
+  {{else}}
+    <p class="muted">This competition is closed to new entries.</p>
+  {{end}}
+</div>
+{{end}}

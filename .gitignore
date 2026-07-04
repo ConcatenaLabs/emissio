@@ -1,0 +1,4 @@
+emissio
+*.db
+*.db-shm
+*.db-wal

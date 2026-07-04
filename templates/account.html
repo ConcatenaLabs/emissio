@@ -1,0 +1,66 @@
+{{define "content"}}
+<div class="eyebrow">Your account</div>
+<h1>Your issue ledger</h1>
+
+<div class="hero-grid" style="margin-top:1.4rem">
+  <div>
+    <div class="balance-figure">{{seq .Data.Balance}} <small>SEQ</small></div>
+    <p class="muted small">Reference value at launch price: {{usd .Data.Balance}} USD. Paid at mainnet launch to the address below.</p>
+    <h3 style="margin-top:1.6rem">Claim code</h3>
+    <div class="kv gold">{{.User.ClaimCode}}</div>
+    <p class="small muted">Some tasks ask you to include this code in your submission notes or in on-chain evidence, so a reviewer can tie the activity to your account. It is not a secret.</p>
+  </div>
+  <div class="register-card">
+    <div class="eyebrow">Mainnet payout address</div>
+    {{if .User.MainnetAddress}}
+      <div class="kv">{{.User.MainnetAddress}}</div>
+      <p class="small muted" style="margin-top:.5rem">Saved {{date .User.AddressUpdatedAt}}. Make sure you hold the seed phrase for this address; the <a href="{{base}}/guide">guide</a> explains how to check.</p>
+    {{else}}
+      <p class="small muted">No address yet. Your balance is safe either way, but payout at launch needs an address. The <a href="{{base}}/guide">guide</a> shows how to generate one safely in a few minutes.</p>
+    {{end}}
+    <form class="stack" method="post" action="{{base}}/account/address">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label for="address">{{if .User.MainnetAddress}}Replace address{{else}}Address (starts with bc1){{end}}</label>
+      <input class="mono" type="text" id="address" name="address" placeholder="bc1q...">
+      <div class="actions"><button class="btn" type="submit">Save address</button></div>
+    </form>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Ledger</h2>
+  {{if .Data.Ledger}}
+  <div class="ledger wide">
+    {{range .Data.Ledger}}
+    <div class="ledger-row">
+      <span class="label">{{.Note}}<span class="sub">{{date .CreatedAt}} · {{.Kind}}</span></span>
+      <span class="leader"></span>
+      <span class="amount{{if lt .Amount 0}} neg{{end}}">{{if gt .Amount 0}}+{{end}}{{seq .Amount}} <small>SEQ</small></span>
+    </div>
+    {{end}}
+  </div>
+  {{else}}
+  <p class="muted">Nothing here yet. Approved task rewards, prizes, and security awards appear as entries. Start with the <a href="{{base}}/tasks">tasks</a>.</p>
+  {{end}}
+</div>
+
+<div class="section">
+  <h2>Your submissions</h2>
+  {{if .Data.Submissions}}
+  <div class="table-scroll"><table class="table">
+    <tr><th>Task</th><th>Submitted</th><th>Txid</th><th>Status</th><th>Reward</th></tr>
+    {{range .Data.Submissions}}
+    <tr>
+      <td><a href="{{base}}/tasks/{{.TaskSlug}}">{{.TaskTitle}}</a>{{if .ReviewNote}}<div class="small muted">{{.ReviewNote}}</div>{{end}}</td>
+      <td>{{date .CreatedAt}}</td>
+      <td class="mono">{{if .Txid}}{{short .Txid}}{{end}}</td>
+      <td><span class="pill {{.Status}}">{{.Status}}</span></td>
+      <td class="amount">{{seq .TaskReward}} SEQ</td>
+    </tr>
+    {{end}}
+  </table></div>
+  {{else}}
+  <p class="muted">No submissions yet.</p>
+  {{end}}
+</div>
+{{end}}

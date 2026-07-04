@@ -1,0 +1,88 @@
+{{define "content"}}
+<div class="hero">
+  <div class="hero-grid">
+    <div>
+      <div class="eyebrow">The community issue register</div>
+      <h1>Work on the testnet now. Receive Sequence tokens at launch.</h1>
+      <p class="lede">Emissio records what you contribute to the Sequentia testnet: completed tasks, competition wins, and accepted security reports. Every approved contribution is entered in your ledger as <strong>Sequence tokens (SEQ)</strong>, paid to your own mainnet address when Sequentia launches.</p>
+      {{if not .User}}
+      <p style="margin-top:1.4rem">
+        <a class="btn" href="{{base}}/register">Create your account</a>
+        &nbsp; <a class="btn ghost" href="{{base}}/tasks">Browse the tasks</a>
+      </p>
+      {{else}}
+      <p style="margin-top:1.4rem">
+        <a class="btn" href="{{base}}/tasks">Browse the tasks</a>
+        &nbsp; <a class="btn ghost" href="{{base}}/account">Your ledger</a>
+      </p>
+      {{end}}
+    </div>
+    <div class="register-card">
+      <div class="eyebrow">Program register</div>
+      <div class="ledger">
+        <div class="ledger-row"><span class="label">Program pool</span><span class="leader"></span><span class="amount">{{seq .Data.Pool}} <small>SEQ</small></span></div>
+        <div class="ledger-row"><span class="label">Launch price</span><span class="leader"></span><span class="amount plain">0.375 <small>USD / SEQ</small></span></div>
+        <div class="ledger-row"><span class="label">Issued so far</span><span class="leader"></span><span class="amount">{{seq .Data.Stats.Distributed}} <small>SEQ</small></span></div>
+        <div class="ledger-row"><span class="label">Participants</span><span class="leader"></span><span class="amount plain">{{seq .Data.Stats.Users}}</span></div>
+      </div>
+      <p class="small muted" style="margin-top:.8rem">The pool is the amount reserved for this program. Amounts are credited only after human review of your evidence.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>How it works</h2>
+  <div class="cols">
+    <div class="panel">
+      <h3>1. Contribute</h3>
+      <p class="small">Complete tasks on the Sequentia testnet, enter competitions, or report vulnerabilities. Most tasks take minutes and produce on-chain evidence: a transaction id.</p>
+    </div>
+    <div class="panel">
+      <h3>2. Submit evidence</h3>
+      <p class="small">Submit the txid and your claim code. We check the evidence against the testnet and a reviewer approves the entry. Approved entries appear in your ledger immediately.</p>
+    </div>
+    <div class="panel">
+      <h3>3. Receive at launch</h3>
+      <p class="small">Add a mainnet address to your account (the <a href="{{base}}/guide">guide</a> shows how to generate one safely). At mainnet launch your full balance is paid to that address.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Testnet tasks</h2>
+  <p class="muted">Each task pays once per account. Popular tasks have a limited number of rewards, first come, first served. Completing the whole track earns {{seq .Data.TaskTotal}} SEQ.</p>
+  <div class="ledger">
+    {{range .Data.Tasks}}
+    <div class="ledger-row">
+      <span class="label"><a href="{{base}}/tasks/{{.Slug}}">{{.Title}}</a><span class="sub">{{.Category}}{{if .Cap}} · {{seq .Awarded}} of {{seq .Cap}} claimed{{end}}</span></span>
+      <span class="leader"></span>
+      <span class="amount">{{seq .Reward}} <small>SEQ</small></span>
+    </div>
+    {{end}}
+  </div>
+</div>
+
+<div class="section">
+  <h2>Competitions</h2>
+  <p class="muted">Design, writing, tooling: judged competitions with prize ladders. New ones are announced here.</p>
+  <div class="ledger">
+    {{range .Data.Comps}}
+    <div class="ledger-row">
+      <span class="label"><a href="{{base}}/competitions/{{.Slug}}">{{.Title}}</a><span class="sub">{{if eq .Status "open"}}closes {{date .ClosesAt}}{{else}}{{.Status}}{{end}} · {{.Entries}} entries</span></span>
+      <span class="leader"></span>
+      <span class="amount">{{range $i, $p := prizes .Prizes}}{{if $i}} / {{end}}{{seq $p}}{{end}} <small>SEQ</small></span>
+    </div>
+    {{end}}
+  </div>
+</div>
+
+<div class="section">
+  <h2>Security rewards</h2>
+  <p class="muted">Found a bug or a vulnerability in the node, the wallets, or the infrastructure? Report it privately. Accepted reports pay from 250 SEQ up to {{seq .Data.TierMax}} SEQ for consensus-breaking or funds-loss issues. <a href="{{base}}/security">Severity tiers and rules</a>.</p>
+</div>
+
+<div class="section">
+  <h2>Pre-sale windows</h2>
+  <p class="muted">From time to time, Emissio may open short pre-sale windows in which account holders can buy Sequence tokens below the 0.375 USD launch price. Windows are small, brief, and announced in advance to registered accounts. Nothing to do now: having an account is what makes you eligible to be notified.</p>
+</div>
+{{end}}

@@ -1,0 +1,48 @@
+{{define "content"}}
+<div class="eyebrow">{{.Data.Task.Category}} · task</div>
+<h1>{{.Data.Task.Title}}</h1>
+<div class="ledger" style="margin:1.2rem 0">
+  <div class="ledger-row"><span class="label">Reward</span><span class="leader"></span><span class="amount">{{seq .Data.Task.Reward}} <small>SEQ</small></span></div>
+  {{if .Data.Task.Cap}}
+  <div class="ledger-row"><span class="label">Rewards claimed</span><span class="leader"></span><span class="amount plain">{{seq .Data.Task.Awarded}} of {{seq .Data.Task.Cap}}</span></div>
+  {{end}}
+</div>
+
+{{body .Data.Task.Body}}
+
+<div class="section">
+  <h2>Your submission</h2>
+  {{if not .User}}
+    <p class="muted"><a href="{{base}}/login">Sign in</a> or <a href="{{base}}/register">create an account</a> to submit evidence for this task.</p>
+  {{else if .Data.Mine}}
+    {{if eq .Data.Mine.Status "rejected"}}
+      <p><span class="pill rejected">rejected</span> {{if .Data.Mine.ReviewNote}}<span class="muted">{{.Data.Mine.ReviewNote}}</span>{{end}}</p>
+      <p class="muted small">You can submit again with corrected evidence.</p>
+      {{template "taskform" .}}
+    {{else}}
+      <p><span class="pill {{.Data.Mine.Status}}">{{.Data.Mine.Status}}</span>
+      {{if .Data.Mine.Txid}}<span class="mono small muted"> txid {{short .Data.Mine.Txid}}</span>{{end}}</p>
+      {{if eq .Data.Mine.Status "pending"}}<p class="muted small">A reviewer will check your evidence. Approved rewards appear on your <a href="{{base}}/account">account</a>.</p>{{end}}
+      {{if eq .Data.Mine.Status "approved"}}<p class="muted small">Approved and credited to your <a href="{{base}}/account">ledger</a>.</p>{{end}}
+    {{end}}
+  {{else if .Data.Full}}
+    <p class="muted">All {{seq .Data.Task.Cap}} rewards for this task have been claimed. The task stays open for practice, but no further rewards are paid.</p>
+  {{else}}
+    {{template "taskform" .}}
+  {{end}}
+</div>
+{{end}}
+
+{{define "taskform"}}
+<form class="stack wide" method="post" action="{{base}}/tasks/{{.Data.Task.Slug}}/submit">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  {{if .Data.Task.NeedsTxid}}
+  <label for="txid">Transaction id (txid)</label>
+  <input class="mono" type="text" id="txid" name="txid" placeholder="64 hex characters" required minlength="64" maxlength="64">
+  <div class="field-note">The txid of the transaction that proves you completed this task, on the Sequentia testnet.</div>
+  {{end}}
+  <label for="notes">Notes</label>
+  <textarea id="notes" name="notes" placeholder="Include your claim code (see your account page) and anything the task asks for."></textarea>
+  <div class="actions"><button class="btn" type="submit">Submit evidence</button></div>
+</form>
+{{end}}

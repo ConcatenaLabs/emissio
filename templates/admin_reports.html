@@ -1,0 +1,20 @@
+{{define "content"}}
+<div class="eyebrow">Admin</div>
+<h1>Security reports</h1>
+<div class="table-scroll"><table class="table">
+  <tr><th>#</th><th>Title</th><th>From</th><th>Claimed</th><th>Sent</th><th>Status</th><th>Award</th></tr>
+  {{range .Data}}
+  <tr>
+    <td>{{.ID}}</td>
+    <td><a href="{{base}}/admin/reports/{{.ID}}">{{.Title}}</a></td>
+    <td>{{.UserEmail}}</td>
+    <td><span class="pill">{{.Severity}}</span></td>
+    <td>{{date .CreatedAt}}</td>
+    <td><span class="pill {{.Status}}">{{.Status}}</span></td>
+    <td class="amount">{{if .Award}}{{seq .Award}} SEQ{{end}}</td>
+  </tr>
+  {{else}}
+  <tr><td colspan="7" class="muted">No reports.</td></tr>
+  {{end}}
+</table></div>
+{{end}}

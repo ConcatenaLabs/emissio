@@ -1,0 +1,28 @@
+{{define "content"}}
+<div class="eyebrow">Admin</div>
+<h1>Competitions</h1>
+<div class="ledger wide" style="margin-top:1.2rem">
+  {{range .Data}}
+  <div class="ledger-row">
+    <span class="label"><a href="{{base}}/admin/competitions/{{.Slug}}">{{.Title}}</a>
+      <span class="sub"><span class="pill {{.Status}}">{{.Status}}</span> closes {{date .ClosesAt}} · {{.Entries}} entries</span></span>
+    <span class="leader"></span>
+    <span class="amount">{{.Prizes}} <small>SEQ</small></span>
+  </div>
+  {{end}}
+</div>
+<div class="section">
+  <h2>New competition</h2>
+  <form class="stack wide" method="post" action="{{base}}/admin/competitions/save">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Slug</label><input class="mono" type="text" name="slug" required>
+    <label>Title</label><input type="text" name="title" required>
+    <label>Body</label><textarea name="body" style="min-height:10rem"></textarea>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap">
+      <div><label>Prizes (SEQ, comma separated)</label><input class="mono" type="text" name="prizes" placeholder="2000,750,250" required></div>
+      <div><label>Days open</label><input type="number" name="days" value="28"></div>
+    </div>
+    <div class="actions"><button class="btn" type="submit">Create competition</button></div>
+  </form>
+</div>
+{{end}}

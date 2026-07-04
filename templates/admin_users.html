@@ -1,0 +1,28 @@
+{{define "content"}}
+<div class="eyebrow">Admin</div>
+<h1>Users</h1>
+<div class="table-scroll"><table class="table">
+  <tr><th>#</th><th>Email</th><th>Claim code</th><th>Mainnet address</th><th>Joined</th><th>Balance</th></tr>
+  {{range .Data}}
+  <tr>
+    <td>{{.ID}}</td>
+    <td>{{.Email}}{{if .IsAdmin}} <span class="pill">admin</span>{{end}}</td>
+    <td class="mono">{{.ClaimCode}}</td>
+    <td class="mono">{{if .MainnetAddress}}{{short .MainnetAddress}}{{end}}</td>
+    <td>{{date .CreatedAt}}</td>
+    <td class="amount">{{seq .Balance}} SEQ</td>
+  </tr>
+  {{end}}
+</table></div>
+<div class="section">
+  <h2>Manual adjustment</h2>
+  <p class="small muted">Positive or negative. Every adjustment is a ledger entry the user can see, with your note attached.</p>
+  <form class="stack" method="post" action="{{base}}/admin/adjust">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>User id</label><input type="number" name="user" required>
+    <label>Amount (SEQ)</label><input type="number" name="amount" required>
+    <label>Note</label><input type="text" name="note" required>
+    <div class="actions"><button class="btn" type="submit">Add ledger entry</button></div>
+  </form>
+</div>
+{{end}}

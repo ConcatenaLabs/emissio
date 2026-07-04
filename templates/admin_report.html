@@ -1,0 +1,33 @@
+{{define "content"}}
+<div class="eyebrow">Admin · security report · <span class="pill {{.Data.Report.Status}}">{{.Data.Report.Status}}</span></div>
+<h1>{{.Data.Report.Title}}</h1>
+<p class="small muted">From {{.Data.Report.UserEmail}} · sent {{datetime .Data.Report.CreatedAt}} · claimed severity: {{.Data.Report.Severity}}</p>
+<div class="panel" style="margin:1.2rem 0">
+  <p class="small" style="white-space:pre-wrap;max-width:none">{{.Data.Report.Body}}</p>
+</div>
+
+{{if eq .Data.Report.Status "new"}}
+<div class="section">
+  <h2>Review</h2>
+  <p class="small muted">Reference tiers: {{range $i, $t := .Data.Tiers}}{{if $i}} · {{end}}{{$t.Name}} {{seq $t.Reward}}{{end}} SEQ. Up to 27,000 SEQ for consensus-breaking or funds-loss issues with a proof of concept.</p>
+  <form class="stack" method="post" action="{{base}}/admin/reports/{{.Data.Report.ID}}/review">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Outcome</label>
+    <select name="status">
+      <option value="accepted">Accepted (credits the award)</option>
+      <option value="rejected">Rejected</option>
+      <option value="duplicate">Duplicate</option>
+    </select>
+    <label>Award (SEQ, for accepted reports)</label>
+    <input type="number" name="award" min="0" max="27000" value="0">
+    <label>Note to the reporter</label>
+    <input type="text" name="note">
+    <div class="actions"><button class="btn" type="submit">Record outcome</button></div>
+  </form>
+</div>
+{{else}}
+<p>Outcome: <span class="pill {{.Data.Report.Status}}">{{.Data.Report.Status}}</span>
+{{if .Data.Report.Award}} · <span class="amount" style="font-family:var(--mono);color:var(--gold)">{{seq .Data.Report.Award}} SEQ</span>{{end}}
+{{if .Data.Report.ReviewNote}} · {{.Data.Report.ReviewNote}}{{end}}</p>
+{{end}}
+{{end}}

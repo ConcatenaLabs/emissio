@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · Sequentia Emissio</title>
+<meta name="description" content="Emissio is the Sequentia community program: contribute on the testnet, win competitions, report vulnerabilities, and receive Sequence tokens (SEQ) at mainnet launch.">
+<link rel="stylesheet" href="{{base}}/static/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2316130c'/%3E%3Ctext x='8' y='12' font-size='11' text-anchor='middle' fill='%23ffc629' font-family='Georgia'%3EE%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+<header class="site">
+  <div class="wrap">
+    <a class="wordmark" href="{{base}}/">
+      <span class="net">Sequentia</span>
+      <span class="name"><b>Emissio</b></span>
+    </a>
+    <nav class="site">
+      <a href="{{base}}/tasks">Tasks</a>
+      <a href="{{base}}/competitions">Competitions</a>
+      <a href="{{base}}/security">Security</a>
+      <a href="{{base}}/guide">Address guide</a>
+      {{if .User}}
+        <a href="{{base}}/account">Account</a>
+        {{if .User.IsAdmin}}<a href="{{base}}/admin">Admin</a>{{end}}
+      {{else}}
+        <a href="{{base}}/login">Sign in</a>
+        <a class="cta" href="{{base}}/register">Join</a>
+      {{end}}
+    </nav>
+  </div>
+</header>
+{{if .Flash}}<div class="wrap"><div class="flash">{{.Flash}}</div></div>{{end}}
+{{if .Error}}<div class="wrap"><div class="flash err">{{.Error}}</div></div>{{end}}
+<main>
+  <div class="wrap">
+    {{template "content" .}}
+  </div>
+</main>
+<footer class="site">
+  <div class="wrap">
+    <span>Sequentia Emissio, the community issue register.</span>
+    <a href="https://sequentiatestnet.com">Testnet portal</a>
+    <a href="https://sequentia.io">sequentia.io</a>
+    <a href="{{base}}/rules">Program rules</a>
+    {{if .User}}
+    <form method="post" action="{{base}}/logout" style="margin-left:auto">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button class="btn ghost small" type="submit">Sign out</button>
+    </form>
+    {{end}}
+  </div>
+</footer>
+</body>
+</html>

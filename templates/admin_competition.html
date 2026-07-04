@@ -1,0 +1,34 @@
+{{define "content"}}
+<div class="eyebrow">Admin · competition · <span class="pill {{.Data.Comp.Status}}">{{.Data.Comp.Status}}</span></div>
+<h1>{{.Data.Comp.Title}}</h1>
+<p class="small muted">Prizes: {{range $i, $p := .Data.Prizes}}{{if $i}} / {{end}}{{seq $p}}{{end}} SEQ · closes {{datetime .Data.Comp.ClosesAt}}</p>
+<form method="post" action="{{base}}/admin/competitions/{{.Data.Comp.Slug}}/status" style="display:flex;gap:.6rem;margin:1rem 0">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <button class="btn ghost small" name="status" value="open" type="submit">Open</button>
+  <button class="btn ghost small" name="status" value="judging" type="submit">Judging</button>
+  <button class="btn small" name="status" value="awarded" type="submit">Awarded (publish winners)</button>
+</form>
+
+<div class="section">
+  <h2>Entries ({{len .Data.Entries}})</h2>
+  {{range .Data.Entries}}
+  <details>
+    <summary>#{{.ID}} · {{.UserEmail}} {{if .Place}}· <span class="pill awarded">place {{.Place}}</span>{{end}}</summary>
+    <div class="inner">
+      <p class="small"><a href="{{.URL}}" rel="nofollow noopener">{{.URL}}</a></p>
+      {{if .Notes}}<p class="small" style="white-space:pre-wrap">{{.Notes}}</p>{{end}}
+      {{if not .Place}}
+      <form method="post" action="{{base}}/admin/competitions/{{$.Data.Comp.Slug}}/award" style="display:flex;gap:.6rem;align-items:flex-end">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="entry" value="{{.ID}}">
+        <div><label>Place</label><input type="number" name="place" min="1" max="{{len $.Data.Prizes}}" value="1"></div>
+        <button class="btn small" type="submit">Award prize</button>
+      </form>
+      {{end}}
+    </div>
+  </details>
+  {{else}}
+  <p class="muted">No entries yet.</p>
+  {{end}}
+</div>
+{{end}}

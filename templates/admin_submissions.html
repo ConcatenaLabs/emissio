@@ -1,0 +1,25 @@
+{{define "content"}}
+<div class="eyebrow">Admin</div>
+<h1>Pending submissions</h1>
+{{if not .Data}}<p class="muted">Queue is empty.</p>{{end}}
+{{range .Data}}
+<details open>
+  <summary><strong>{{.TaskTitle}}</strong> · {{.UserEmail}} · <span class="amount" style="font-family:var(--mono);color:var(--gold)">{{seq .TaskReward}} SEQ</span> · {{datetime .CreatedAt}}</summary>
+  <div class="inner">
+    {{if .Txid}}<p class="mono small">txid: {{.Txid}}</p>{{end}}
+    <p class="small">chain check: <em>{{.ChainNote}}</em> · user claim code: <code>{{.ClaimCode}}</code></p>
+    {{if .Notes}}<p class="small" style="white-space:pre-wrap">{{.Notes}}</p>{{end}}
+    <form method="post" action="{{base}}/admin/submissions/{{.ID}}/review" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <div style="flex:1;min-width:14rem">
+        <label>Note to the user (required when rejecting)</label>
+        <input type="text" name="note" placeholder="e.g. txid not found on the testnet">
+      </div>
+      <button class="btn small" name="action" value="approve" type="submit">Approve</button>
+      <button class="btn danger small" name="action" value="reject" type="submit">Reject</button>
+      <button class="btn ghost small" name="action" value="recheck" type="submit">Re-check chain</button>
+    </form>
+  </div>
+</details>
+{{end}}
+{{end}}
