@@ -100,6 +100,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS ledger_ref ON ledger(kind, ref_id)
 	WHERE kind IN ('submission', 'entry', 'report');
 CREATE UNIQUE INDEX IF NOT EXISTS ledger_referral ON ledger(kind, ref_id)
 	WHERE kind IN ('referral', 'referral-welcome');
+CREATE TABLE IF NOT EXISTS verifications (
+	id INTEGER PRIMARY KEY,
+	user_id INTEGER NOT NULL REFERENCES users(id),
+	platform TEXT NOT NULL,
+	handle TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	check_note TEXT NOT NULL DEFAULT '',
+	review_note TEXT NOT NULL DEFAULT '',
+	created_at INTEGER NOT NULL,
+	reviewed_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS verifications_user ON verifications(user_id);
+-- A social account vouches for exactly one Emissio account, ever.
+CREATE UNIQUE INDEX IF NOT EXISTS verifications_unique ON verifications(platform, handle)
+	WHERE status = 'verified';
+CREATE UNIQUE INDEX IF NOT EXISTS ledger_verification ON ledger(kind, ref_id)
+	WHERE kind = 'verification';
 `
 
 func mustOpenDB(path string) *sql.DB {
@@ -116,6 +133,7 @@ func mustOpenDB(path string) *sql.DB {
 	// databases the column is already in CREATE TABLE and this errors, which
 	// is fine.
 	db.Exec("ALTER TABLE users ADD COLUMN referred_by INTEGER NOT NULL DEFAULT 0")
+	db.Exec("ALTER TABLE users ADD COLUMN reg_ip TEXT NOT NULL DEFAULT ''")
 	return db
 }
 
@@ -131,20 +149,21 @@ type User struct {
 	MainnetAddress   string
 	AddressUpdatedAt int64
 	ReferredBy       int64
+	RegIP            string
 	CreatedAt        int64
 }
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
 	err := row.Scan(&u.ID, &u.Email, &u.PassHash, &u.DisplayName, &u.ClaimCode,
-		&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.CreatedAt)
+		&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.RegIP, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
 	return &u, nil
 }
 
-const userCols = "id, email, pass_hash, display_name, claim_code, is_admin, mainnet_address, address_updated_at, referred_by, created_at"
+const userCols = "id, email, pass_hash, display_name, claim_code, is_admin, mainnet_address, address_updated_at, referred_by, reg_ip, created_at"
 
 func getUserByEmail(db *sql.DB, email string) (*User, error) {
 	return scanUser(db.QueryRow("SELECT "+userCols+" FROM users WHERE email = ?", email))
@@ -154,9 +173,9 @@ func getUserByID(db *sql.DB, id int64) (*User, error) {
 	return scanUser(db.QueryRow("SELECT "+userCols+" FROM users WHERE id = ?", id))
 }
 
-func createUser(db *sql.DB, email, passHash, claimCode string) (int64, error) {
-	res, err := db.Exec("INSERT INTO users (email, pass_hash, claim_code, created_at) VALUES (?,?,?,?)",
-		email, passHash, claimCode, now())
+func createUser(db *sql.DB, email, passHash, claimCode, regIP string) (int64, error) {
+	res, err := db.Exec("INSERT INTO users (email, pass_hash, claim_code, reg_ip, created_at) VALUES (?,?,?,?,?)",
+		email, passHash, claimCode, regIP, now())
 	if err != nil {
 		return 0, err
 	}
@@ -590,10 +609,11 @@ func reviewReport(db *sql.DB, reportID int64, status string, award int64, note s
 }
 
 type Stats struct {
-	Users       int64
-	Distributed int64
-	Pending     int64
-	OpenReports int64
+	Users         int64
+	Distributed   int64
+	Pending       int64
+	OpenReports   int64
+	PendingVerifs int64
 }
 
 func loadStats(db *sql.DB) (Stats, error) {
@@ -609,18 +629,24 @@ func loadStats(db *sql.DB) (Stats, error) {
 	if err := db.QueryRow("SELECT COUNT(*) FROM submissions WHERE status = 'pending'").Scan(&s.Pending); err != nil {
 		return s, err
 	}
-	err := db.QueryRow("SELECT COUNT(*) FROM reports WHERE status = 'new'").Scan(&s.OpenReports)
+	if err := db.QueryRow("SELECT COUNT(*) FROM reports WHERE status = 'new'").Scan(&s.OpenReports); err != nil {
+		return s, err
+	}
+	err := db.QueryRow("SELECT COUNT(*) FROM verifications WHERE status = 'pending'").Scan(&s.PendingVerifs)
 	return s, err
 }
 
 type UserRow struct {
 	User
 	Balance int64
+	IPPeers int64 // accounts registered from the same IP, including this one
 }
 
 func listUsers(db *sql.DB, limit int) ([]*UserRow, error) {
 	rows, err := db.Query(`SELECT `+userCols+`,
-		COALESCE((SELECT SUM(amount) FROM ledger l WHERE l.user_id = users.id), 0)
+		COALESCE((SELECT SUM(amount) FROM ledger l WHERE l.user_id = users.id), 0),
+		CASE WHEN users.reg_ip = '' THEN 1 ELSE
+			(SELECT COUNT(*) FROM users u2 WHERE u2.reg_ip = users.reg_ip) END
 		FROM users ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
@@ -630,7 +656,7 @@ func listUsers(db *sql.DB, limit int) ([]*UserRow, error) {
 	for rows.Next() {
 		var u UserRow
 		if err := rows.Scan(&u.ID, &u.Email, &u.PassHash, &u.DisplayName, &u.ClaimCode,
-			&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.CreatedAt, &u.Balance); err != nil {
+			&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.RegIP, &u.CreatedAt, &u.Balance, &u.IPPeers); err != nil {
 			return nil, err
 		}
 		out = append(out, &u)
@@ -652,7 +678,7 @@ func allocationRows(db *sql.DB) ([]*UserRow, error) {
 	for rows.Next() {
 		var u UserRow
 		if err := rows.Scan(&u.ID, &u.Email, &u.PassHash, &u.DisplayName, &u.ClaimCode,
-			&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.CreatedAt, &u.Balance); err != nil {
+			&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.RegIP, &u.CreatedAt, &u.Balance); err != nil {
 			return nil, err
 		}
 		out = append(out, &u)

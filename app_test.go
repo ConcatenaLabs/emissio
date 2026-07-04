@@ -17,7 +17,8 @@ func newTestServer(t *testing.T) (*App, *httptest.Server, *http.Client) {
 	db := mustOpenDB(filepath.Join(t.TempDir(), "test.db"))
 	t.Cleanup(func() { db.Close() })
 	seedDB(db)
-	app := NewApp(Config{BasePath: "", EsploraURL: ""}, db)
+	app := NewApp(Config{BasePath: "", EsploraURL: "",
+		RedditBase: "http://127.0.0.1:9", TelegramBase: "http://127.0.0.1:9"}, db)
 	srv := httptest.NewServer(app.routes())
 	t.Cleanup(srv.Close)
 	jar, _ := cookiejar.New(nil)
@@ -265,6 +266,100 @@ func TestReferrals(t *testing.T) {
 	// Self-referral is ignored: a fresh client using its own future code
 	// cannot exist, but a referral cookie pointing at the new account itself
 	// must not link. Covered implicitly by attachReferrer's id check.
+}
+
+func TestVerifications(t *testing.T) {
+	app, srv, alice := newTestServer(t)
+	alice.PostForm(srv.URL+"/register", url.Values{
+		"email": {"alice@example.com"}, "password": {"a-long-password"},
+	})
+	csrfA := csrfOf(t, alice, srv.URL+"/account")
+
+	// Request a Reddit verification (checker unreachable in tests: advisory only).
+	alice.PostForm(srv.URL+"/account/verify", url.Values{
+		"csrf": {csrfA}, "platform": {"reddit"}, "handle": {"@Old_Account"},
+	})
+	var n int
+	app.db.QueryRow("SELECT COUNT(*) FROM verifications WHERE handle = 'old_account' AND status = 'pending'").Scan(&n)
+	if n != 1 {
+		t.Fatalf("verification not recorded, got %d", n)
+	}
+	// Second request for the same platform is refused while one is live.
+	alice.PostForm(srv.URL+"/account/verify", url.Values{
+		"csrf": {csrfA}, "platform": {"reddit"}, "handle": {"other_name"},
+	})
+	app.db.QueryRow("SELECT COUNT(*) FROM verifications").Scan(&n)
+	if n != 1 {
+		t.Fatalf("expected 1 verification, got %d", n)
+	}
+	// Unknown platform is refused.
+	alice.PostForm(srv.URL+"/account/verify", url.Values{
+		"csrf": {csrfA}, "platform": {"myspace"}, "handle": {"whatever"},
+	})
+	app.db.QueryRow("SELECT COUNT(*) FROM verifications").Scan(&n)
+	if n != 1 {
+		t.Fatalf("unknown platform accepted")
+	}
+
+	// Approve: bonus lands once.
+	app.db.Exec("UPDATE users SET is_admin = 1 WHERE id = 1")
+	alice.PostForm(srv.URL+"/admin/verifications/1/review", url.Values{
+		"csrf": {csrfA}, "action": {"approve"},
+	})
+	var bal int64
+	app.db.QueryRow("SELECT SUM(amount) FROM ledger WHERE user_id = 1").Scan(&bal)
+	if bal != verificationBonus {
+		t.Fatalf("balance after verification: %d", bal)
+	}
+	alice.PostForm(srv.URL+"/admin/verifications/1/review", url.Values{
+		"csrf": {csrfA}, "action": {"approve"},
+	})
+	app.db.QueryRow("SELECT SUM(amount) FROM ledger WHERE user_id = 1").Scan(&bal)
+	if bal != verificationBonus {
+		t.Fatalf("double credit on verification: %d", bal)
+	}
+
+	// The same social account cannot vouch for a second Emissio account.
+	jar2, _ := cookiejar.New(nil)
+	bob := &http.Client{Jar: jar2}
+	bob.PostForm(srv.URL+"/register", url.Values{
+		"email": {"bob@example.com"}, "password": {"a-long-password"},
+	})
+	csrfB := csrfOf(t, bob, srv.URL+"/account")
+	bob.PostForm(srv.URL+"/account/verify", url.Values{
+		"csrf": {csrfB}, "platform": {"reddit"}, "handle": {"old_account"},
+	})
+	app.db.QueryRow("SELECT COUNT(*) FROM verifications").Scan(&n)
+	if n != 1 {
+		t.Fatalf("recycled social account accepted: %d verifications", n)
+	}
+}
+
+func TestTelegramAgeEstimate(t *testing.T) {
+	// An ID from early 2016 must estimate to roughly that era and pass the
+	// two-year minimum by a wide margin.
+	created, weak := tgEstimateCreation(150_000_000)
+	if weak {
+		t.Fatal("mid-range id flagged as beyond anchors")
+	}
+	if created.Year() < 2015 || created.Year() > 2017 {
+		t.Fatalf("id 150M estimated to %s, want ~2016", created.Format("Jan 2006"))
+	}
+	// An ID beyond the newest anchor is flagged weak.
+	if _, weak := tgEstimateCreation(9_000_000_000); !weak {
+		t.Fatal("huge id not flagged as beyond anchors")
+	}
+	// Very small IDs clamp to the first anchor (2013).
+	created, _ = tgEstimateCreation(1000)
+	if created.Year() != 2013 {
+		t.Fatalf("tiny id estimated to %d, want 2013", created.Year())
+	}
+	// Anchors must be sorted for interpolation.
+	for i := 1; i < len(tgAnchors); i++ {
+		if tgAnchors[i].ID <= tgAnchors[i-1].ID {
+			t.Fatalf("anchors not sorted at %d", i)
+		}
+	}
 }
 
 func TestDuplicateTxidRejected(t *testing.T) {

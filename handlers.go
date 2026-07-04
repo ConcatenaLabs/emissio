@@ -382,6 +382,13 @@ func (a *App) handleRules(w http.ResponseWriter, r *http.Request) {
 	a.render(w, r, "rules", "Program rules", nil)
 }
 
+type verifRow struct {
+	Platform string
+	Name     string
+	Hint     string
+	Mine     *Verification
+}
+
 type accountData struct {
 	Balance      int64
 	Ledger       []LedgerEntry
@@ -391,6 +398,8 @@ type accountData struct {
 	RefBonus     int64
 	RefThreshold int64
 	RefCap       int
+	Verifs       []verifRow
+	VerifBonus   int64
 }
 
 func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
@@ -418,6 +427,24 @@ func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
 		a.serverError(w, err)
 		return
 	}
+	verifs, err := verificationsOf(a.db, user.ID)
+	if err != nil {
+		a.serverError(w, err)
+		return
+	}
+	var vrows []verifRow
+	for _, p := range verifPlatforms {
+		row := verifRow{Platform: p.Key, Name: p.Name, Hint: p.Hint}
+		if p.Key == "telegram" {
+			row.Hint = a.telegramHint()
+		}
+		for _, v := range verifs {
+			if v.Platform == p.Key && (row.Mine == nil || v.Status != "rejected") {
+				row.Mine = v
+			}
+		}
+		vrows = append(vrows, row)
+	}
 	scheme := "http"
 	if a.cfg.SecureCookies || r.Header.Get("X-Forwarded-Proto") == "https" {
 		scheme = "https"
@@ -426,7 +453,63 @@ func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
 		Balance: bal, Ledger: led, Submissions: subs,
 		RefLink:  scheme + "://" + r.Host + a.cfg.BasePath + "/r/" + user.ClaimCode,
 		RefCount: refCount, RefBonus: referralBonus, RefThreshold: referralThreshold, RefCap: referralCap,
+		Verifs: vrows, VerifBonus: verificationBonus,
 	})
+}
+
+// handleVerify receives a social-account verification request.
+func (a *App) handleVerify(w http.ResponseWriter, r *http.Request) {
+	user, ok := a.postGuard(w, r)
+	if !ok {
+		return
+	}
+	platform := r.FormValue("platform")
+	known := false
+	for _, p := range verifPlatforms {
+		if p.Key == platform {
+			known = true
+		}
+	}
+	if !known {
+		a.redirect(w, r, "/account", "", "Unknown platform.")
+		return
+	}
+	handle := strings.TrimPrefix(strings.TrimSpace(r.FormValue("handle")), "@")
+	if !handleRe.MatchString(handle) {
+		a.redirect(w, r, "/account", "", "Enter the handle only: letters, digits, dots, dashes and underscores.")
+		return
+	}
+	handle = strings.ToLower(handle)
+	// One live request per platform per account.
+	var mine int64
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM verifications
+		WHERE user_id = ? AND platform = ? AND status != 'rejected'`, user.ID, platform).Scan(&mine); err != nil {
+		a.serverError(w, err)
+		return
+	}
+	if mine > 0 {
+		a.redirect(w, r, "/account", "", "You already have a "+platformName(platform)+" verification on file.")
+		return
+	}
+	// A social account vouches for one Emissio account only.
+	var taken int64
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM verifications
+		WHERE platform = ? AND handle = ? AND status = 'verified'`, platform, handle).Scan(&taken); err != nil {
+		a.serverError(w, err)
+		return
+	}
+	if taken > 0 {
+		a.redirect(w, r, "/account", "", "That "+platformName(platform)+" account already vouches for another Emissio account.")
+		return
+	}
+	note := a.verifCheck(platform, handle, user.ClaimCode)
+	_, err := a.db.Exec(`INSERT INTO verifications (user_id, platform, handle, check_note, created_at)
+		VALUES (?,?,?,?,?)`, user.ID, platform, handle, note, now())
+	if err != nil {
+		a.serverError(w, err)
+		return
+	}
+	a.redirect(w, r, "/account", "Verification request received. A reviewer confirms it, and the reward lands in your ledger.", "")
 }
 
 func (a *App) handleAddress(w http.ResponseWriter, r *http.Request) {
@@ -517,7 +600,7 @@ func (a *App) handleRegister(w http.ResponseWriter, r *http.Request) {
 		a.redirect(w, r, "/register", "", "Use a password of at least 10 characters.")
 		return
 	}
-	id, err := createUser(a.db, email, hashPassword(pass), randomHex(5))
+	id, err := createUser(a.db, email, hashPassword(pass), randomHex(5), clientIP(r))
 	if err != nil {
 		a.redirect(w, r, "/login", "", "An account with that email already exists. Sign in instead.")
 		return

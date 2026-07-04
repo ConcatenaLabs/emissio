@@ -31,6 +31,39 @@
 </div>
 
 <div class="section">
+  <h2>Verified accounts</h2>
+  <p class="muted">Link social accounts that are at least two years old and earn {{seq .Data.VerifBonus}} SEQ per platform. Put your account code (above) in the profile's bio or public description first, then submit the handle; you can remove the code once verified. A social account can vouch for one Emissio account only.</p>
+  {{range .Data.Verifs}}
+  <details {{if not .Mine}}{{else}}open{{end}}>
+    <summary><strong>{{.Name}}</strong>{{if .Mine}} · @{{.Mine.Handle}} · <span class="pill {{if eq .Mine.Status "verified"}}approved{{else}}{{.Mine.Status}}{{end}}">{{.Mine.Status}}</span>{{else}} · not linked · <span class="amount" style="font-family:var(--mono);color:var(--gold)">{{seq $.Data.VerifBonus}} SEQ</span>{{end}}</summary>
+    <div class="inner">
+      <p class="small muted">{{.Hint}}</p>
+      {{if .Mine}}
+        {{if eq .Mine.Status "rejected"}}
+          <p class="small"><span class="pill rejected">rejected</span> {{if .Mine.ReviewNote}}{{.Mine.ReviewNote}}{{end}} You can submit again.</p>
+        {{else if eq .Mine.Status "pending"}}
+          <p class="small muted">Waiting for review.</p>
+        {{else}}
+          <p class="small muted">Verified {{date .Mine.ReviewedAt}}. The reward is in your ledger.</p>
+        {{end}}
+      {{end}}
+      {{if or (not .Mine) (and .Mine (eq .Mine.Status "rejected"))}}
+      <form method="post" action="{{base}}/account/verify" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="platform" value="{{.Platform}}">
+        <div style="flex:1;min-width:12rem">
+          <label>{{.Name}} handle</label>
+          <input class="mono" type="text" name="handle" placeholder="@handle">
+        </div>
+        <button class="btn small" type="submit">Request verification</button>
+      </form>
+      {{end}}
+    </div>
+  </details>
+  {{end}}
+</div>
+
+<div class="section">
   <h2>Ledger</h2>
   {{if .Data.Ledger}}
   <div class="ledger wide">

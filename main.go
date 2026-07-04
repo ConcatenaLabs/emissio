@@ -26,6 +26,10 @@ type Config struct {
 	BasePath      string // e.g. "/emissio" when served under a path prefix; "" at root
 	EsploraURL    string // e.g. "https://sequentiatestnet.com/explorer/api"
 	SecureCookies bool
+	RedditBase    string // overridable in tests
+	TelegramBase  string
+	TgBotToken    string // BotFather token; enables ID-based Telegram age checks
+	TgBotName     string // bot username shown to users, without @
 }
 
 func loadConfig() Config {
@@ -35,6 +39,10 @@ func loadConfig() Config {
 		BasePath:      strings.TrimRight(envOr("EMISSIO_BASEPATH", ""), "/"),
 		EsploraURL:    envOr("EMISSIO_ESPLORA", ""),
 		SecureCookies: envOr("EMISSIO_SECURE", "0") == "1",
+		RedditBase:    envOr("EMISSIO_REDDIT", "https://www.reddit.com"),
+		TelegramBase:  envOr("EMISSIO_TELEGRAM", "https://t.me"),
+		TgBotToken:    envOr("EMISSIO_TG_BOT_TOKEN", ""),
+		TgBotName:     envOr("EMISSIO_TG_BOT_NAME", ""),
 	}
 	return cfg
 }
@@ -241,7 +249,7 @@ func runCommand(db *sql.DB, args []string) {
 			fmt.Printf("updated %s: admin, password reset\n", email)
 			return
 		}
-		id, err := createUser(db, email, hashPassword(pass), randomHex(5))
+		id, err := createUser(db, email, hashPassword(pass), randomHex(5), "")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -293,6 +301,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("GET /rules", a.handleRules)
 	mux.HandleFunc("GET /account", a.handleAccount)
 	mux.HandleFunc("POST /account/address", a.handleAddress)
+	mux.HandleFunc("POST /account/verify", a.handleVerify)
 	mux.HandleFunc("GET /r/{code}", a.handleReferral)
 	mux.HandleFunc("GET /register", a.handleRegisterForm)
 	mux.HandleFunc("POST /register", a.handleRegister)
@@ -313,6 +322,8 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("GET /admin/reports", a.admin(a.handleAdminReports))
 	mux.HandleFunc("GET /admin/reports/{id}", a.admin(a.handleAdminReport))
 	mux.HandleFunc("POST /admin/reports/{id}/review", a.admin(a.handleAdminReportReview))
+	mux.HandleFunc("GET /admin/verifications", a.admin(a.handleAdminVerifications))
+	mux.HandleFunc("POST /admin/verifications/{id}/review", a.admin(a.handleAdminVerifyReview))
 	mux.HandleFunc("GET /admin/users", a.admin(a.handleAdminUsers))
 	mux.HandleFunc("POST /admin/adjust", a.admin(a.handleAdminAdjust))
 	mux.HandleFunc("GET /admin/allocations.csv", a.admin(a.handleAdminExport))

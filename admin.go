@@ -283,6 +283,64 @@ func (a *App) handleAdminReportReview(w http.ResponseWriter, r *http.Request) {
 	a.redirect(w, r, "/admin/reports", fmt.Sprintf("Report %d marked %s.", id, status), "")
 }
 
+type adminVerifRow struct {
+	*Verification
+	ProfileURL string
+}
+
+func (a *App) handleAdminVerifications(w http.ResponseWriter, r *http.Request) {
+	verifs, err := pendingVerifications(a.db)
+	if err != nil {
+		a.serverError(w, err)
+		return
+	}
+	rows := make([]adminVerifRow, 0, len(verifs))
+	for _, v := range verifs {
+		rows = append(rows, adminVerifRow{v, platformProfileURL(v.Platform, v.Handle)})
+	}
+	a.render(w, r, "admin_verifications", "Review verifications", rows)
+}
+
+func (a *App) handleAdminVerifyReview(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	action := r.FormValue("action")
+	note := strings.TrimSpace(r.FormValue("note"))
+	switch action {
+	case "approve", "reject":
+		if err := reviewVerification(a.db, id, action == "approve", note); err != nil {
+			a.redirect(w, r, "/admin/verifications", "", err.Error())
+			return
+		}
+		if action == "approve" {
+			var userID int64
+			if a.db.QueryRow("SELECT user_id FROM verifications WHERE id = ?", id).Scan(&userID) == nil {
+				a.processReferrals(userID)
+			}
+		}
+		a.redirect(w, r, "/admin/verifications", fmt.Sprintf("Verification %d %sd.", id, action), "")
+	case "recheck":
+		var platform, handle, code string
+		if err := a.db.QueryRow(`SELECT v.platform, v.handle, u.claim_code
+			FROM verifications v JOIN users u ON u.id = v.user_id WHERE v.id = ?`, id).
+			Scan(&platform, &handle, &code); err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		note := a.verifCheck(platform, handle, code)
+		if _, err := a.db.Exec("UPDATE verifications SET check_note = ? WHERE id = ?", note, id); err != nil {
+			a.serverError(w, err)
+			return
+		}
+		a.redirect(w, r, "/admin/verifications", fmt.Sprintf("Verification %d: %s", id, note), "")
+	default:
+		a.redirect(w, r, "/admin/verifications", "", "Unknown action.")
+	}
+}
+
 func (a *App) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := listUsers(a.db, 500)
 	if err != nil {

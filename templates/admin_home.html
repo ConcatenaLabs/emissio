@@ -7,6 +7,7 @@
   <div class="ledger-row"><span class="label">Users</span><span class="leader"></span><span class="amount plain">{{seq .Data.Stats.Users}}</span></div>
   <div class="ledger-row"><span class="label"><a href="{{base}}/admin/submissions">Pending submissions</a></span><span class="leader"></span><span class="amount plain">{{seq .Data.Stats.Pending}}</span></div>
   <div class="ledger-row"><span class="label"><a href="{{base}}/admin/reports">Unreviewed security reports</a></span><span class="leader"></span><span class="amount plain">{{seq .Data.Stats.OpenReports}}</span></div>
+  <div class="ledger-row"><span class="label"><a href="{{base}}/admin/verifications">Pending verifications</a></span><span class="leader"></span><span class="amount plain">{{seq .Data.Stats.PendingVerifs}}</span></div>
 </div>
 <div class="section">
   <p>
@@ -14,6 +15,7 @@
     <a class="btn ghost" href="{{base}}/admin/tasks">Tasks</a>
     <a class="btn ghost" href="{{base}}/admin/competitions">Competitions</a>
     <a class="btn ghost" href="{{base}}/admin/reports">Reports</a>
+    <a class="btn ghost" href="{{base}}/admin/verifications">Verifications</a>
     <a class="btn ghost" href="{{base}}/admin/users">Users</a>
     <a class="btn ghost" href="{{base}}/admin/allocations.csv">Export allocations CSV</a>
   </p>
