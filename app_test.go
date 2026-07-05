@@ -243,15 +243,37 @@ func TestReferrals(t *testing.T) {
 		t.Fatalf("bonus paid before referee qualified")
 	}
 
-	// Referee crosses the threshold: both sides get the bonus, exactly once.
+	// Referee crosses the threshold too, but neither side is verified yet:
+	// still no bonus (verification is required for referral rewards).
 	referrer.PostForm(srv.URL+"/admin/adjust", url.Values{
 		"csrf": {csrf}, "user": {"2"}, "amount": {"50"}, "note": {"test credit"},
+	})
+	app.db.QueryRow("SELECT COUNT(*) FROM ledger WHERE kind IN ('referral','referral-welcome')").Scan(&bonuses)
+	if bonuses != 0 {
+		t.Fatalf("bonus paid without verified accounts")
+	}
+
+	// Referrer verifies: still no bonus (referee unverified).
+	app.db.Exec("INSERT INTO verifications (user_id, platform, handle, created_at) VALUES (1,'reddit','ref_old',0)")
+	referrer.PostForm(srv.URL+"/admin/verifications/1/review", url.Values{
+		"csrf": {csrf}, "action": {"approve"},
+	})
+	app.db.QueryRow("SELECT COUNT(*) FROM ledger WHERE kind IN ('referral','referral-welcome')").Scan(&bonuses)
+	if bonuses != 0 {
+		t.Fatalf("bonus paid with only one side verified")
+	}
+
+	// Referee verifies: both sides now qualify and the bonus pays once.
+	app.db.Exec("INSERT INTO verifications (user_id, platform, handle, created_at) VALUES (2,'reddit','fee_old',0)")
+	referrer.PostForm(srv.URL+"/admin/verifications/2/review", url.Values{
+		"csrf": {csrf}, "action": {"approve"},
 	})
 	var refBal, refereeBal int64
 	app.db.QueryRow("SELECT SUM(amount) FROM ledger WHERE user_id = 1").Scan(&refBal)
 	app.db.QueryRow("SELECT SUM(amount) FROM ledger WHERE user_id = 2").Scan(&refereeBal)
-	if refBal != 50+referralBonus || refereeBal != 50+referralBonus {
-		t.Fatalf("balances after qualification: referrer %d, referee %d", refBal, refereeBal)
+	want := 50 + verificationBonus + referralBonus
+	if refBal != want || refereeBal != want {
+		t.Fatalf("balances after qualification: referrer %d, referee %d, want %d", refBal, refereeBal, want)
 	}
 
 	// Another credit must not pay the same referral twice.

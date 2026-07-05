@@ -383,10 +383,11 @@ func (a *App) handleAdminExport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="emissio-allocations.csv"`)
 	cw := csv.NewWriter(w)
-	cw.Write([]string{"user_id", "email", "mainnet_address", "balance_seq"})
+	cw.Write([]string{"user_id", "email", "mainnet_address", "balance_seq", "verified_platforms"})
 	for _, u := range rows {
 		cw.Write([]string{
-			strconv.FormatInt(u.ID, 10), u.Email, u.MainnetAddress, strconv.FormatInt(u.Balance, 10),
+			strconv.FormatInt(u.ID, 10), u.Email, u.MainnetAddress,
+			strconv.FormatInt(u.Balance, 10), strconv.FormatInt(u.VerifCount, 10),
 		})
 	}
 	cw.Flush()

@@ -400,6 +400,7 @@ type accountData struct {
 	RefCap       int
 	Verifs       []verifRow
 	VerifBonus   int64
+	Verified     bool // at least one platform verified: payout-eligible
 }
 
 func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
@@ -433,6 +434,7 @@ func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var vrows []verifRow
+	verified := false
 	for _, p := range verifPlatforms {
 		row := verifRow{Platform: p.Key, Name: p.Name, Hint: p.Hint}
 		if p.Key == "telegram" {
@@ -442,6 +444,9 @@ func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
 			if v.Platform == p.Key && (row.Mine == nil || v.Status != "rejected") {
 				row.Mine = v
 			}
+		}
+		if row.Mine != nil && row.Mine.Status == "verified" {
+			verified = true
 		}
 		vrows = append(vrows, row)
 	}
@@ -453,7 +458,7 @@ func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
 		Balance: bal, Ledger: led, Submissions: subs,
 		RefLink:  scheme + "://" + r.Host + a.cfg.BasePath + "/r/" + user.ClaimCode,
 		RefCount: refCount, RefBonus: referralBonus, RefThreshold: referralThreshold, RefCap: referralCap,
-		Verifs: vrows, VerifBonus: verificationBonus,
+		Verifs: vrows, VerifBonus: verificationBonus, Verified: verified,
 	})
 }
 

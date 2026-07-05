@@ -7,7 +7,7 @@
   <summary><strong>{{.TaskTitle}}</strong> · {{.UserEmail}} · <span class="amount" style="font-family:var(--mono);color:var(--gold)">{{seq .TaskReward}} SEQ</span> · {{datetime .CreatedAt}}</summary>
   <div class="inner">
     {{if .Txid}}<p class="mono small">txid: {{.Txid}}</p>{{end}}
-    <p class="small">chain check: <em>{{.ChainNote}}</em> · account code: <code>{{.ClaimCode}}</code></p>
+    <p class="small">chain check: <em>{{.ChainNote}}</em> · account code: <code>{{.ClaimCode}}</code> · {{if .VerifCount}}<span class="pill approved">{{.VerifCount}} verified</span>{{else}}<span class="pill">unverified</span>{{end}}</p>
     {{if .Notes}}<p class="small" style="white-space:pre-wrap">{{.Notes}}</p>{{end}}
     <form method="post" action="{{base}}/admin/submissions/{{.ID}}/review" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap">
       <input type="hidden" name="csrf" value="{{$.CSRF}}">

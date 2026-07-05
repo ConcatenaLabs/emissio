@@ -6,6 +6,11 @@
   <div>
     <div class="balance-figure">{{seq .Data.Balance}} <small>SEQ</small></div>
     <p class="muted small">Reference value at launch price: {{usd .Data.Balance}} USD. Paid at mainnet launch to the address below.</p>
+    {{if .Data.Verified}}
+    <p class="small"><span class="pill approved">verified</span> <span class="muted">Your account qualifies for the launch payout.</span></p>
+    {{else}}
+    <div class="flash err" style="margin:0.8rem 0 0">Not yet payable: verify at least one social account below. You can keep earning either way, but the launch payout requires a verified account.</div>
+    {{end}}
     <h3 style="margin-top:1.6rem">Account code</h3>
     <div class="kv gold">{{.User.ClaimCode}}</div>
     <p class="small muted">Your public account code. It doubles as your referral code, and a task may occasionally ask you to embed it in on-chain data (for example an OP_RETURN) to prove a transaction is yours. It is not a secret.</p>
@@ -32,7 +37,7 @@
 
 <div class="section">
   <h2>Verified accounts</h2>
-  <p class="muted">Link social accounts that are at least two years old and earn {{seq .Data.VerifBonus}} SEQ per platform. Put your account code (above) in the profile's bio or public description first, then submit the handle; you can remove the code once verified. A social account can vouch for one Emissio account only.</p>
+  <p class="muted"><strong>At least one verified account is required to receive your payout at launch</strong> and for referral rewards; each verified platform also earns {{seq .Data.VerifBonus}} SEQ. Link accounts that are at least two years old: put your account code (above) in the profile's bio or public description first, then submit the handle; you can remove the code once verified. A social account can vouch for one Emissio account only.</p>
   {{range .Data.Verifs}}
   <details {{if not .Mine}}{{else}}open{{end}}>
     <summary><strong>{{.Name}}</strong>{{if .Mine}} · @{{.Mine.Handle}} · <span class="pill {{if eq .Mine.Status "verified"}}approved{{else}}{{.Mine.Status}}{{end}}">{{.Mine.Status}}</span>{{else}} · not linked · <span class="amount" style="font-family:var(--mono);color:var(--gold)">{{seq $.Data.VerifBonus}} SEQ</span>{{end}}</summary>

@@ -48,6 +48,14 @@ type Verification struct {
 	ClaimCode  string
 }
 
+// verifiedCount returns how many platforms the user has verified. At least
+// one is required for the launch payout and for referral rewards.
+func verifiedCount(db *sql.DB, userID int64) (int64, error) {
+	var n int64
+	err := db.QueryRow("SELECT COUNT(*) FROM verifications WHERE user_id = ? AND status = 'verified'", userID).Scan(&n)
+	return n, err
+}
+
 func verificationsOf(db *sql.DB, userID int64) ([]*Verification, error) {
 	return queryVerifications(db, "WHERE v.user_id = ?", userID)
 }

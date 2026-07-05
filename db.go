@@ -291,6 +291,7 @@ type Submission struct {
 	TaskReward int64
 	UserEmail  string
 	ClaimCode  string
+	VerifCount int64 // submitter's verified platforms (pending queue only)
 }
 
 // latestSubmission returns the user's most recent submission for a task, or nil.
@@ -331,7 +332,8 @@ func submissionsOf(db *sql.DB, userID int64) ([]*Submission, error) {
 
 func pendingSubmissions(db *sql.DB) ([]*Submission, error) {
 	rows, err := db.Query(`SELECT s.id, s.user_id, s.task_id, s.txid, s.notes, s.status, s.chain_note, s.review_note,
-		s.created_at, s.reviewed_at, t.title, t.slug, t.reward, u.email, u.claim_code
+		s.created_at, s.reviewed_at, t.title, t.slug, t.reward, u.email, u.claim_code,
+		(SELECT COUNT(*) FROM verifications v WHERE v.user_id = s.user_id AND v.status = 'verified')
 		FROM submissions s JOIN tasks t ON t.id = s.task_id JOIN users u ON u.id = s.user_id
 		WHERE s.status = 'pending' ORDER BY s.id LIMIT 200`)
 	if err != nil {
@@ -342,7 +344,7 @@ func pendingSubmissions(db *sql.DB) ([]*Submission, error) {
 	for rows.Next() {
 		var s Submission
 		if err := rows.Scan(&s.ID, &s.UserID, &s.TaskID, &s.Txid, &s.Notes, &s.Status, &s.ChainNote, &s.ReviewNote,
-			&s.CreatedAt, &s.ReviewedAt, &s.TaskTitle, &s.TaskSlug, &s.TaskReward, &s.UserEmail, &s.ClaimCode); err != nil {
+			&s.CreatedAt, &s.ReviewedAt, &s.TaskTitle, &s.TaskSlug, &s.TaskReward, &s.UserEmail, &s.ClaimCode, &s.VerifCount); err != nil {
 			return nil, err
 		}
 		out = append(out, &s)
@@ -638,8 +640,9 @@ func loadStats(db *sql.DB) (Stats, error) {
 
 type UserRow struct {
 	User
-	Balance int64
-	IPPeers int64 // accounts registered from the same IP, including this one
+	Balance    int64
+	IPPeers    int64 // accounts registered from the same IP, including this one
+	VerifCount int64 // verified platforms; payout needs at least one
 }
 
 func listUsers(db *sql.DB, limit int) ([]*UserRow, error) {
@@ -664,11 +667,14 @@ func listUsers(db *sql.DB, limit int) ([]*UserRow, error) {
 	return out, rows.Err()
 }
 
-// allocationRows returns (email, address, balance) for every user with a
-// positive balance, for the mainnet genesis allocation export.
+// allocationRows returns every user with a positive balance for the mainnet
+// genesis allocation export, with their verified-platform count: payout
+// requires at least one verified platform, so the payout tooling filters on
+// that column.
 func allocationRows(db *sql.DB) ([]*UserRow, error) {
 	rows, err := db.Query(`SELECT ` + userCols + `,
-		COALESCE((SELECT SUM(amount) FROM ledger l WHERE l.user_id = users.id), 0) AS bal
+		COALESCE((SELECT SUM(amount) FROM ledger l WHERE l.user_id = users.id), 0) AS bal,
+		(SELECT COUNT(*) FROM verifications v WHERE v.user_id = users.id AND v.status = 'verified')
 		FROM users WHERE bal > 0 ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -678,7 +684,8 @@ func allocationRows(db *sql.DB) ([]*UserRow, error) {
 	for rows.Next() {
 		var u UserRow
 		if err := rows.Scan(&u.ID, &u.Email, &u.PassHash, &u.DisplayName, &u.ClaimCode,
-			&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.RegIP, &u.CreatedAt, &u.Balance); err != nil {
+			&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.RegIP, &u.CreatedAt,
+			&u.Balance, &u.VerifCount); err != nil {
 			return nil, err
 		}
 		out = append(out, &u)
