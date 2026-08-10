@@ -42,15 +42,17 @@ that must not regress:
 
 - **Every reward is a ledger entry and the balance is the sum of the ledger.** There is no
   mutable balance column to drift.
-- **Unique indexes, not application checks, are what make double credits impossible.** One txid
-  can only ever be evidence for one account; each referral pays exactly once; a social account
-  can vouch for exactly one Emissio account, ever. If you touch the credit paths, keep the
-  uniqueness in the schema.
-- **Referral qualification is checked automatically whenever a credit lands** — both sides need
-  50 SEQ earned from tasks, competitions or security reports, and referral and pre-sale credits
-  do not count toward that.
-- **At least one verified platform is required to receive the launch payout**, but not to earn.
-  Blocking earning would cost onboarding; blocking payout is what actually matters.
+- **A credit lands inside the same transaction as the status change it follows**, and partial
+  unique indexes on `(kind, ref_id)` are what make double credits impossible — one credit per
+  submission, entry, report, verification and referral. One txid can only ever be evidence for one
+  account, and a social account can vouch for exactly one Emissio account, ever. If you touch the
+  credit paths, keep the guard in the schema rather than moving it into application code.
+- **Referral qualification is checked automatically whenever a credit lands.** Both sides need a
+  verified social platform and 50 SEQ each earned from tasks, competitions or security reports;
+  referral and pre-sale credits do not count toward that, and a referrer is capped at 20.
+- **A verified platform is required to receive the launch payout and to earn referral rewards, but
+  not to earn at all.** Blocking earning would cost onboarding; gating the payout is what actually
+  matters.
 - **Mainnet payout addresses are validated with a full checksum check**, and the error messages
   deliberately distinguish testnet (`tb1`), confidential (`sqb1`), Liquid and legacy formats.
   Sequentia uses Bitcoin's seed phrases, derivation and address formats, so an audited Bitcoin
