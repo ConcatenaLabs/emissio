@@ -48,8 +48,9 @@ that must not regress:
   account, and a social account can vouch for exactly one Emissio account, ever. If you touch the
   credit paths, keep the guard in the schema rather than moving it into application code.
 - **Referral qualification is checked automatically whenever a credit lands.** Both sides need a
-  verified social platform and 50 SEQ each earned from tasks, competitions or security reports;
-  referral and pre-sale credits do not count toward that, and a referrer is capped at 20.
+  verified social platform and 50 SEQ each earned from tasks, competitions, security reports or
+  positive admin adjustments; referral and pre-sale credits do not count toward that, and a
+  referrer is capped at 20.
 - **A verified platform is required to receive the launch payout and to earn referral rewards, but
   not to earn at all.** Blocking earning would cost onboarding; gating the payout is what actually
   matters.

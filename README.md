@@ -12,7 +12,7 @@ Sequentia is a Bitcoin sidechain for asset tokenization and decentralized exchan
 
 | Repo | One-liner |
 |---|---|
-| [`Sequentia`](https://github.com/GracedEternalKingCabbageMan/Sequentia) | The Sequentia node (`elementsd` fork of Elements 23.3.3): consensus, anchoring, proof of stake, open fee market, plus the canonical protocol documentation in `doc/sequentia/`. |
+| [`Sequentia`](https://github.com/GracedEternalKingCabbageMan/Sequentia) | The Sequentia node (`sequentiad`, a fork of Elements 23.3.3): consensus, anchoring, proof of stake, open fee market, plus the canonical protocol documentation in `doc/sequentia/`. |
 | [`sequentia-electrs`](https://github.com/GracedEternalKingCabbageMan/sequentia-electrs) | The electrs fork: Rust indexer + Esplora REST API for Sequentia and its Bitcoin testnet4 parent chain. |
 | [`emissio`](https://github.com/GracedEternalKingCabbageMan/emissio) | Emissio: community rewards platform, earning Sequence tokens (SEQ) for testnet contributions. |
 
@@ -25,7 +25,7 @@ Working today on the live instance: accounts, the task catalog with explorer-bac
 Not yet implemented:
 
 - Email verification and password reset (admins can reset a password with the `createadmin` command).
-- Automatic evidence verification beyond txid existence and confirmation. Fee-asset checks, blinded-output checks, and claim-code matching are manual review steps for now, even where task copy says "we check".
+- Automatic evidence verification beyond txid existence and confirmation. Fee-asset checks, blinded-output checks, and claim-code matching are manual review steps for now; the task pages say so.
 - The pre-sale purchase flow. The rules page announces future pre-sale windows and the ledger reserves a `presale` kind, but no sale mechanics exist by design.
 
 This is testnet software supporting a testnet program. Reward balances are program commitments recorded in a database, not on-chain funds.
@@ -77,7 +77,7 @@ All automatic checks are advisory; a human reviewer makes the final call.
 
 ### Referrals
 
-Your claim code is also a referral link: `https://sequentiatestnet.com/emissio/r/<code>`. A referral pays 10 SEQ to each side, but only after both accounts hold a verified social platform and have each earned at least 50 SEQ from tasks, competitions, or security reports (referral and pre-sale credits do not count), and for at most 20 referrals per referrer. Qualification is checked automatically whenever a credit lands.
+Your claim code is also a referral link: `https://sequentiatestnet.com/emissio/r/<code>`. A referral pays 10 SEQ to each side, but only after both accounts hold a verified social platform and have each earned at least 50 SEQ from tasks, competitions, security reports, or positive admin adjustments (referral and pre-sale credits do not count), and for at most 20 referrals per referrer. Qualification is checked automatically whenever a credit lands.
 
 ### Payout address
 
@@ -185,7 +185,7 @@ One SQLite file (WAL mode, foreign keys on, a single connection to serialize wri
 
 ### Deployment
 
-The live instance runs as a systemd service behind Caddy on the sequentiatestnet.com host. `deploy/emissio.service` is the unit (binary + `/var/lib/emissio/emissio.db`, `EMISSIO_BASEPATH=/emissio`, local electrs as the esplora endpoint), and `deploy/install-on-box.sh` is the one-shot installer that builds, installs the unit, and adds the Caddy route:
+The live instance runs as a systemd service behind Caddy on the sequentiatestnet.com host. `deploy/emissio.service` is the unit (binary + `/var/lib/emissio/emissio.db`, `EMISSIO_BASEPATH=/emissio`, local electrs as the esplora endpoint), and `deploy/install-on-box.sh` is the one-shot installer that builds, installs the unit, and adds the Caddy route. It assumes Go at `/root/toolchains/go/bin` and the box's canonical Caddy site block; on any other host, follow the steps in the header of `deploy/emissio.service` by hand. The route it adds:
 
 ```
 redir /emissio /emissio/ permanent
