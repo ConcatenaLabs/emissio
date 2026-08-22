@@ -66,7 +66,7 @@ On Sequentia, anyone can issue an asset, and every issued asset has equal standi
 Sequentia has an open fee market: fees can be paid in any accepted asset, and tSEQ has no special status beyond staking. Get some GOLD, USDX or another asset from the faucet or the DEX, then send a transaction and choose that asset as the fee asset.
 
 - Submit the txid of the transaction.
-- We check on-chain that the fee output is in a non-tSEQ asset.`,
+- A reviewer checks on-chain that the fee output is in a non-tSEQ asset.`,
 	},
 	{
 		slug: "confidential-tx", title: "Send an opt-in confidential transaction", category: "Assets",
@@ -75,7 +75,7 @@ Sequentia has an open fee market: fees can be paid in any accepted asset, and tS
 
 - Generate a blinded address, for example with getnewaddress "" blech32 on your node.
 - Send funds from your transparent address to the blinded address.
-- Submit the txid. We check that the transaction has blinded outputs.`,
+- Submit the txid. A reviewer checks that the transaction has blinded outputs.`,
 	},
 	{
 		slug: "seqdex-swap", title: "Complete a SeqDEX swap", category: "Trading",
