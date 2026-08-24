@@ -1,4 +1,4 @@
-module github.com/GracedEternalKingCabbageMan/emissio
+module github.com/ConcatenaLabs/emissio
 
 go 1.24
 

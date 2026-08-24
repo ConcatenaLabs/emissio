@@ -1,7 +1,7 @@
 # Sequentia Emissio systemd unit.
 #
 # Install on the box:
-#   git clone https://github.com/GracedEternalKingCabbageMan/emissio /root/sequentia/emissio
+#   git clone https://github.com/ConcatenaLabs/emissio /root/sequentia/emissio
 #   cd /root/sequentia/emissio && go build .
 #   mkdir -p /var/lib/emissio
 #   cp deploy/emissio.service /etc/systemd/system/

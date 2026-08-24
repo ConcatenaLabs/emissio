@@ -9,7 +9,7 @@ build. `README.md` documents the reward economics and the full feature set; this
 mechanics of working on it.
 
 Node and consensus conventions live in the
-[`Sequentia`](https://github.com/GracedEternalKingCabbageMan/Sequentia) repo.
+[`Sequentia`](https://github.com/ConcatenaLabs/Sequentia) repo.
 
 ## Build, test, run
 

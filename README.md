@@ -12,11 +12,11 @@ Sequentia is a Bitcoin sidechain for asset tokenization and decentralized exchan
 
 | Repo | One-liner |
 |---|---|
-| [`Sequentia`](https://github.com/GracedEternalKingCabbageMan/Sequentia) | The Sequentia node (`sequentiad`, a fork of Elements 23.3.3): consensus, anchoring, proof of stake, open fee market, plus the canonical protocol documentation in `doc/sequentia/`. |
-| [`sequentia-electrs`](https://github.com/GracedEternalKingCabbageMan/sequentia-electrs) | The electrs fork: Rust indexer + Esplora REST API for Sequentia and its Bitcoin testnet4 parent chain. |
-| [`emissio`](https://github.com/GracedEternalKingCabbageMan/emissio) | Emissio: community rewards platform, earning Sequence tokens (SEQ) for testnet contributions. |
+| [`Sequentia`](https://github.com/ConcatenaLabs/Sequentia) | The Sequentia node (`sequentiad`, a fork of Elements 23.3.3): consensus, anchoring, proof of stake, open fee market, plus the canonical protocol documentation in `doc/sequentia/`. |
+| [`sequentia-electrs`](https://github.com/ConcatenaLabs/sequentia-electrs) | The electrs fork: Rust indexer + Esplora REST API for Sequentia and its Bitcoin testnet4 parent chain. |
+| [`emissio`](https://github.com/ConcatenaLabs/emissio) | Emissio: community rewards platform, earning Sequence tokens (SEQ) for testnet contributions. |
 
-Protocol documentation lives in [`Sequentia/doc/sequentia/`](https://github.com/GracedEternalKingCabbageMan/Sequentia/tree/HEAD/doc/sequentia).
+Protocol documentation lives in [`Sequentia/doc/sequentia/`](https://github.com/ConcatenaLabs/Sequentia/tree/HEAD/doc/sequentia).
 
 ## Status
 
@@ -121,7 +121,7 @@ Emissio consumes one external API surface itself: an Esplora-compatible REST API
 Requirements: Go 1.24 or newer. No CGO, no C toolchain; SQLite is the pure-Go `modernc.org/sqlite` driver.
 
 ```
-git clone https://github.com/GracedEternalKingCabbageMan/emissio
+git clone https://github.com/ConcatenaLabs/emissio
 cd emissio
 go build .
 EMISSIO_LISTEN=127.0.0.1:8095 EMISSIO_DB=/tmp/emissio.db ./emissio
