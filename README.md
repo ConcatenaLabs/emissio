@@ -8,7 +8,7 @@ It is a single Go binary with embedded templates and SQLite storage (pure Go dri
 
 ## Where this fits in Sequentia
 
-Sequentia is a Bitcoin sidechain for asset tokenization and decentralized exchange, built as a fork of Blockstream Elements 23.3.3. Emissio is a supporting service, not part of the protocol: it only talks to the chain read-only, through the block explorer's REST API, to sanity-check submitted transaction ids.
+Sequentia is a Bitcoin sidechain for asset tokenization and disintermediated exchanges, built as a fork of Blockstream Elements 23.3.3. Emissio is a supporting service, not part of the protocol: it only talks to the chain read-only, through the block explorer's REST API, to sanity-check submitted transaction ids.
 
 | Repo | One-liner |
 |---|---|
