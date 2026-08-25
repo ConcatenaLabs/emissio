@@ -18,15 +18,15 @@ Sequentia is a Bitcoin sidechain for asset tokenization and decentralized exchan
 
 Protocol documentation lives in [`Sequentia/doc/sequentia/`](https://github.com/ConcatenaLabs/Sequentia/tree/HEAD/doc/sequentia).
 
-## Status
+## What it does
 
-Working today on the live instance: accounts, the task catalog with explorer-backed txid checks, competitions, private security reports, social-account verification (Telegram, X, Reddit), referrals, mainnet payout-address registration, and the full admin review desk.
+Accounts, the task catalog with explorer-backed txid checks, competitions, private security reports, social-account verification (Telegram, X, Reddit), referrals, mainnet payout-address registration, and the admin review desk.
 
-Not yet implemented:
+Three things it deliberately does not do, which a user or an operator needs to know:
 
-- Email verification and password reset (admins can reset a password with the `createadmin` command).
-- Automatic evidence verification beyond txid existence and confirmation. Fee-asset checks, blinded-output checks, and claim-code matching are manual review steps for now; the task pages say so.
-- The pre-sale purchase flow. The rules page announces future pre-sale windows and the ledger reserves a `presale` kind, but no sale mechanics exist by design.
+- There is no email verification and no self-service password reset; an admin resets a password with the `createadmin` command.
+- Evidence is checked automatically only for a transaction id's existence and confirmation. Fee-asset checks, blinded-output checks and claim-code matching are human review steps, and the task pages say so.
+- There is no pre-sale purchase flow. The rules page describes pre-sale windows and the ledger reserves a `presale` kind, but no sale mechanics exist here.
 
 This is testnet software supporting a testnet program. Reward balances are program commitments recorded in a database, not on-chain funds.
 
