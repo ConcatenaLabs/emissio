@@ -18,6 +18,17 @@
 </div>
 
 <div class="section">
+  <h2>What every accepted report needs</h2>
+  <ul>
+    <li><strong>A defect in shipped code.</strong> The node, the wallets, SeqDEX, SeqLN or the project's public services, as released or on the default branch. Documentation, advice and configuration examples are not in scope here.</li>
+    <li><strong>A security consequence you demonstrate.</strong> Show what an attacker gains or a user loses, even if it is small. "Could be dangerous combined with an unknown bug" does not qualify, and neither do missing headers, version disclosure, rate limits, or best-practice deviations without an exploit.</li>
+    <li><strong>Reproduction a reviewer can confirm in under an hour</strong> from the steps as written. A report that cannot be reproduced is not accepted at any tier.</li>
+    <li><strong>First and untracked.</strong> Anything already on the public issue trackers or fixed on the default branch is a duplicate.</li>
+  </ul>
+  <p class="small muted">Found a real bug without a security angle? The <a href="{{base}}/tasks/report-bug">Report a bug</a> task pays for those.</p>
+</div>
+
+<div class="section">
   <h2>Exceptional findings</h2>
   <p class="muted">A finding can be awarded far above the Critical tier, up to <strong>{{seq .Data.Max}} SEQ</strong>, when all of the following hold: the consequences are network-wide (a consensus split, silent inflation of an asset, theft of funds without user interaction, or a break of Bitcoin anchoring), the technique is truly novel rather than a known class applied to new code, and the report comes with a working proof of concept. The team decides these awards case by case, and the reasoning is shared with the reporter.</p>
 </div>

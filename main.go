@@ -261,9 +261,10 @@ func runCommand(db *sql.DB, args []string) {
 		fmt.Printf("created admin %s (id %d)\n", email, id)
 	case "reseed-tasks":
 		// Refresh title, category and body of the seeded tasks from the
-		// current seed copy. Rewards, caps and active flags are left alone so
-		// admin tuning survives.
-		n := 0
+		// current seed copy, and insert any seeded task the database does
+		// not have yet. Rewards, caps and active flags of existing tasks are
+		// left alone so admin tuning survives.
+		updated, inserted := 0, 0
 		for _, t := range seedTasks {
 			res, err := db.Exec("UPDATE tasks SET title = ?, category = ?, body = ? WHERE slug = ?",
 				t.title, t.category, t.body, t.slug)
@@ -271,10 +272,17 @@ func runCommand(db *sql.DB, args []string) {
 				log.Fatal(err)
 			}
 			if c, _ := res.RowsAffected(); c > 0 {
-				n++
+				updated++
+				continue
 			}
+			if _, err := db.Exec(`INSERT INTO tasks (slug, title, category, body, reward, cap, needs_txid, active, sort)
+				VALUES (?,?,?,?,?,?,?,1,?)`,
+				t.slug, t.title, t.category, t.body, t.reward, t.cap, t.needsTxid, t.sort); err != nil {
+				log.Fatal(err)
+			}
+			inserted++
 		}
-		fmt.Printf("updated copy of %d seeded tasks\n", n)
+		fmt.Printf("updated copy of %d seeded tasks, inserted %d\n", updated, inserted)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n", args[0])
 		os.Exit(2)
