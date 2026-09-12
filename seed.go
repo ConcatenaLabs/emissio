@@ -14,8 +14,8 @@ const (
 	// Security awards. securityReserve is the share of the pool set aside
 	// for security awards; securityMax is the ceiling for one exceptional
 	// finding, and the upper bound the admin review form accepts.
-	securityReserve int64 = 8_000_000
-	securityMax     int64 = 2_000_000
+	securityReserve int64 = 6_000_000
+	securityMax     int64 = 1_500_000
 )
 
 // Security reward tiers (whole SEQ), shown on the security page and used as
@@ -25,10 +25,10 @@ var securityTiers = []struct {
 	Reward int64
 	Desc   string
 }{
-	{"Low", 2_500, "Minor issues with limited impact: UI bugs with a security angle, hard-to-trigger crashes, documentation errors that could mislead users into unsafe behavior."},
-	{"Medium", 10_000, "Real but contained vulnerabilities: denial of service against a single node, RPC weaknesses, wallet bugs that could lose testnet funds under unusual conditions."},
-	{"High", 50_000, "Serious vulnerabilities: remote crash of many nodes, theft of funds requiring user interaction, breaking the opt-in confidentiality of a blinded transaction."},
-	{"Critical", 250_000, "Network-level vulnerabilities: consensus splits, silent inflation of any asset, theft of funds without user interaction. A working proof of concept is expected at this tier."},
+	{"Low", 2_000, "Minor issues with limited impact: UI bugs with a security angle, hard-to-trigger crashes, documentation errors that could mislead users into unsafe behavior."},
+	{"Medium", 8_000, "Real but contained vulnerabilities: denial of service against a single node, RPC weaknesses, wallet bugs that could lose testnet funds under unusual conditions."},
+	{"High", 40_000, "Serious vulnerabilities: remote crash of many nodes, theft of funds requiring user interaction, breaking the opt-in confidentiality of a blinded transaction."},
+	{"Critical", 200_000, "Network-level vulnerabilities: consensus splits, silent inflation of any asset, theft of funds without user interaction. A working proof of concept is expected at this tier."},
 }
 
 type seedTask struct {
