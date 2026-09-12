@@ -76,10 +76,10 @@ func TestFormatSEQ(t *testing.T) {
 }
 
 func TestFormatUSD(t *testing.T) {
-	if got := formatUSD(1000000); got != "375,000" {
+	if got := formatUSD(1000000); got != "175,000" {
 		t.Errorf("formatUSD(1000000) = %q", got)
 	}
-	if got := formatUSD(215); got != "80.63" {
+	if got := formatUSD(215); got != "37.63" {
 		t.Errorf("formatUSD(215) = %q", got)
 	}
 }

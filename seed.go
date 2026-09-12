@@ -8,8 +8,8 @@ import (
 
 // Program constants. Amounts are whole SEQ.
 const (
-	programPool    int64   = 1_000_000
-	launchPriceUSD float64 = 0.375
+	programPool    int64   = 32_285_714
+	launchPriceUSD float64 = 0.175
 )
 
 // Security reward tiers (whole SEQ), shown on the security page and used as
