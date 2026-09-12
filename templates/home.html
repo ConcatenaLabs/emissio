@@ -21,7 +21,7 @@
       <div class="eyebrow">Program register</div>
       <div class="ledger">
         <div class="ledger-row"><span class="label">Program pool</span><span class="leader"></span><span class="amount">{{seq .Data.Pool}} <small>SEQ</small></span></div>
-        <div class="ledger-row"><span class="label">Launch price</span><span class="leader"></span><span class="amount plain">0.375 <small>USD / SEQ</small></span></div>
+        <div class="ledger-row"><span class="label">Launch price</span><span class="leader"></span><span class="amount plain">{{launchprice}} <small>USD / SEQ</small></span></div>
         <div class="ledger-row"><span class="label">Issued so far</span><span class="leader"></span><span class="amount">{{seq .Data.Stats.Distributed}} <small>SEQ</small></span></div>
         <div class="ledger-row"><span class="label">Participants</span><span class="leader"></span><span class="amount plain">{{seq .Data.Stats.Users}}</span></div>
       </div>
@@ -93,6 +93,6 @@
 
 <div class="section">
   <h2>Pre-sale windows</h2>
-  <p class="muted">From time to time, Emissio may open short pre-sale windows in which account holders can buy Sequence tokens below the 0.375 USD launch price. Windows are small, brief, and announced in advance to registered accounts. Nothing to do now: having an account is what makes you eligible to be notified.</p>
+  <p class="muted">From time to time, Emissio may open short pre-sale windows in which account holders can buy Sequence tokens below the {{launchprice}} USD launch price. Windows are small, brief, and announced in advance to registered accounts. Nothing to do now: having an account is what makes you eligible to be notified.</p>
 </div>
 {{end}}

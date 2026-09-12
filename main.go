@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -73,9 +74,10 @@ func NewApp(cfg Config, db *sql.DB) *App {
 
 func parseTemplates(cfg Config) map[string]*template.Template {
 	funcs := template.FuncMap{
-		"base": func() string { return cfg.BasePath },
-		"seq":  formatSEQ,
-		"usd":  formatUSD,
+		"base":        func() string { return cfg.BasePath },
+		"seq":         formatSEQ,
+		"usd":         formatUSD,
+		"launchprice": func() string { return strconv.FormatFloat(launchPriceUSD, 'f', -1, 64) },
 		"date": func(ts int64) string {
 			if ts == 0 {
 				return ""

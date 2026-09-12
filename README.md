@@ -34,7 +34,7 @@ This is testnet software supporting a testnet program. Reward balances are progr
 
 You need an account (email + password, 10 characters minimum). Every account gets a public claim code, which ties evidence to your account: you put it in social-media bios for verification, and it doubles as your referral code.
 
-All amounts below are whole SEQ, credited to your ledger. On the testnet you work with tSEQ and testnet assets; the rewards themselves are Sequence tokens paid at mainnet launch. Launch reference price: 0.375 USD per SEQ. Program pool: 1,000,000 SEQ.
+All amounts below are whole SEQ, credited to your ledger. On the testnet you work with tSEQ and testnet assets; the rewards themselves are Sequence tokens paid at mainnet launch. Launch reference price: 0.175 USD per SEQ. Program pool: 32,285,714 SEQ.
 
 ### Testnet tasks
 
