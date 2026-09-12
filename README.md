@@ -61,7 +61,7 @@ Judged contests with ranked prize ladders (the seeded artwork competition pays 2
 
 ### Security reports
 
-Private vulnerability reports with severity tiers; only the reporter and admins can see a report. Accepting a report credits the award. Default tiers: Low 2,000, Medium 8,000, High 40,000, Critical 200,000 SEQ. An exceptional finding (network-wide consequences, a truly novel technique, a working proof of concept) can be awarded up to 1,500,000 SEQ; 6,000,000 SEQ of the pool is reserved for security awards. The tier amounts, the ceiling and the reserve are constants in `seed.go`.
+Private vulnerability reports with severity tiers; only the reporter and admins can see a report. Accepting a report credits the award. Default tiers: Low 1,500, Medium 6,000, High 30,000, Critical 150,000 SEQ. An exceptional finding (network-wide consequences, a truly novel technique, a working proof of concept) can be awarded up to 1,000,000 SEQ; 16,000,000 SEQ of the pool is reserved for security awards. The tier amounts, the ceiling and the reserve are constants in `seed.go`.
 
 ### Account verification (non-KYC)
 
