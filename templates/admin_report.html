@@ -9,7 +9,7 @@
 {{if eq .Data.Report.Status "new"}}
 <div class="section">
   <h2>Review</h2>
-  <p class="small muted">Reference tiers: {{range $i, $t := .Data.Tiers}}{{if $i}} · {{end}}{{$t.Name}} {{seq $t.Reward}}{{end}} SEQ. Up to 27,000 SEQ for consensus-breaking or funds-loss issues with a proof of concept.</p>
+  <p class="small muted">Reference tiers: {{range $i, $t := .Data.Tiers}}{{if $i}} · {{end}}{{$t.Name}} {{seq $t.Reward}}{{end}} SEQ. Up to {{seq .Data.Max}} SEQ for an exceptional finding: novel technique, network-level consequences, working proof of concept.</p>
   <form class="stack" method="post" action="{{base}}/admin/reports/{{.Data.Report.ID}}/review">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>Outcome</label>
@@ -19,7 +19,7 @@
       <option value="duplicate">Duplicate</option>
     </select>
     <label>Award (SEQ, for accepted reports)</label>
-    <input type="number" name="award" min="0" max="27000" value="0">
+    <input type="number" name="award" min="0" max="{{.Data.Max}}" value="0">
     <label>Note to the reporter</label>
     <input type="text" name="note">
     <div class="actions"><button class="btn" type="submit">Record outcome</button></div>

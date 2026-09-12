@@ -10,6 +10,12 @@ import (
 const (
 	programPool    int64   = 32_285_714
 	launchPriceUSD float64 = 0.175
+
+	// Security awards. securityReserve is the share of the pool set aside
+	// for security awards; securityMax is the ceiling for one exceptional
+	// finding, and the upper bound the admin review form accepts.
+	securityReserve int64 = 8_000_000
+	securityMax     int64 = 2_000_000
 )
 
 // Security reward tiers (whole SEQ), shown on the security page and used as
@@ -19,10 +25,10 @@ var securityTiers = []struct {
 	Reward int64
 	Desc   string
 }{
-	{"Low", 250, "Minor issues with limited impact: UI bugs with a security angle, hard-to-trigger crashes, documentation errors that could mislead users into unsafe behavior."},
-	{"Medium", 1_000, "Real but contained vulnerabilities: denial of service against a single node, RPC weaknesses, wallet bugs that could lose testnet funds under unusual conditions."},
-	{"High", 4_000, "Serious vulnerabilities: remote crash of many nodes, theft of funds requiring user interaction, breaking the opt-in confidentiality of a blinded transaction."},
-	{"Critical", 13_500, "Network-level vulnerabilities: consensus splits, silent inflation of any asset, theft of funds without user interaction. Consensus-breaking or funds-loss bugs with a working proof of concept can be awarded up to 27,000 SEQ."},
+	{"Low", 2_500, "Minor issues with limited impact: UI bugs with a security angle, hard-to-trigger crashes, documentation errors that could mislead users into unsafe behavior."},
+	{"Medium", 10_000, "Real but contained vulnerabilities: denial of service against a single node, RPC weaknesses, wallet bugs that could lose testnet funds under unusual conditions."},
+	{"High", 50_000, "Serious vulnerabilities: remote crash of many nodes, theft of funds requiring user interaction, breaking the opt-in confidentiality of a blinded transaction."},
+	{"Critical", 250_000, "Network-level vulnerabilities: consensus splits, silent inflation of any asset, theft of funds without user interaction. A working proof of concept is expected at this tier."},
 }
 
 type seedTask struct {
@@ -126,9 +132,9 @@ type seedComp struct {
 
 var seedComps = []seedComp{
 	{
-		slug:  "artwork-2026",
-		title: "Sequentia community artwork",
-		prizes: "2000,750,250",
+		slug:         "artwork-2026",
+		title:        "Sequentia community artwork",
+		prizes:       "2000,750,250",
 		closesInDays: 28,
 		body: `Design a piece of artwork that captures what Sequentia is: a Bitcoin sidechain where every asset has equal standing, anchored to Bitcoin block by block.
 

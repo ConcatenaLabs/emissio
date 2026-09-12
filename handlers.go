@@ -122,6 +122,7 @@ type homeData struct {
 	Pool      int64
 	Tasks     []*Task
 	Comps     []*Competition
+	TierMin   int64
 	TierMax   int64
 	TaskTotal int64
 }
@@ -151,7 +152,7 @@ func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
 	}
 	a.render(w, r, "home", "Sequentia Emissio", homeData{
 		Stats: stats, Pool: programPool, Tasks: tasks, Comps: comps,
-		TierMax: 27000, TaskTotal: taskTotal,
+		TierMin: securityTiers[0].Reward, TierMax: securityMax, TaskTotal: taskTotal,
 	})
 }
 
@@ -334,11 +335,13 @@ type securityData struct {
 		Reward int64
 		Desc   string
 	}
-	Mine []*Report
+	Max     int64
+	Reserve int64
+	Mine    []*Report
 }
 
 func (a *App) handleSecurity(w http.ResponseWriter, r *http.Request) {
-	d := securityData{Tiers: securityTiers}
+	d := securityData{Tiers: securityTiers, Max: securityMax, Reserve: securityReserve}
 	if user, _, _ := a.currentUser(r); user != nil {
 		var err error
 		d.Mine, err = reportsOf(a.db, user.ID)
