@@ -25,8 +25,8 @@ var securityTiers = []struct {
 	Reward int64
 	Desc   string
 }{
-	{"Low", 1_500, "Minor issues with limited impact: UI bugs with a security angle, hard-to-trigger crashes, documentation errors that could mislead users into unsafe behavior."},
-	{"Medium", 6_000, "Real but contained vulnerabilities: denial of service against a single node, RPC weaknesses, wallet bugs that could lose testnet funds under unusual conditions."},
+	{"Low", 1_000, "A reproducible defect in shipped code with a demonstrated security consequence, however small: a crash any peer can trigger on one node, an RPC or wallet path that leaks something it should not, a fee-asset or blinding edge case that loses testnet funds under a specific sequence. Documentation errors, UI problems, missing headers, version disclosure and theoretical concerns are not security findings; report those as a bug instead."},
+	{"Medium", 6_000, "A contained vulnerability with a working reproduction: remote denial of service against a single node, an authentication or authorization weakness in an RPC or web surface, a wallet bug that loses funds under conditions a normal user can hit."},
 	{"High", 30_000, "Serious vulnerabilities: remote crash of many nodes, theft of funds requiring user interaction, breaking the opt-in confidentiality of a blinded transaction."},
 	{"Critical", 150_000, "Network-level vulnerabilities: consensus splits, silent inflation of any asset, theft of funds without user interaction. A working proof of concept is expected at this tier."},
 }
@@ -122,6 +122,16 @@ Full-node sovereignty is a core Sequentia principle: block producers cannot forc
 - Sync a full node from sequentiatestnet.com downloads or by building from source.
 - After seven days of uptime, send a transaction from the node's wallet and submit that txid.
 - In the notes, include your node's uptime and the output of getblockchaininfo (blocks and bestblockhash).`,
+	},
+	{
+		slug: "report-bug", title: "Report a bug", category: "Quality",
+		reward: 25, cap: 400, needsTxid: false, sort: 90,
+		body: `Find and report a real bug that is not a security vulnerability: a documentation error that would send a user the wrong way, a wallet or explorer screen that shows the wrong thing, a crash or hang you can reproduce, a command in a guide that no longer works.
+
+- File the bug as a public issue in the repository that owns the code, under github.com/ConcatenaLabs, with steps to reproduce.
+- Paste the issue link in the notes below.
+
+The task pays once per account, for the first issue of yours that a maintainer confirms. Further confirmed bugs are welcome on GitHub and count toward competitions when one is running. Anything with a security consequence belongs on the security page instead, where it is reviewed privately and paid by severity.`,
 	},
 }
 

@@ -38,7 +38,7 @@ All amounts below are whole SEQ, credited to your ledger. On the testnet you wor
 
 ### Testnet tasks
 
-Each task pays a fixed reward, most have a first-come cap, and you can have one submission per task (you may resubmit after a rejection). Most tasks require a txid as evidence; the app checks it against the testnet explorer and records an advisory note, then a human reviewer approves or rejects. A txid can only ever be evidence for one account.
+Each task pays a fixed reward, most have a first-come cap, and you can have one submission per task (you may resubmit after a rejection). Most tasks require a txid as evidence (the bug-report task takes an issue link instead); the app checks it against the testnet explorer and records an advisory note, then a human reviewer approves or rejects. A txid can only ever be evidence for one account.
 
 The seeded catalog (`seed.go`; the live instance's admins can adjust rewards, caps, and active flags):
 
@@ -52,8 +52,9 @@ The seeded catalog (`seed.go`; the live instance's admins can adjust rewards, ca
 | Complete a cross-chain swap with Bitcoin testnet | 40 | 750 |
 | Complete a Lightning swap | 40 | 750 |
 | Run a full node for a week | 50 | 1,000 |
+| Report a bug (a confirmed public issue, no txid) | 25 | 400 |
 
-Completing every task pays 215 SEQ; total task exposure across all users is 315,000 SEQ. Caps pay the first accounts whose evidence is approved, so the pool stays bounded.
+Completing every task pays 240 SEQ; total task exposure across all users is 325,000 SEQ. Caps pay the first accounts whose evidence is approved, so the pool stays bounded.
 
 ### Competitions
 
@@ -61,7 +62,7 @@ Judged contests with ranked prize ladders (the seeded artwork competition pays 2
 
 ### Security reports
 
-Private vulnerability reports with severity tiers; only the reporter and admins can see a report. Accepting a report credits the award. Default tiers: Low 1,500, Medium 6,000, High 30,000, Critical 150,000 SEQ. An exceptional finding (network-wide consequences, a truly novel technique, a working proof of concept) can be awarded up to 1,000,000 SEQ; 16,000,000 SEQ of the pool is reserved for security awards. The tier amounts, the ceiling and the reserve are constants in `seed.go`.
+Private vulnerability reports with severity tiers; only the reporter and admins can see a report. Accepting a report credits the award. Default tiers: Low 1,000, Medium 6,000, High 30,000, Critical 150,000 SEQ. Every tier requires a defect in shipped code, a demonstrated security consequence and a reproduction a reviewer can confirm; bugs without a security angle go through the "Report a bug" task. An exceptional finding (network-wide consequences, a truly novel technique, a working proof of concept) can be awarded up to 1,000,000 SEQ; 16,000,000 SEQ of the pool is reserved for security awards. The tier amounts, the ceiling and the reserve are constants in `seed.go`.
 
 ### Account verification (non-KYC)
 
@@ -133,7 +134,7 @@ First run creates the schema and seeds the task catalog and the opening competit
 echo 'a-strong-password' | EMISSIO_DB=/tmp/emissio.db ./emissio createadmin you@example.com
 ```
 
-Running `createadmin` for an existing email resets that account's password and makes it an admin. The other subcommand, `./emissio reseed-tasks`, refreshes the title, category, and body of the seeded tasks from the current `seed.go` copy in an existing database, leaving admin-tuned rewards, caps, and active flags alone.
+Running `createadmin` for an existing email resets that account's password and makes it an admin. The other subcommand, `./emissio reseed-tasks`, refreshes the title, category, and body of the seeded tasks from the current `seed.go` copy in an existing database and inserts any seeded task the database does not have yet, leaving admin-tuned rewards, caps, and active flags of existing tasks alone.
 
 Tests:
 
