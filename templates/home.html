@@ -22,6 +22,7 @@
       <div class="ledger">
         <div class="ledger-row"><span class="label">Program pool</span><span class="leader"></span><span class="amount">{{seq .Data.Pool}} <small>SEQ</small></span></div>
         <div class="ledger-row"><span class="label">Launch price</span><span class="leader"></span><span class="amount plain">{{launchprice}} <small>USD / SEQ</small></span></div>
+        <div class="ledger-row"><span class="label">Top security award</span><span class="leader"></span><span class="amount">up to {{seq .Data.TierMax}} <small>SEQ</small></span></div>
         <div class="ledger-row"><span class="label">Issued so far</span><span class="leader"></span><span class="amount">{{seq .Data.Stats.Distributed}} <small>SEQ</small></span></div>
         <div class="ledger-row"><span class="label">Participants</span><span class="leader"></span><span class="amount plain">{{seq .Data.Stats.Users}}</span></div>
       </div>

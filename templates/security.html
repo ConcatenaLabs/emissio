@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="eyebrow">Security rewards</div>
 <h1>Break it on the testnet, not at launch</h1>
-<p class="lede muted">Report vulnerabilities in the Sequentia node, the wallets, SeqDEX, SeqLN, or the project infrastructure. Reports are private: only you and the review team can see them. Accepted reports are credited in SEQ according to severity, and a proposed fix raises the award within its tier. {{seq .Data.Reserve}} SEQ of the program pool is reserved for security awards.</p>
+<p class="lede muted">Report vulnerabilities in the Sequentia node, the wallets, SeqDEX, SeqLN, or the project infrastructure. Reports are private: only you and the review team can see them. Accepted reports are credited in SEQ according to severity, and a proposed fix raises the award within its tier. An exceptional finding can be awarded up to <strong>{{seq .Data.Max}} SEQ</strong>; {{seq .Data.Reserve}} SEQ of the program pool is reserved for security awards.</p>
 
 <div class="section">
   <h2>Severity tiers</h2>
@@ -13,8 +13,18 @@
       <span class="amount">{{seq .Reward}} <small>SEQ</small></span>
     </div>
     {{end}}
+    <div class="ledger-row">
+      <span class="label"><strong>Exceptional</strong><span class="sub">Network-wide consequences, a truly novel technique and a working proof of concept. Awarded above Critical at the team's discretion.</span></span>
+      <span class="leader"></span>
+      <span class="amount">up to {{seq .Data.Max}} <small>SEQ</small></span>
+    </div>
   </div>
   <p class="small muted" style="margin-top:.8rem">Amounts are the reference award for a clear, reproducible report in that tier. The review team sets the final award. The first reporter of an issue is the one rewarded; later reports of the same issue are marked duplicates.</p>
+</div>
+
+<div class="section">
+  <h2>Exceptional findings</h2>
+  <p class="muted">A finding can be awarded far above the Critical tier, up to <strong>{{seq .Data.Max}} SEQ</strong>, when all of the following hold: the consequences are network-wide (a consensus split, silent inflation of an asset, theft of funds without user interaction, or a break of Bitcoin anchoring), the technique is truly novel rather than a known class applied to new code, and the report comes with a working proof of concept. The team decides these awards case by case, and the reasoning is shared with the reporter.</p>
 </div>
 
 <div class="section">
@@ -26,11 +36,6 @@
     <li><strong>First and untracked.</strong> Anything already on the public issue trackers or fixed on the default branch is a duplicate.</li>
   </ul>
   <p class="small muted">Found a real bug without a security angle? The <a href="{{base}}/tasks/report-bug">Report a bug</a> task pays for those.</p>
-</div>
-
-<div class="section">
-  <h2>Exceptional findings</h2>
-  <p class="muted">A finding can be awarded far above the Critical tier, up to <strong>{{seq .Data.Max}} SEQ</strong>, when all of the following hold: the consequences are network-wide (a consensus split, silent inflation of an asset, theft of funds without user interaction, or a break of Bitcoin anchoring), the technique is truly novel rather than a known class applied to new code, and the report comes with a working proof of concept. The team decides these awards case by case, and the reasoning is shared with the reporter.</p>
 </div>
 
 <div class="section">
