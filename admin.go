@@ -229,6 +229,7 @@ func (a *App) handleAdminReports(w http.ResponseWriter, r *http.Request) {
 
 type adminReportData struct {
 	Report *Report
+	Max    int64
 	Tiers  []struct {
 		Name   string
 		Reward int64
@@ -247,7 +248,7 @@ func (a *App) handleAdminReport(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	a.render(w, r, "admin_report", "Report: "+report.Title, adminReportData{Report: report, Tiers: securityTiers})
+	a.render(w, r, "admin_report", "Report: "+report.Title, adminReportData{Report: report, Max: securityMax, Tiers: securityTiers})
 }
 
 func (a *App) handleAdminReportReview(w http.ResponseWriter, r *http.Request) {
@@ -266,8 +267,8 @@ func (a *App) handleAdminReportReview(w http.ResponseWriter, r *http.Request) {
 	if status != "accepted" {
 		award = 0
 	}
-	if award < 0 || award > 27000 {
-		a.redirect(w, r, fmt.Sprintf("/admin/reports/%d", id), "", "Award must be between 0 and 27,000 SEQ.")
+	if award < 0 || award > securityMax {
+		a.redirect(w, r, fmt.Sprintf("/admin/reports/%d", id), "", "Award must be between 0 and "+formatSEQ(securityMax)+" SEQ.")
 		return
 	}
 	if err := reviewReport(a.db, id, status, award, note); err != nil {
