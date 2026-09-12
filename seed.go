@@ -15,7 +15,7 @@ const (
 	// for security awards; securityMax is the ceiling for one exceptional
 	// finding, and the upper bound the admin review form accepts.
 	securityReserve int64 = 16_000_000
-	securityMax     int64 = 1_000_000
+	securityMax     int64 = 1_500_000
 )
 
 // Security reward tiers (whole SEQ), shown on the security page and used as
