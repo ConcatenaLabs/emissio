@@ -522,7 +522,7 @@ func (a *App) handleVerify(w http.ResponseWriter, r *http.Request) {
 		a.redirect(w, r, "/account", "", "That "+platformName(platform)+" account already vouches for another Emissio account.")
 		return
 	}
-	note := a.verifCheck(platform, handle, user.ClaimCode)
+	note := a.verifCheck(platform, handle, evidence, user.ClaimCode)
 	if evidence != "" {
 		// The same post under a different handle in the link is the trick
 		// the reviewer is told to look for; flag it up front.

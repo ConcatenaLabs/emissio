@@ -29,6 +29,7 @@ type Config struct {
 	SecureCookies bool
 	RedditBase    string // overridable in tests
 	TelegramBase  string
+	XBase         string // the keyless syndication endpoint that renders embedded posts
 	TgBotToken    string // BotFather token; enables ID-based Telegram age checks
 	TgBotName     string // bot username shown to users, without @
 }
@@ -42,6 +43,7 @@ func loadConfig() Config {
 		SecureCookies: envOr("EMISSIO_SECURE", "0") == "1",
 		RedditBase:    envOr("EMISSIO_REDDIT", "https://www.reddit.com"),
 		TelegramBase:  envOr("EMISSIO_TELEGRAM", "https://t.me"),
+		XBase:         envOr("EMISSIO_X", "https://cdn.syndication.twimg.com"),
 		TgBotToken:    envOr("EMISSIO_TG_BOT_TOKEN", ""),
 		TgBotName:     envOr("EMISSIO_TG_BOT_NAME", ""),
 	}

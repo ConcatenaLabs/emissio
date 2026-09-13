@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="eyebrow">Admin</div>
 <h1>Pending verifications</h1>
-<p class="small muted">Approve when the user's account code is where only the owner could put it and the account is at least two years old. Reddit is checked automatically. For X, open the post: its author must be the handle shown here (the site displays a post under any handle in the link, so a mismatch is an attempt to use someone else's account), it must contain the code, and the profile's join date must be at least two years ago. Telegram does not publish age, use judgment.</p>
+<p class="small muted">Approve when the user's account code is where only the owner could put it and the account is at least two years old. Reddit and X are checked automatically: the check line says whether the post or profile is by this account, whether it contains the code, and the account age (X's is derived from the account id, exact for accounts made since 2016). Approve on a clean check line; on "manual review" open the link yourself. Telegram does not publish age, use judgment.</p>
 {{if not .Data}}<p class="muted">Queue is empty.</p>{{end}}
 {{range .Data}}
 <details open>
