@@ -58,7 +58,7 @@ Completing every task pays 240 SEQ; total task exposure across all users is 325,
 
 ### Competitions
 
-Judged contests with ranked prize ladders (the seeded artwork competition pays 2,000 / 750 / 250 SEQ). One entry per account, editable until the competition closes. Admins assign places; each award is a ledger credit.
+Judged contests with ranked prize ladders (the seeded artwork competition pays 2,000 / 750 / 250 SEQ). One entry per account, editable until the competition closes. Admins assign places; each award is a ledger credit. The admin page for a competition edits its slug, title, body, prizes and closing date; a competition whose date has passed refuses new entries until the date is moved.
 
 ### Security reports
 

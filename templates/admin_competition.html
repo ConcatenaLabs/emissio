@@ -1,13 +1,30 @@
 {{define "content"}}
 <div class="eyebrow">Admin · competition · <span class="pill {{.Data.Comp.Status}}">{{.Data.Comp.Status}}</span></div>
 <h1>{{.Data.Comp.Title}}</h1>
-<p class="small muted">Prizes: {{range $i, $p := .Data.Prizes}}{{if $i}} / {{end}}{{seq $p}}{{end}} SEQ · closes {{datetime .Data.Comp.ClosesAt}}</p>
+<p class="small muted">Prizes: {{range $i, $p := .Data.Prizes}}{{if $i}} / {{end}}{{seq $p}}{{end}} SEQ · closes {{datetime .Data.Comp.ClosesAt}}{{if .Data.Past}} · <strong>closing date has passed: entries are refused until you move it or change the status</strong>{{end}}</p>
 <form method="post" action="{{base}}/admin/competitions/{{.Data.Comp.Slug}}/status" style="display:flex;gap:.6rem;margin:1rem 0">
   <input type="hidden" name="csrf" value="{{.CSRF}}">
   <button class="btn ghost small" name="status" value="open" type="submit">Open</button>
   <button class="btn ghost small" name="status" value="judging" type="submit">Judging</button>
   <button class="btn small" name="status" value="awarded" type="submit">Awarded (publish winners)</button>
 </form>
+
+<div class="section">
+  <h2>Edit</h2>
+  <form class="stack wide" method="post" action="{{base}}/admin/competitions/save">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="id" value="{{.Data.Comp.ID}}">
+    <label>Slug</label><input class="mono" type="text" name="slug" value="{{.Data.Comp.Slug}}" required>
+    <label>Title</label><input type="text" name="title" value="{{.Data.Comp.Title}}" required>
+    <label>Body</label><textarea name="body" style="min-height:10rem">{{.Data.Comp.Body}}</textarea>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap">
+      <div><label>Prizes (SEQ, comma separated)</label><input class="mono" type="text" name="prizes" value="{{.Data.Comp.Prizes}}" required></div>
+      <div><label>Closes (end of day, UTC)</label><input type="date" name="closes" value="{{isodate .Data.Comp.ClosesAt}}"></div>
+    </div>
+    <p class="small muted">Changing prizes does not touch places already awarded.</p>
+    <div class="actions"><button class="btn" type="submit">Save changes</button></div>
+  </form>
+</div>
 
 <div class="section">
   <h2>Entries ({{len .Data.Entries}})</h2>

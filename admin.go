@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type adminHome struct {
@@ -127,37 +128,56 @@ func (a *App) handleAdminCompSave(w http.ResponseWriter, r *http.Request) {
 	body := strings.ReplaceAll(strings.TrimSpace(r.FormValue("body")), "\r\n", "\n")
 	prizes := strings.TrimSpace(r.FormValue("prizes"))
 	days, _ := strconv.ParseInt(r.FormValue("days"), 10, 64)
+	back := "/admin/competitions"
+	if id > 0 {
+		back += "/" + slug
+	}
 	if slug == "" || title == "" || len(parsePrizes(prizes)) == 0 {
-		a.redirect(w, r, "/admin/competitions", "", "A competition needs a slug, a title, and prizes like 2000,750,250.")
+		a.redirect(w, r, back, "", "A competition needs a slug, a title, and prizes like 2000,750,250.")
 		return
+	}
+	// The closing time comes either as an absolute date (the edit form) or
+	// as a number of days from now (the create form). A date closes at the
+	// end of that day, UTC.
+	var closes int64
+	if s := strings.TrimSpace(r.FormValue("closes")); s != "" {
+		t, err := time.Parse("2006-01-02", s)
+		if err != nil {
+			a.redirect(w, r, back, "", "Closing date must look like 2026-10-31.")
+			return
+		}
+		closes = t.AddDate(0, 0, 1).Unix() - 1
+	} else if days > 0 {
+		closes = now() + days*86400
 	}
 	var err error
 	if id > 0 {
-		if days > 0 {
+		if closes > 0 {
 			_, err = a.db.Exec(`UPDATE competitions SET slug=?, title=?, body=?, prizes=?, closes_at=? WHERE id=?`,
-				slug, title, body, prizes, now()+days*86400, id)
+				slug, title, body, prizes, closes, id)
 		} else {
 			_, err = a.db.Exec(`UPDATE competitions SET slug=?, title=?, body=?, prizes=? WHERE id=?`,
 				slug, title, body, prizes, id)
 		}
 	} else {
-		if days <= 0 {
-			days = 28
+		if closes <= 0 {
+			closes = now() + 28*86400
 		}
 		_, err = a.db.Exec(`INSERT INTO competitions (slug, title, body, prizes, closes_at, status) VALUES (?,?,?,?,?,'open')`,
-			slug, title, body, prizes, now()+days*86400)
+			slug, title, body, prizes, closes)
 	}
 	if err != nil {
-		a.redirect(w, r, "/admin/competitions", "", "Save failed: "+err.Error())
+		a.redirect(w, r, back, "", "Save failed: "+err.Error())
 		return
 	}
-	a.redirect(w, r, "/admin/competitions", "Competition saved.", "")
+	a.redirect(w, r, back, "Competition saved.", "")
 }
 
 type adminCompData struct {
 	Comp    *Competition
 	Entries []*Entry
 	Prizes  []int64
+	Past    bool
 }
 
 func (a *App) handleAdminCompetition(w http.ResponseWriter, r *http.Request) {
@@ -172,7 +192,7 @@ func (a *App) handleAdminCompetition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.render(w, r, "admin_competition", "Judge: "+comp.Title,
-		adminCompData{Comp: comp, Entries: entries, Prizes: parsePrizes(comp.Prizes)})
+		adminCompData{Comp: comp, Entries: entries, Prizes: parsePrizes(comp.Prizes), Past: comp.ClosesAt <= now()})
 }
 
 func (a *App) handleAdminAward(w http.ResponseWriter, r *http.Request) {
