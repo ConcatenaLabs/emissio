@@ -16,6 +16,11 @@ const (
 	// finding, and the upper bound the admin review form accepts.
 	securityReserve int64 = 16_000_000
 	securityMax     int64 = 1_500_000
+
+	// Fingerprint of the team key that encrypted reports are addressed to.
+	// The public key is static/security-pgp.asc; the private key never
+	// touches the server.
+	securityPGPFingerprint = "175E 5689 7EFA 18DF 9D6A  E5BD 8A92 51CD 2A22 27AF"
 )
 
 // Security reward tiers (whole SEQ), shown on the security page and used as

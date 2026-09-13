@@ -84,6 +84,10 @@ func parseTemplates(cfg Config) map[string]*template.Template {
 			}
 			return time.Unix(ts, 0).UTC().Format("2 Jan 2006")
 		},
+		"pgpfpr": func() string { return securityPGPFingerprint },
+		"encrypted": func(body string) bool {
+			return strings.HasPrefix(strings.TrimSpace(body), "-----BEGIN PGP MESSAGE-----")
+		},
 		"isodate": func(ts int64) string { return time.Unix(ts, 0).UTC().Format("2006-01-02") },
 		"datetime": func(ts int64) string {
 			if ts == 0 {
