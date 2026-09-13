@@ -49,14 +49,14 @@ func TestValidateMainnetAddress(t *testing.T) {
 	}
 
 	invalid := map[string]string{
-		"":    "empty",
-		"tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx":    "testnet",
-		"sqb1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq":  "confidential",
-		"lq1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq":  "liquid",
-		"1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2":            "legacy",
-		"3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy":            "legacy p2sh",
-		"bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t5":    "bad checksum",
-		"bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3tb":    "bad checksum b",
+		"": "empty",
+		"tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx":   "testnet",
+		"sqb1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq": "confidential",
+		"lq1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq": "liquid",
+		"1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2":           "legacy",
+		"3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy":           "legacy p2sh",
+		"bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t5":   "bad checksum",
+		"bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3tb":   "bad checksum b",
 		"notanaddress": "garbage",
 	}
 	for a, why := range invalid {
@@ -94,5 +94,28 @@ func TestPasswordHash(t *testing.T) {
 	}
 	if !strings.HasPrefix(h, "argon2id$") {
 		t.Errorf("unexpected hash format %q", h)
+	}
+}
+
+func TestParseXPost(t *testing.T) {
+	good := map[string][2]string{
+		"https://x.com/Some_User/status/1234567890123456789":            {"some_user", "https://x.com/Some_User/status/1234567890123456789"},
+		"https://twitter.com/Some_User/status/1234567890123456789?s=20": {"some_user", "https://x.com/Some_User/status/1234567890123456789"},
+		"x.com/abc/status/12345/photo/1":                                {"abc", "https://x.com/abc/status/12345"},
+		"  https://mobile.x.com/abc/status/12345  ":                     {"abc", "https://x.com/abc/status/12345"},
+	}
+	for in, want := range good {
+		h, c, ok := parseXPost(in)
+		if !ok || h != want[0] || c != want[1] {
+			t.Errorf("parseXPost(%q) = %q, %q, %v; want %q, %q", in, h, c, ok, want[0], want[1])
+		}
+	}
+	for _, in := range []string{"", "https://x.com/abc", "https://x.com/abc/status/", "https://example.com/abc/status/123", "https://x.com/a b/status/123", "@handle"} {
+		if _, _, ok := parseXPost(in); ok {
+			t.Errorf("parseXPost(%q) accepted", in)
+		}
+	}
+	if got := xPostID("https://x.com/abc/status/12345"); got != "12345" {
+		t.Errorf("xPostID = %q", got)
 	}
 }

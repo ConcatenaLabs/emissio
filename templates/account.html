@@ -37,7 +37,7 @@
 
 <div class="section">
   <h2>Verified accounts</h2>
-  <p class="muted"><strong>At least one verified account is required to receive your payout at launch</strong> and for referral rewards; each verified platform also earns {{seq .Data.VerifBonus}} SEQ. Link accounts that are at least two years old: put your account code (above) in the profile's bio or public description first, then submit the handle; you can remove the code once verified. A social account can vouch for one Emissio account only.</p>
+  <p class="muted"><strong>At least one verified account is required to receive your payout at launch</strong> and for referral rewards; each verified platform also earns {{seq .Data.VerifBonus}} SEQ. Link accounts that are at least two years old: put your account code (above) in the profile's bio or public description first, then submit the handle; for X, publish a post containing the code and submit the link to it. You can remove the code once verified. A social account can vouch for one Emissio account only.</p>
   {{range .Data.Verifs}}
   <details {{if not .Mine}}{{else}}open{{end}}>
     <summary><strong>{{.Name}}</strong>{{if .Mine}} · @{{.Mine.Handle}} · <span class="pill {{if eq .Mine.Status "verified"}}approved{{else}}{{.Mine.Status}}{{end}}">{{.Mine.Status}}</span>{{else}} · not linked · <span class="amount" style="font-family:var(--mono);color:var(--gold)">{{seq $.Data.VerifBonus}} SEQ</span>{{end}}</summary>
@@ -57,8 +57,13 @@
         <input type="hidden" name="csrf" value="{{$.CSRF}}">
         <input type="hidden" name="platform" value="{{.Platform}}">
         <div style="flex:1;min-width:12rem">
+          {{if eq .Platform "x"}}
+          <label>Link to your post</label>
+          <input class="mono" type="text" name="post" placeholder="https://x.com/handle/status/1234567890">
+          {{else}}
           <label>{{.Name}} handle</label>
           <input class="mono" type="text" name="handle" placeholder="@handle">
+          {{end}}
         </div>
         <button class="btn small" type="submit">Request verification</button>
       </form>

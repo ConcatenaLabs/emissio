@@ -134,6 +134,7 @@ func mustOpenDB(path string) *sql.DB {
 	// is fine.
 	db.Exec("ALTER TABLE users ADD COLUMN referred_by INTEGER NOT NULL DEFAULT 0")
 	db.Exec("ALTER TABLE users ADD COLUMN reg_ip TEXT NOT NULL DEFAULT ''")
+	db.Exec("ALTER TABLE verifications ADD COLUMN evidence TEXT NOT NULL DEFAULT ''")
 	return db
 }
 
