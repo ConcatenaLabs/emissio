@@ -39,7 +39,7 @@
   {{if .Data.Task.NeedsTxid}}
   <label for="txid">Transaction id (txid)</label>
   <input class="mono" type="text" id="txid" name="txid" placeholder="64 hex characters" required minlength="64" maxlength="64">
-  <div class="field-note">The txid of the transaction that proves you completed this task, on the Sequentia testnet.</div>
+  <div class="field-note">The txid of the transaction that proves you completed this task, on the Sequentia testnet.{{if .Data.ProofTag}} It must contain a transparent output whose amount ends in <strong class="mono">.{{.Data.ProofTag}}</strong>, your proof decimals.{{end}}</div>
   {{end}}
   <label for="notes">Notes</label>
   <textarea id="notes" name="notes" placeholder="Anything the task asks for (asset ids, markets, payment hashes) and context for the reviewer."></textarea>

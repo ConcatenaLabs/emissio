@@ -34,6 +34,9 @@ type Config struct {
 	RedditID      string // Reddit app client id; with the secret, enables the automatic Reddit check
 	RedditSecret  string
 	RedditToken   string // secret shared with the Reddit app that issues signed ownership tokens
+	PolicyAsset   string // asset id of tSEQ on this chain, for the fee and stake checks
+	NodeCLI       string // sequentia-cli path; with NodeDatadir, enables peer-based checks
+	NodeDatadir   string
 	TgBotToken    string // BotFather token; enables ID-based Telegram age checks
 	TgBotName     string // bot username shown to users, without @
 }
@@ -52,6 +55,9 @@ func loadConfig() Config {
 		RedditID:      envOr("EMISSIO_REDDIT_CLIENT_ID", ""),
 		RedditSecret:  envOr("EMISSIO_REDDIT_CLIENT_SECRET", ""),
 		RedditToken:   envOr("EMISSIO_REDDIT_TOKEN_SECRET", ""),
+		PolicyAsset:   envOr("EMISSIO_POLICY_ASSET", "c8eccacf0953e1931cd31e434d8319101cc36e6c38b0e2104d8687552fae3e40"),
+		NodeCLI:       envOr("EMISSIO_CLI", ""),
+		NodeDatadir:   envOr("EMISSIO_DATADIR", ""),
 		TgBotToken:    envOr("EMISSIO_TG_BOT_TOKEN", ""),
 		TgBotName:     envOr("EMISSIO_TG_BOT_NAME", ""),
 	}
@@ -111,9 +117,10 @@ func parseTemplates(cfg Config) map[string]*template.Template {
 			}
 			return time.Unix(ts, 0).UTC().Format("2 Jan 2006 15:04 UTC")
 		},
-		"body":   renderBody,
-		"prizes": parsePrizes,
-		"add":    func(a, b int) int { return a + b },
+		"body":     renderBody,
+		"prooftag": proofTag,
+		"prizes":   parsePrizes,
+		"add":      func(a, b int) int { return a + b },
 		"tmap": func(t any, csrf string) map[string]any {
 			task, _ := t.(*Task)
 			return map[string]any{"Task": task, "CSRF": csrf}
@@ -238,6 +245,7 @@ func main() {
 	}
 
 	app := NewApp(cfg, db)
+	app.startPeerPoller()
 	log.Printf("emissio listening on %s (base path %q, db %s)", cfg.Listen, cfg.BasePath, cfg.DBPath)
 	srv := &http.Server{
 		Addr:              cfg.Listen,

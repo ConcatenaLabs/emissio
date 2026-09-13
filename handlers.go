@@ -167,9 +167,10 @@ func (a *App) handleTasks(w http.ResponseWriter, r *http.Request) {
 }
 
 type taskData struct {
-	Task *Task
-	Mine *Submission
-	Full bool
+	Task     *Task
+	Mine     *Submission
+	Full     bool
+	ProofTag string // empty when not signed in
 }
 
 func (a *App) handleTask(w http.ResponseWriter, r *http.Request) {
@@ -179,13 +180,21 @@ func (a *App) handleTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := taskData{Task: task, Full: task.Cap > 0 && task.Awarded >= task.Cap}
+	// Task bodies name the user's own proof decimals and account code where
+	// they apply, so the instructions can be followed literally.
+	tag, code := "<your proof decimals>", "<your account code>"
 	if user, _, _ := a.currentUser(r); user != nil {
 		d.Mine, err = latestSubmission(a.db, user.ID, task.ID)
 		if err != nil {
 			a.serverError(w, err)
 			return
 		}
+		d.ProofTag = proofTag(user.ClaimCode)
+		tag, code = d.ProofTag, user.ClaimCode
 	}
+	body := *task
+	body.Body = strings.NewReplacer("{PROOF}", tag, "{CODE}", code).Replace(task.Body)
+	d.Task = &body
 	a.render(w, r, "task", task.Title, d)
 }
 
@@ -241,10 +250,7 @@ func (a *App) handleTaskSubmit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	chainNote := ""
-	if txid != "" {
-		chainNote = a.chainCheck(txid)
-	}
+	chainNote := a.evidenceCheck(task.Slug, txid, notes, user)
 	_, err = a.db.Exec(`INSERT INTO submissions (user_id, task_id, txid, notes, chain_note, created_at)
 		VALUES (?,?,?,?,?,?)`, user.ID, task.ID, strings.ToLower(txid), notes, chainNote, now())
 	if err != nil {

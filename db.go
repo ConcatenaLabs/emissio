@@ -53,6 +53,11 @@ CREATE TABLE IF NOT EXISTS submissions (
 	reviewed_at INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS submissions_user ON submissions(user_id);
+CREATE TABLE IF NOT EXISTS peer_sightings (
+	code TEXT NOT NULL,
+	seen_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS peer_sightings_code ON peer_sightings(code, seen_at);
 CREATE INDEX IF NOT EXISTS submissions_status ON submissions(status);
 CREATE TABLE IF NOT EXISTS competitions (
 	id INTEGER PRIMARY KEY,
