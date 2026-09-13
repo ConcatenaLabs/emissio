@@ -18,7 +18,7 @@ func newTestServer(t *testing.T) (*App, *httptest.Server, *http.Client) {
 	t.Cleanup(func() { db.Close() })
 	seedDB(db)
 	app := NewApp(Config{BasePath: "", EsploraURL: "",
-		RedditBase: "http://127.0.0.1:9", TelegramBase: "http://127.0.0.1:9"}, db)
+		RedditBase: "http://127.0.0.1:9", TelegramBase: "http://127.0.0.1:9", XBase: "http://127.0.0.1:9"}, db)
 	srv := httptest.NewServer(app.routes())
 	t.Cleanup(srv.Close)
 	jar, _ := cookiejar.New(nil)

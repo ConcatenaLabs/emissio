@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -31,7 +33,7 @@ var verifPlatforms = []struct {
 	URLFmt string
 }{
 	{"telegram", "Telegram", "Add your account code to your Telegram bio (Settings, Bio), then submit your public @username. The bio is checked automatically; account age is assessed by the reviewer.", "https://t.me/%s"},
-	{"x", "X", "Publish a post from your X account containing your account code, then submit the link to that post. A reviewer checks that the post is yours, contains the code, and that the profile's join date is at least two years ago. You can delete the post once verified.", "https://x.com/%s"},
+	{"x", "X", "Publish a post from your X account containing your account code, then submit the link to that post. Ownership and account age are checked automatically from the post; you can delete it once verified.", "https://x.com/%s"},
 	{"reddit", "Reddit", "Add your account code to your Reddit profile's public description (Profile, Edit), then submit your username. Ownership and account age are checked automatically.", "https://www.reddit.com/user/%s"},
 }
 
@@ -161,7 +163,7 @@ func platformProfileURL(key, handle string) string {
 
 // ---------- automatic checks (advisory; the reviewer decides) ----------
 
-func (a *App) verifCheck(platform, handle, claimCode string) string {
+func (a *App) verifCheck(platform, handle, evidence, claimCode string) string {
 	switch platform {
 	case "reddit":
 		return checkReddit(a.cfg.RedditBase, handle, claimCode)
@@ -170,8 +172,10 @@ func (a *App) verifCheck(platform, handle, claimCode string) string {
 			return a.checkTelegramBot(handle, claimCode)
 		}
 		return checkTelegram(a.cfg.TelegramBase, handle, claimCode)
+	case "x":
+		return checkX(a.cfg.XBase, handle, xPostID(evidence), claimCode)
 	default:
-		return "no automatic check for X; open the post, confirm its author is @" + handle + " (the site shows a post under any handle in the link), that it contains the account code, and that the profile's join date is at least two years ago"
+		return "no automatic check; manual review"
 	}
 }
 
@@ -253,4 +257,104 @@ func checkTelegram(base, handle, claimCode string) string {
 		return "code found in the public profile page; age at reviewer discretion (Telegram does not publish it)"
 	}
 	return "code NOT found on the public profile page (bio not set, not public, or username wrong)"
+}
+
+// xSnowflakeEpoch is the millisecond epoch of X's snowflake ids. Post ids
+// have always used it; account ids have used it since 2016, and every
+// account id below xSequentialMax predates that, which is older than any
+// age bar this program sets.
+const (
+	xSnowflakeEpoch int64  = 1288834974657
+	xSequentialMax  uint64 = 10_000_000_000
+)
+
+// xAccountCreated returns when the account with this id was created, and
+// whether the id encodes a time at all.
+func xAccountCreated(id uint64) (time.Time, bool) {
+	if id < xSequentialMax {
+		return time.Time{}, false
+	}
+	return time.UnixMilli(int64(id>>22) + xSnowflakeEpoch), true
+}
+
+// xToken reproduces the token the embedded-post widget sends with each
+// request: ((id / 1e15) * pi) in base 36, without the dot and the zeros.
+func xToken(postID string) string {
+	id, _ := strconv.ParseFloat(postID, 64)
+	x := id / 1e15 * math.Pi
+	const digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+	whole := uint64(x)
+	frac := x - float64(whole)
+	var b strings.Builder
+	if whole == 0 {
+		b.WriteByte('0')
+	}
+	var w []byte
+	for whole > 0 {
+		w = append([]byte{digits[whole%36]}, w...)
+		whole /= 36
+	}
+	b.Write(w)
+	for i := 0; i < 12; i++ {
+		frac *= 36
+		d := int(frac)
+		b.WriteByte(digits[d])
+		frac -= float64(d)
+	}
+	return strings.NewReplacer("0", "", ".", "").Replace(b.String())
+}
+
+// checkX verifies an X post in one fetch of the keyless endpoint that
+// renders embedded posts: the author must be the handle from the link (X
+// shows a post under any handle in the URL, so this is the check that
+// stops someone claiming another person's account), the text must contain
+// the account code, and the author's id gives the account age.
+func checkX(base, handle, postID, claimCode string) string {
+	req, err := http.NewRequest("GET", strings.TrimRight(base, "/")+"/tweet-result?id="+postID+"&token="+xToken(postID)+"&lang=en", nil)
+	if err != nil {
+		return "check failed; manual review"
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; emissio-verifier/1.0; sequentiatestnet.com)")
+	resp, err := verifClient.Do(req)
+	if err != nil {
+		return "x unreachable; manual review"
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return "post NOT FOUND (deleted, protected account, or wrong link)"
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Sprintf("x returned HTTP %d; manual review", resp.StatusCode)
+	}
+	var post struct {
+		Type string `json:"__typename"`
+		Text string `json:"text"`
+		User struct {
+			ScreenName string `json:"screen_name"`
+			ID         string `json:"id_str"`
+		} `json:"user"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&post); err != nil {
+		return "x response unreadable; manual review"
+	}
+	if post.Type != "Tweet" || post.User.ScreenName == "" {
+		return "post unavailable (deleted, protected account, or wrong link)"
+	}
+	if !strings.EqualFold(post.User.ScreenName, handle) {
+		return "post is by @" + post.User.ScreenName + ", NOT @" + handle + ": someone else's post"
+	}
+	var note string
+	id, err := strconv.ParseUint(post.User.ID, 10, 64)
+	if err != nil {
+		note = "account age unknown; manual review"
+	} else if created, ok := xAccountCreated(id); !ok {
+		note = "account id predates 2016 (age OK)"
+	} else {
+		ageOK := time.Since(created) >= time.Duration(verifMinAgeYears)*365*24*time.Hour
+		note = fmt.Sprintf("account created %s (age %s)", created.Format("Jan 2006"), map[bool]string{true: "OK", false: "UNDER " + fmt.Sprint(verifMinAgeYears) + " YEARS"}[ageOK])
+	}
+	if strings.Contains(post.Text, claimCode) {
+		return "post by @" + post.User.ScreenName + " contains the code; " + note
+	}
+	return "code NOT found in the post; " + note
 }

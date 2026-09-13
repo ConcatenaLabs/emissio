@@ -344,14 +344,14 @@ func (a *App) handleAdminVerifyReview(w http.ResponseWriter, r *http.Request) {
 		}
 		a.redirect(w, r, "/admin/verifications", fmt.Sprintf("Verification %d %sd.", id, action), "")
 	case "recheck":
-		var platform, handle, code string
-		if err := a.db.QueryRow(`SELECT v.platform, v.handle, u.claim_code
+		var platform, handle, evidence, code string
+		if err := a.db.QueryRow(`SELECT v.platform, v.handle, v.evidence, u.claim_code
 			FROM verifications v JOIN users u ON u.id = v.user_id WHERE v.id = ?`, id).
-			Scan(&platform, &handle, &code); err != nil {
+			Scan(&platform, &handle, &evidence, &code); err != nil {
 			http.NotFound(w, r)
 			return
 		}
-		note := a.verifCheck(platform, handle, code)
+		note := a.verifCheck(platform, handle, evidence, code)
 		if _, err := a.db.Exec("UPDATE verifications SET check_note = ? WHERE id = ?", note, id); err != nil {
 			a.serverError(w, err)
 			return

@@ -1,8 +1,12 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestValidateMainnetAddress(t *testing.T) {
@@ -117,5 +121,57 @@ func TestParseXPost(t *testing.T) {
 	}
 	if got := xPostID("https://x.com/abc/status/12345"); got != "12345" {
 		t.Errorf("xPostID = %q", got)
+	}
+}
+
+func TestXAccountCreated(t *testing.T) {
+	if _, ok := xAccountCreated(44196397); ok {
+		t.Errorf("sequential id treated as snowflake")
+	}
+	// A post id is a snowflake with the same epoch: "the bird is freed".
+	created, ok := xAccountCreated(1585841080431321088)
+	if !ok || created.UTC().Format("2006-01-02T15:04:05") != "2022-10-28T03:49:11" {
+		t.Errorf("snowflake decode = %v, %v", created.UTC(), ok)
+	}
+	if tok := xToken("20"); tok == "" || strings.ContainsAny(tok, "0.") {
+		t.Errorf("xToken(20) = %q", tok)
+	}
+}
+
+func TestCheckX(t *testing.T) {
+	young := strconv.FormatUint(uint64(time.Now().AddDate(-1, 0, 0).UnixMilli()-xSnowflakeEpoch)<<22, 10)
+	old := strconv.FormatUint(uint64(time.Now().AddDate(-3, 0, 0).UnixMilli()-xSnowflakeEpoch)<<22, 10)
+	posts := map[string]string{
+		"1": `{"__typename":"Tweet","text":"my code is CODE123 thanks","user":{"screen_name":"Alice_X","id_str":"12345"}}`,
+		"2": `{"__typename":"Tweet","text":"my code is CODE123","user":{"screen_name":"mallory","id_str":"12345"}}`,
+		"3": `{"__typename":"Tweet","text":"nothing here","user":{"screen_name":"alice_x","id_str":"` + young + `"}}`,
+		"4": `{"__typename":"Tweet","text":"CODE123","user":{"screen_name":"alice_x","id_str":"` + old + `"}}`,
+		"5": `{"__typename":"TweetTombstone"}`,
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/tweet-result" || r.URL.Query().Get("token") == "" {
+			http.NotFound(w, r)
+			return
+		}
+		body, ok := posts[r.URL.Query().Get("id")]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write([]byte(body))
+	}))
+	defer srv.Close()
+	cases := map[string]string{
+		"1": "post by @Alice_X contains the code; account id predates 2016 (age OK)",
+		"2": "post is by @mallory, NOT @alice_x: someone else's post",
+		"3": "code NOT found in the post; account created " + time.Now().AddDate(-1, 0, 0).Format("Jan 2006") + " (age UNDER 2 YEARS)",
+		"4": "post by @alice_x contains the code; account created " + time.Now().AddDate(-3, 0, 0).Format("Jan 2006") + " (age OK)",
+		"5": "post unavailable (deleted, protected account, or wrong link)",
+		"9": "post NOT FOUND (deleted, protected account, or wrong link)",
+	}
+	for id, want := range cases {
+		if got := checkX(srv.URL, "alice_x", id, "CODE123"); got != want {
+			t.Errorf("checkX(%s) = %q, want %q", id, got, want)
+		}
 	}
 }
