@@ -13,6 +13,7 @@
     {{end}}
     <h3 style="margin-top:1.6rem">Account code</h3>
     <div class="kv gold">{{.User.ClaimCode}}</div>
+    <p class="small muted" style="margin-top:.4rem">Your proof decimals: <strong class="mono">.{{prooftag .User.ClaimCode}}</strong>. Every transaction you submit as evidence must have a transparent output whose amount ends in exactly these eight decimals, for example 1.{{prooftag .User.ClaimCode}} tSEQ. That is how a transaction is known to be yours.</p>
     <p class="small muted">Your public account code. It doubles as your referral code, and a task may occasionally ask you to embed it in on-chain data (for example an OP_RETURN) to prove a transaction is yours. It is not a secret.</p>
     <h3 style="margin-top:1.6rem">Refer a friend</h3>
     <div class="kv">{{.Data.RefLink}}</div>

@@ -38,7 +38,17 @@ All amounts below are whole SEQ, credited to your ledger. On the testnet you wor
 
 ### Testnet tasks
 
-Each task pays a fixed reward, most have a first-come cap, and you can have one submission per task (you may resubmit after a rejection). Most tasks require a txid as evidence (the bug-report task takes an issue link instead); the app checks it against the testnet explorer and records an advisory note, then a human reviewer approves or rejects. A txid can only ever be evidence for one account.
+Each task pays a fixed reward, most have a first-come cap, and you can have one submission per task (you may resubmit after a rejection). A txid can only ever be evidence for one account.
+
+### Proofs
+
+A txid on its own proves that a transaction exists, not that the submitter made it, so every account has **proof decimals**: eight digits derived from its claim code (`proofTag` in `proof.go`), shown on the account page and substituted into task instructions. A transaction counts as evidence only if one of its transparent outputs carries an amount ending in exactly those decimals, for example `1.86718345` tSEQ. Any wallet can send an exact amount, and a stranger's transaction matches by accident with probability one in a hundred million per output.
+
+On top of that, each task checks the property it is about, from the explorer's view of the transaction (`evidenceCheck`): the fee output's asset, outputs in two assets, a blinded output, a new issuance or a reissuance of an asset whose issuance the same account submitted, a tSEQ output of at least 40,000, the Bitcoin anchor of the containing block against a hash in the notes. The verdict is written into the submission's check note and shown in the review queue; a reviewer still approves, and can re-run the check.
+
+Two tasks are proven by the node rather than by a transaction. With `EMISSIO_CLI` and `EMISSIO_DATADIR` set, the app reads the public node's peer list: **build from source** passes when a connected peer announces the client name `Emissio-<code>`, which only a rebuilt binary can carry; **run a node for a week** is judged from sightings the app records every ten minutes of peers whose user agent contains `emissio-<code>` (a `-uacomment`), and passes when a week's span shows the node in at least 80% of the slots.
+
+Task instructions carry the user's own values where `{PROOF}` (proof decimals) and `{CODE}` (account code) appear in the seeded text.
 
 The seeded catalog (`seed.go`; the live instance's admins can adjust rewards, caps, and active flags):
 
@@ -53,10 +63,10 @@ The seeded catalog (`seed.go`; the live instance's admins can adjust rewards, ca
 | Send an opt-in confidential transaction | 15 | 2,000 |
 | Bridge an asset into Sequentia with Compages | 30 | 1,000 |
 | Bridge an asset back out with Compages | 40 | 500 |
-| Build Sequentia Core from source | 30 | 500 |
+| Build Sequentia Core from source (no txid; the peer list is the proof) | 30 | 500 |
 | Stake tSEQ | 40 | 500 |
 | Delegate your stake to a staking pool | 30 | 500 |
-| Run a full node for a week | 50 | 1,000 |
+| Run a full node for a week (no txid; a week of peer sightings is the proof) | 50 | 1,000 |
 | Report a bug (a confirmed public issue, no txid) | 25 | 400 |
 
 Completing every task pays 350 SEQ; total task exposure across all users is 407,500 SEQ. Caps pay the first accounts whose evidence is approved, so the pool stays bounded.
@@ -158,7 +168,9 @@ All configuration is environment variables (`loadConfig` in `main.go`):
 | `EMISSIO_LISTEN` | `127.0.0.1:8095` | Listen address |
 | `EMISSIO_DB` | `emissio.db` | SQLite database path |
 | `EMISSIO_BASEPATH` | empty | Path prefix when served under one, e.g. `/emissio` |
-| `EMISSIO_ESPLORA` | empty | Esplora API base URL for txid checks, e.g. `https://sequentiatestnet.com/api` (empty disables the check; submissions then go to manual review) |
+| `EMISSIO_ESPLORA` | empty | Esplora API base URL for the transaction checks, e.g. `https://sequentiatestnet.com/api` (empty disables them; submissions then go to manual review) |
+| `EMISSIO_POLICY_ASSET` | the testnet's tSEQ id | Asset id of tSEQ, for the fee and stake checks |
+| `EMISSIO_CLI`, `EMISSIO_DATADIR` | empty | `sequentia-cli` path and the public node's data directory; enables the peer-based checks and the ten-minute sighting poller |
 | `EMISSIO_SECURE` | `0` | Set `1` behind HTTPS so cookies are marked Secure |
 | `EMISSIO_TG_BOT_TOKEN` | empty | Telegram bot token (placeholder: `123456:ABC-...`); enables automatic Telegram ownership + ID-based age checks |
 | `EMISSIO_TG_BOT_NAME` | empty | The bot's username (without `@`), shown in user instructions |

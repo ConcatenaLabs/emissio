@@ -54,15 +54,19 @@ func (a *App) handleAdminReview(w http.ResponseWriter, r *http.Request) {
 		}
 		a.redirect(w, r, "/admin/submissions", fmt.Sprintf("Submission %d %sd.", id, action), "")
 	case "recheck":
-		var txid string
-		if err := a.db.QueryRow("SELECT txid FROM submissions WHERE id = ?", id).Scan(&txid); err != nil {
+		var txid, notes, slug string
+		var userID int64
+		if err := a.db.QueryRow(`SELECT s.txid, s.notes, s.user_id, t.slug FROM submissions s JOIN tasks t ON t.id = s.task_id
+			WHERE s.id = ?`, id).Scan(&txid, &notes, &userID, &slug); err != nil {
 			http.NotFound(w, r)
 			return
 		}
-		chainNote := "no txid submitted"
-		if txid != "" {
-			chainNote = a.chainCheck(txid)
+		user, err := getUserByID(a.db, userID)
+		if err != nil {
+			a.serverError(w, err)
+			return
 		}
+		chainNote := a.evidenceCheck(slug, txid, notes, user)
 		if _, err := a.db.Exec("UPDATE submissions SET chain_note = ? WHERE id = ?", chainNote, id); err != nil {
 			a.serverError(w, err)
 			return

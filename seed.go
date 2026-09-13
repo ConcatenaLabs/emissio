@@ -51,26 +51,24 @@ var seedTasks = []seedTask{
 	{
 		slug: "first-transaction", title: "Make your first testnet transaction", category: "Getting started",
 		reward: 10, cap: 5000, needsTxid: true, sort: 10,
-		body: `Install Sequentia Core, claim tSEQ from the faucet, and send some of it to any address.
+		body: `Install Sequentia Core, claim tSEQ from the faucet, and send an amount that proves the transaction is yours.
 
 - Download Sequentia Core from sequentiatestnet.com/download/core/ (Linux or Windows) and start it. It connects to the testnet on its own; let it sync.
 - In the wallet, choose Receive and create an address (it starts with tb1). From a node, sequentia-cli getnewaddress does the same.
 - Claim tSEQ at sequentiatestnet.com/faucet/ to that address.
-- Send any amount to another address. A second address of your own is fine.
-- Submit the txid of the send. You can find it in the wallet's transaction list, and check it at sequentiatestnet.com/explorer/.
-
-We check that the transaction exists on the testnet. Submit a transaction your own wallet made: each transaction counts as evidence for one account only.`,
+- Send exactly 1.{PROOF} tSEQ to another address. A second address of your own is fine. The eight decimals are your proof decimals: they are how we know the transaction is yours, and every transaction you submit for any task must carry them in one of its outputs.
+- Submit the txid of the send. You can find it in the wallet's transaction list, and check it at sequentiatestnet.com/explorer/.`,
 	},
 	{
 		slug: "anchor-lookup", title: "Find the Bitcoin anchor of your transaction", category: "Getting started",
 		reward: 10, cap: 3000, needsTxid: true, sort: 15,
 		body: `Every Sequentia block commits to a Bitcoin testnet4 block header, and Sequentia reorganises whenever Bitcoin does. Trace that link for one of your own transactions.
 
-- Open one of your confirmed transactions in the explorer at sequentiatestnet.com/explorer/ and go to the block that contains it.
-- The block page shows the Bitcoin testnet4 block it anchors to. Open that block on a Bitcoin testnet4 explorer.
-- Submit your txid, and in the notes give the Sequentia block height, the anchored Bitcoin block hash, and its height on testnet4.
+- Send a transaction with an output of 1.{PROOF} tSEQ (your first-transaction send qualifies once it has confirmed).
+- Open it in the explorer at sequentiatestnet.com/explorer/ and go to the block that contains it. The block page shows the Bitcoin testnet4 block it anchors to.
+- Submit the txid, and in the notes paste the anchored Bitcoin block hash and, if you like, its height on testnet4.
 
-A reviewer checks the anchor against the chain. If the explorer makes this hard to find, say so in the notes: that is exactly the kind of feedback the first wave is for.`,
+The hash in your notes is compared with the anchor recorded for that block. If the explorer makes this hard to find, say so in the notes: that is exactly the kind of feedback the first wave is for.`,
 	},
 	{
 		slug: "issue-asset", title: "Issue your own asset", category: "Assets",
@@ -79,9 +77,10 @@ A reviewer checks the anchor against the chain. If the explorer makes this hard 
 
 On Sequentia, anyone can issue an asset, and every issued asset has equal standing on the chain. Issue one of your own: a point system, a voucher, a test stablecoin, anything.
 
-- Issue the asset from the desktop wallet, or with the issueasset RPC on your node. Ask for a reissuance token as well: the next task uses it.
-- Submit the issuance txid.
-- In the notes, tell us the asset ID and, if you like, what the asset is meant to be.`,
+- Issue the asset from the desktop wallet, or with the issueasset RPC on your node, with an amount that ends in your proof decimals: for example 1000.{PROOF}. Ask for a reissuance token as well: the next task uses it.
+- Submit the issuance txid. In the notes, tell us the asset ID and, if you like, what the asset is meant to be.
+
+The transaction is checked for a new issuance and for the proof decimals on the issued amount.`,
 	},
 	{
 		slug: "reissue-asset", title: "Reissue an asset you created", category: "Assets",
@@ -90,11 +89,11 @@ On Sequentia, anyone can issue an asset, and every issued asset has equal standi
 
 Reissuance is how an issuer mints more of an existing asset rather than creating a new one. It works on transparent assets as it does on confidential ones.
 
-- Take an asset you issued with a reissuance token (see the previous task).
-- Reissue any amount, from the desktop wallet or with the reissueasset RPC.
-- Submit the reissuance txid, and in the notes the asset ID.
+- Take the asset you issued in the previous task; the reissuance is matched against that issuance.
+- Reissue an amount ending in your proof decimals, for example 500.{PROOF}, from the desktop wallet or with the reissueasset RPC.
+- Submit the reissuance txid.
 
-A reviewer checks that the transaction reissues an asset whose issuance is yours.`,
+The transaction is checked for a reissuance of an asset whose issuance you submitted, and for the proof decimals.`,
 	},
 	{
 		slug: "any-asset-fee", title: "Pay a fee in an asset other than tSEQ", category: "Assets",
@@ -104,8 +103,8 @@ A reviewer checks that the transaction reissues an asset whose issuance is yours
 Sequentia has an open fee market: fees can be paid in any accepted asset, and tSEQ has no special status beyond staking. Claim USDX, GOLD or another asset from the faucet, then send a transaction and choose that asset as the fee asset.
 
 - In the desktop wallet the fee asset is a choice on the send screen; from a node, pass fee_asset_label or fee_asset to sendtoaddress.
-- Submit the txid of the transaction.
-- A reviewer checks on-chain that the fee output is in a non-tSEQ asset.`,
+- Make one output an amount ending in your proof decimals, for example 1.{PROOF} of whatever you send.
+- Submit the txid. The fee output's asset and the proof decimals are checked on-chain.`,
 	},
 	{
 		slug: "multi-asset-send", title: "Send two assets in one transaction", category: "Assets",
@@ -115,8 +114,8 @@ Sequentia has an open fee market: fees can be paid in any accepted asset, and tS
 A Sequentia transaction can move several assets at once; a wallet that handles this correctly is one of the things the first wave is meant to test.
 
 - Hold at least two assets, for example tSEQ and USDX from the faucet, or an asset you issued.
-- In the desktop wallet, add a second recipient and choose a different asset for it; from a node, sendmany with an assets argument does the same.
-- Submit the txid. A reviewer checks that the transaction has outputs in two assets, neither of them the fee.`,
+- In the desktop wallet, add a second recipient and choose a different asset for it; from a node, sendmany with an assets argument does the same. Make one of the amounts end in your proof decimals, for example 1.{PROOF}.
+- Submit the txid. The transaction is checked for outputs in two assets and for the proof decimals.`,
 	},
 	{
 		slug: "confidential-tx", title: "Send an opt-in confidential transaction", category: "Assets",
@@ -124,8 +123,8 @@ A Sequentia transaction can move several assets at once; a wallet that handles t
 		body: `Sequentia is transparent by default, and confidentiality is opt-in. Generate a confidential address (it starts with tsqb) and receive funds to it, so the amounts are blinded on-chain.
 
 - Generate a blinded address, for example with getnewaddress "" blech32 on your node.
-- Send funds from your transparent address to the blinded address.
-- Submit the txid. A reviewer checks that the transaction has blinded outputs.`,
+- In one transaction, send any amount to the blinded address and 1.{PROOF} tSEQ to a transparent address of yours (a second recipient in the desktop wallet, or sendmany from a node). The blinded output hides its amount, so the proof decimals must ride on a transparent one.
+- Submit the txid. The transaction is checked for a blinded output and for the proof decimals.`,
 	},
 	{
 		slug: "bridge-in", title: "Bridge an asset into Sequentia with Compages", category: "Bridge",
@@ -135,9 +134,9 @@ A Sequentia transaction can move several assets at once; a wallet that handles t
 Compages, at sequentiatestnet.com/bridge/, locks the original in a vault and mints a Sequentia asset for it; later deposits of the same token reissue the same asset.
 
 - Get some Sepolia ETH, or devnet SOL, from any public faucet for that network.
-- On the bridge page, connect your wallet, choose the asset and amount, and give a Sequentia address of yours as the destination.
-- Wait for the deposit to confirm and the bridged asset to be delivered.
-- Submit the Sequentia txid of the delivery (the bridge page shows it, and it appears in your wallet). In the notes, give the deposit transaction hash on the source chain.`,
+- On the bridge page, connect your wallet, choose the asset and amount, and give a Sequentia address of yours as the destination. Wait for the deposit to confirm and the bridged asset to be delivered.
+- The delivery is made by the bridge, so it cannot carry your proof. Prove control instead: send some of the bridged asset to another address of yours, with an amount ending in your proof decimals (for example 0.{PROOF} if you bridged little).
+- Submit the txid of that send. In the notes, give the deposit transaction hash on the source chain and the delivery txid.`,
 	},
 	{
 		slug: "bridge-out", title: "Bridge an asset back out with Compages", category: "Bridge",
@@ -147,22 +146,23 @@ Compages, at sequentiatestnet.com/bridge/, locks the original in a vault and min
 The vault releases the original only after the return transaction's Bitcoin anchor is buried deep enough that a Bitcoin reorganisation cannot undo it. That wait is deliberate, and this task exercises it end to end.
 
 - On sequentiatestnet.com/bridge/, create a redemption address bound to your Ethereum or Solana address.
-- Send the bridged asset to that redemption address from your Sequentia wallet.
+- Send the bridged asset to that redemption address from your Sequentia wallet, with an amount ending in your proof decimals, for example 0.{PROOF}.
 - Wait for the release on the source chain; the bridge page tracks it.
 - Submit the Sequentia txid of your return transaction. In the notes, give the release transaction hash on the source chain and, roughly, how long the release took.`,
 	},
 	{
 		slug: "build-from-source", title: "Build Sequentia Core from source", category: "Infrastructure",
-		reward: 30, cap: 500, needsTxid: true, sort: 70,
-		body: `Build the node from the source repository on your own machine and use the result.
+		reward: 30, cap: 500, needsTxid: false, sort: 70,
+		body: `Build the node from the source repository on your own machine and prove it by what the build announces to the network.
 
 The download page offers Linux and Windows builds; everything else, and anyone who wants to read what they run, builds from github.com/ConcatenaLabs/Sequentia following its build documentation.
 
+- Before building, open src/clientversion.cpp and change the client name from "Sequentia Core" to "Emissio-{CODE}" (your account code). A release binary can add a comment to its user agent, but only a rebuild can change the name itself, so the name is the proof.
 - Build sequentiad and sequentia-cli (the desktop wallet is optional) on your platform.
-- Run your build on the testnet, create a wallet, claim from the faucet and send a transaction.
-- Submit that txid. In the notes, give your operating system and version, the output of sequentiad --version, and anything in the build instructions that was wrong or missing.
+- Run your build on the testnet with -addnode=159.195.15.140:18444 so it connects to the public node, and submit this task while it is running. No txid is needed.
+- In the notes, give your operating system and version, and anything in the build instructions that was wrong or missing.
 
-Build problems reported here are worth as much to us as the build itself.`,
+At submission the public node's peer list is read; a peer announcing /Emissio-{CODE}:... passes.`,
 	},
 	{
 		slug: "stake", title: "Stake tSEQ", category: "Infrastructure",
@@ -171,11 +171,11 @@ Build problems reported here are worth as much to us as the build itself.`,
 
 Only the Sequence token can stake, and the minimum is 40,000 tSEQ, which one faucet claim covers. A staking output keeps its weight for as long as it is unspent; the lock only gates withdrawal.
 
-- In Sequentia Core, open the Staking tab and create a staking output of at least 40,000 tSEQ with the shortest lock the chain allows. From a node, getstakescript builds the script and you send the stake to it.
+- In Sequentia Core, open the Staking tab and create a staking output of 40000.{PROOF} tSEQ (at least 40,000, ending in your proof decimals) with the shortest lock the chain allows. From a node, getstakescript builds the script and you send the stake to it.
 - Keep the node running; the Staking tab shows your weight and whether you are registered.
 - Submit the txid of the staking output. In the notes, include the output of getstakerinfo.
 
-With the testnet committee's weight you are unlikely to be elected soon, and that is fine: the registration and the weight are what this task checks.`,
+The output is checked for tSEQ of at least 40,000 with your proof decimals; a reviewer confirms the staking script. With the testnet committee's weight you are unlikely to be elected soon, and that is fine.`,
 	},
 	{
 		slug: "delegate-stake", title: "Delegate your stake to a staking pool", category: "Infrastructure",
@@ -185,21 +185,23 @@ With the testnet committee's weight you are unlikely to be elected soon, and tha
 A delegation is a separate record on the chain that points your staking output at a pool's signer. The coins never leave your wallet, the pool can never spend them, and you can re-point or withdraw the delegation at any time. Pool payouts are proportional, through an on-chain pot anyone can claim.
 
 - Pick a pool on the board at sequentiatestnet.com/pools/.
-- In Sequentia Core's Staking tab, delegate your staking output (see the previous task) to that pool; from a node, delegatestake does the same.
+- In Sequentia Core's Staking tab, delegate your staking output (see the previous task) to that pool; from a node, delegatestake does the same. If the wallet lets you choose the record's amount, make it end in your proof decimals.
 - Submit the txid of the delegation record. In the notes, name the pool and include the output of listdelegations.
 
-A reviewer checks that the record points a stake of yours at that pool's signer.`,
+A reviewer checks the record against the pool board: it must point a stake of yours, the one from the previous task, at that pool's signer.`,
 	},
 	{
 		slug: "run-node", title: "Run a full node for a week", category: "Infrastructure",
-		reward: 50, cap: 1000, needsTxid: true, sort: 80,
-		body: `Run a Sequentia testnet full node continuously for seven days.
+		reward: 50, cap: 1000, needsTxid: false, sort: 80,
+		body: `Run a Sequentia testnet full node continuously for seven days, and let the network see it.
 
 Full-node sovereignty is a core Sequentia principle: block producers cannot force rule changes on nodes that validate everything themselves.
 
-- Sync a full node from sequentiatestnet.com/download/core/ or from your own build.
-- After seven days of uptime, send a transaction from the node's wallet and submit that txid.
-- In the notes, include your node's uptime and the output of getblockchaininfo (blocks and bestblockhash).`,
+- Run a full node, from sequentiatestnet.com/download/core/ or your own build, with two options: -uacomment=emissio-{CODE} (your account code, which the node announces to its peers) and -addnode=159.195.15.140:18444 so it stays connected to the public node.
+- Keep it running for a week. The public node records every ten minutes which nodes announcing an Emissio code are connected.
+- After seven days, submit this task. No txid is needed; in the notes, include the output of getblockchaininfo (blocks and bestblockhash).
+
+The check counts the ten-minute slots of the last week in which your node was seen; a week's span with at least 80% of slots present passes.`,
 	},
 	{
 		slug: "report-bug", title: "Report a bug", category: "Quality",
