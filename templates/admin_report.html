@@ -2,6 +2,7 @@
 <div class="eyebrow">Admin · security report · <span class="pill {{.Data.Report.Status}}">{{.Data.Report.Status}}</span></div>
 <h1>{{.Data.Report.Title}}</h1>
 <p class="small muted">From {{.Data.Report.UserEmail}} · sent {{datetime .Data.Report.CreatedAt}} · claimed severity: {{.Data.Report.Severity}}</p>
+<p class="small">check: <em>{{.Data.Report.CheckNote}}</em></p>
 <div class="panel" style="margin:1.2rem 0">
   {{if encrypted .Data.Report.Body}}<p class="small muted"><span class="pill">encrypted</span> Decrypt on a machine holding the team key: copy the block into a file and run <code>gpg --decrypt</code>.</p>{{end}}
   <p class="small" style="white-space:pre-wrap;max-width:none">{{.Data.Report.Body}}</p>

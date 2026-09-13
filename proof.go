@@ -22,6 +22,7 @@ package main
 // seen over a week.
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -146,7 +147,7 @@ func (a *App) evidenceCheck(slug, txid, notes string, user *User) string {
 	case "run-node":
 		return a.uptimeCheck(user.ClaimCode, time.Now())
 	case "report-bug":
-		return "a maintainer confirms the linked issue"
+		return a.issueCheck(notes, user.ClaimCode)
 	}
 	if txid == "" {
 		return "no txid submitted"
@@ -417,3 +418,132 @@ func uptimeVerdict(db *sql.DB, code string, now time.Time) string {
 }
 
 var _ = log.Printf
+
+// ---- competition entries, security reports, bug-report issues ----
+
+var githubIssueRe = regexp.MustCompile(`https?://github\.com/ConcatenaLabs/([A-Za-z0-9_.-]+)/issues/([0-9]+)`)
+
+// normalizeURL makes two spellings of the same link compare equal.
+func normalizeURL(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexByte(s, '#'); i >= 0 {
+		s = s[:i]
+	}
+	s = strings.TrimRight(s, "/")
+	if i := strings.Index(s, "://"); i >= 0 {
+		rest := s[i+3:]
+		host := rest
+		if j := strings.IndexByte(rest, '/'); j >= 0 {
+			host = rest[:j]
+		}
+		s = strings.ToLower(s[:i+3]+host) + rest[len(host):]
+	}
+	return s
+}
+
+// entryCheck looks for the account code where the entrant was told to put
+// it: in the link itself, or in the text of the linked page. Work inside an
+// image cannot be read here, which the note says, so the judges look.
+func (a *App) entryCheck(entryURL, claimCode string) string {
+	code := strings.ToLower(claimCode)
+	if strings.Contains(strings.ToLower(entryURL), code) {
+		return "account code is in the link (OK)"
+	}
+	req, err := http.NewRequest("GET", entryURL, nil)
+	if err != nil {
+		return "link unreadable"
+	}
+	req.Header.Set("User-Agent", "emissio-verifier/1.0 (sequentiatestnet.com)")
+	resp, err := proofClient.Do(req)
+	if err != nil {
+		return "link unreachable; the judges check that the work carries the account code " + claimCode
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Sprintf("link returned HTTP %d; the judges check that the work carries the account code %s", resp.StatusCode, claimCode)
+	}
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "text/") && !strings.Contains(ct, "json") && !strings.Contains(ct, "xml") {
+		return "link is a file (" + strings.SplitN(ct, ";", 2)[0] + "); the judges check that the work itself carries the account code " + claimCode
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if strings.Contains(strings.ToLower(string(body)), code) {
+		return "account code found on the linked page (OK)"
+	}
+	return "account code NOT found on the linked page; the judges check that the work itself carries the account code " + claimCode
+}
+
+// reportCheck binds a security report to its account: the first line must
+// be the account code, inside the encrypted block when the report is
+// encrypted, so a report that leaks or is decrypted later still names the
+// account that sent it. It also flags a body identical to another account's,
+// the cheap form of copying.
+func (a *App) reportCheck(userID int64, body, claimCode string) string {
+	trimmed := strings.TrimSpace(body)
+	encrypted := strings.HasPrefix(trimmed, "-----BEGIN PGP MESSAGE-----")
+	sum := sha256.Sum256([]byte(trimmed))
+	digest := fmt.Sprintf("%x", sum[:])
+	var dupID int64
+	a.db.QueryRow("SELECT id FROM reports WHERE body_hash = ? AND user_id != ? ORDER BY id LIMIT 1", digest, userID).Scan(&dupID)
+	var parts []string
+	if encrypted {
+		parts = append(parts, "encrypted: after decrypting, confirm the first line is the account code "+claimCode)
+	} else {
+		first := strings.TrimSpace(strings.SplitN(trimmed, "\n", 2)[0])
+		if strings.EqualFold(first, claimCode) {
+			parts = append(parts, "first line carries the account code (OK)")
+		} else {
+			parts = append(parts, "account code NOT on the first line")
+		}
+	}
+	if dupID > 0 {
+		parts = append(parts, fmt.Sprintf("IDENTICAL to report #%d from another account", dupID))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// issueCheck reads the GitHub issue linked in the notes and looks for the
+// account code in it, so the issue is known to be the submitter's.
+func (a *App) issueCheck(notes, claimCode string) string {
+	m := githubIssueRe.FindStringSubmatch(notes)
+	if m == nil {
+		return "no link to an issue under github.com/ConcatenaLabs in the notes"
+	}
+	req, err := http.NewRequest("GET", strings.TrimRight(a.cfg.GitHubAPI, "/")+"/repos/ConcatenaLabs/"+m[1]+"/issues/"+m[2], nil)
+	if err != nil {
+		return "issue link unreadable"
+	}
+	req.Header.Set("User-Agent", "emissio-verifier/1.0 (sequentiatestnet.com)")
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := proofClient.Do(req)
+	if err != nil {
+		return "GitHub unreachable; manual review"
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return "issue " + m[1] + "#" + m[2] + " NOT FOUND"
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Sprintf("GitHub returned HTTP %d; manual review", resp.StatusCode)
+	}
+	var issue struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+		State string `json:"state"`
+		User  struct {
+			Login string `json:"login"`
+		} `json:"user"`
+		PullRequest *struct{} `json:"pull_request"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&issue); err != nil {
+		return "GitHub response unreadable; manual review"
+	}
+	if issue.PullRequest != nil {
+		return m[1] + "#" + m[2] + " is a pull request, not an issue"
+	}
+	where := m[1] + "#" + m[2] + " by " + issue.User.Login + " (" + issue.State + ")"
+	if strings.Contains(strings.ToLower(issue.Title+"\n"+issue.Body), strings.ToLower(claimCode)) {
+		return where + ": contains the account code (OK); a maintainer confirms the bug"
+	}
+	return where + ": account code NOT in the issue"
+}

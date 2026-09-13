@@ -6,7 +6,7 @@
   {{range .Data}}
   <tr>
     <td>{{.ID}}</td>
-    <td><a href="{{base}}/admin/reports/{{.ID}}">{{.Title}}</a>{{if encrypted .Body}} <span class="pill">encrypted</span>{{end}}</td>
+    <td><a href="{{base}}/admin/reports/{{.ID}}">{{.Title}}</a>{{if encrypted .Body}} <span class="pill">encrypted</span>{{end}}<div class="small muted">{{.CheckNote}}</div></td>
     <td>{{.UserEmail}}</td>
     <td><span class="pill">{{.Severity}}</span></td>
     <td>{{date .CreatedAt}}</td>

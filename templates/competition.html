@@ -30,7 +30,7 @@
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <label for="url">Link to your work</label>
       <input type="url" id="url" name="url" placeholder="https://..." required value="{{if .Data.Mine}}{{.Data.Mine.URL}}{{end}}">
-      <div class="field-note">Host the work anywhere public. The link must stay reachable until judging ends.</div>
+      <div class="field-note">Host the work anywhere public; the link must stay reachable until judging ends. Put your account code <strong class="mono">{{.User.ClaimCode}}</strong> on the work or its page (a caption, the file name, the description) so the entry is known to be yours.</div>
       <label for="notes">Notes for the judges</label>
       <textarea id="notes" name="notes">{{if .Data.Mine}}{{.Data.Mine.Notes}}{{end}}</textarea>
       <div class="actions"><button class="btn" type="submit">{{if .Data.Mine}}Update entry{{else}}Enter competition{{end}}</button></div>

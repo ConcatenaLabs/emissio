@@ -50,6 +50,8 @@ Two tasks are proven by the node rather than by a transaction. With `EMISSIO_CLI
 
 Task instructions carry the user's own values where `{PROOF}` (proof decimals) and `{CODE}` (account code) appear in the seeded text.
 
+The same binding applies outside tasks. A **competition entry** must carry the account code on the work or its page; the app looks for it in the link and in the linked page's text, notes what it found for the judges, and refuses a link another account already entered. A **security report** must start with the account code, inside the encrypted block when encrypted, so a report read long after it was sent still names its account; identical bodies from two accounts are flagged. The **bug-report task** reads the linked GitHub issue through the API (`EMISSIO_GITHUB_API`) and checks that the issue text contains the code.
+
 The seeded catalog (`seed.go`; the live instance's admins can adjust rewards, caps, and active flags):
 
 | Task | Reward | Cap |
@@ -170,6 +172,7 @@ All configuration is environment variables (`loadConfig` in `main.go`):
 | `EMISSIO_BASEPATH` | empty | Path prefix when served under one, e.g. `/emissio` |
 | `EMISSIO_ESPLORA` | empty | Esplora API base URL for the transaction checks, e.g. `https://sequentiatestnet.com/api` (empty disables them; submissions then go to manual review) |
 | `EMISSIO_POLICY_ASSET` | the testnet's tSEQ id | Asset id of tSEQ, for the fee and stake checks |
+| `EMISSIO_GITHUB_API` | `https://api.github.com` | GitHub API base for the bug-report issue check (overridden in tests) |
 | `EMISSIO_CLI`, `EMISSIO_DATADIR` | empty | `sequentia-cli` path and the public node's data directory; enables the peer-based checks and the ten-minute sighting poller |
 | `EMISSIO_SECURE` | `0` | Set `1` behind HTTPS so cookies are marked Secure |
 | `EMISSIO_TG_BOT_TOKEN` | empty | Telegram bot token (placeholder: `123456:ABC-...`); enables automatic Telegram ownership + ID-based age checks |
