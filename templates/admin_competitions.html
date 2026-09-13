@@ -5,7 +5,7 @@
   {{range .Data}}
   <div class="ledger-row">
     <span class="label"><a href="{{base}}/admin/competitions/{{.Slug}}">{{.Title}}</a>
-      <span class="sub"><span class="pill {{.Status}}">{{.Status}}</span> closes {{date .ClosesAt}} · {{.Entries}} entries</span></span>
+      <span class="sub"><span class="pill {{.Status}}">{{.Status}}</span> closes {{date .ClosesAt}} · {{.Entries}} entries · edit on the competition page</span></span>
     <span class="leader"></span>
     <span class="amount">{{.Prizes}} <small>SEQ</small></span>
   </div>
