@@ -303,7 +303,17 @@ func runCommand(db *sql.DB, args []string) {
 			}
 			inserted++
 		}
-		fmt.Printf("updated copy of %d seeded tasks, inserted %d\n", updated, inserted)
+		retired := 0
+		for _, slug := range retiredTasks {
+			res, err := db.Exec("UPDATE tasks SET active = 0 WHERE slug = ? AND active = 1", slug)
+			if err != nil {
+				log.Fatal(err)
+			}
+			if c, _ := res.RowsAffected(); c > 0 {
+				retired++
+			}
+		}
+		fmt.Printf("updated copy of %d seeded tasks, inserted %d, retired %d\n", updated, inserted, retired)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n", args[0])
 		os.Exit(2)

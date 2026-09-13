@@ -43,20 +43,34 @@ type seedTask struct {
 	sort                        int64
 }
 
+// retiredTasks are seeded tasks of an earlier catalogue that reseed-tasks
+// deactivates: the products they need are not part of the public testnet.
+var retiredTasks = []string{"seqdex-swap", "cross-chain-swap", "lightning-swap"}
+
 var seedTasks = []seedTask{
 	{
 		slug: "first-transaction", title: "Make your first testnet transaction", category: "Getting started",
 		reward: 10, cap: 5000, needsTxid: true, sort: 10,
-		body: `Create a Sequentia testnet wallet, claim tSEQ from the faucet, and send some of it to any address.
+		body: `Install Sequentia Core, claim tSEQ from the faucet, and send some of it to any address.
 
-Any Sequentia wallet works: the web wallet at sequentiatestnet.com/wallet, the Ambra mobile wallet, or your own node.
-
-- Create a wallet and copy your testnet address (it starts with tb1).
-- Claim tSEQ from the faucet at sequentiatestnet.com.
-- Send any amount to another address. Sending to a second wallet of your own is fine.
-- Submit the txid of the send below.
+- Download Sequentia Core from sequentiatestnet.com/download/core/ (Linux or Windows) and start it. It connects to the testnet on its own; let it sync.
+- In the wallet, choose Receive and create an address (it starts with tb1). From a node, sequentia-cli getnewaddress does the same.
+- Claim tSEQ at sequentiatestnet.com/faucet/ to that address.
+- Send any amount to another address. A second address of your own is fine.
+- Submit the txid of the send. You can find it in the wallet's transaction list, and check it at sequentiatestnet.com/explorer/.
 
 We check that the transaction exists on the testnet. Submit a transaction your own wallet made: each transaction counts as evidence for one account only.`,
+	},
+	{
+		slug: "anchor-lookup", title: "Find the Bitcoin anchor of your transaction", category: "Getting started",
+		reward: 10, cap: 3000, needsTxid: true, sort: 15,
+		body: `Every Sequentia block commits to a Bitcoin testnet4 block header, and Sequentia reorganises whenever Bitcoin does. Trace that link for one of your own transactions.
+
+- Open one of your confirmed transactions in the explorer at sequentiatestnet.com/explorer/ and go to the block that contains it.
+- The block page shows the Bitcoin testnet4 block it anchors to. Open that block on a Bitcoin testnet4 explorer.
+- Submit your txid, and in the notes give the Sequentia block height, the anchored Bitcoin block hash, and its height on testnet4.
+
+A reviewer checks the anchor against the chain. If the explorer makes this hard to find, say so in the notes: that is exactly the kind of feedback the first wave is for.`,
 	},
 	{
 		slug: "issue-asset", title: "Issue your own asset", category: "Assets",
@@ -65,19 +79,44 @@ We check that the transaction exists on the testnet. Submit a transaction your o
 
 On Sequentia, anyone can issue an asset, and every issued asset has equal standing on the chain. Issue one of your own: a point system, a voucher, a test stablecoin, anything.
 
-- Issue the asset from your wallet or node (for example with the issueasset RPC on your own node).
+- Issue the asset from the desktop wallet, or with the issueasset RPC on your node. Ask for a reissuance token as well: the next task uses it.
 - Submit the issuance txid.
 - In the notes, tell us the asset ID and, if you like, what the asset is meant to be.`,
+	},
+	{
+		slug: "reissue-asset", title: "Reissue an asset you created", category: "Assets",
+		reward: 20, cap: 1000, needsTxid: true, sort: 25,
+		body: `Increase the supply of an asset you issued, using its reissuance token.
+
+Reissuance is how an issuer mints more of an existing asset rather than creating a new one. It works on transparent assets as it does on confidential ones.
+
+- Take an asset you issued with a reissuance token (see the previous task).
+- Reissue any amount, from the desktop wallet or with the reissueasset RPC.
+- Submit the reissuance txid, and in the notes the asset ID.
+
+A reviewer checks that the transaction reissues an asset whose issuance is yours.`,
 	},
 	{
 		slug: "any-asset-fee", title: "Pay a fee in an asset other than tSEQ", category: "Assets",
 		reward: 15, cap: 2500, needsTxid: true, sort: 30,
 		body: `Send a transaction whose fee is paid in an issued asset instead of tSEQ.
 
-Sequentia has an open fee market: fees can be paid in any accepted asset, and tSEQ has no special status beyond staking. Get some GOLD, USDX or another asset from the faucet or the DEX, then send a transaction and choose that asset as the fee asset.
+Sequentia has an open fee market: fees can be paid in any accepted asset, and tSEQ has no special status beyond staking. Claim USDX, GOLD or another asset from the faucet, then send a transaction and choose that asset as the fee asset.
 
+- In the desktop wallet the fee asset is a choice on the send screen; from a node, pass fee_asset_label or fee_asset to sendtoaddress.
 - Submit the txid of the transaction.
 - A reviewer checks on-chain that the fee output is in a non-tSEQ asset.`,
+	},
+	{
+		slug: "multi-asset-send", title: "Send two assets in one transaction", category: "Assets",
+		reward: 15, cap: 2000, needsTxid: true, sort: 35,
+		body: `Send two different assets to another address in a single transaction.
+
+A Sequentia transaction can move several assets at once; a wallet that handles this correctly is one of the things the first wave is meant to test.
+
+- Hold at least two assets, for example tSEQ and USDX from the faucet, or an asset you issued.
+- In the desktop wallet, add a second recipient and choose a different asset for it; from a node, sendmany with an assets argument does the same.
+- Submit the txid. A reviewer checks that the transaction has outputs in two assets, neither of them the fee.`,
 	},
 	{
 		slug: "confidential-tx", title: "Send an opt-in confidential transaction", category: "Assets",
@@ -89,33 +128,67 @@ Sequentia has an open fee market: fees can be paid in any accepted asset, and tS
 - Submit the txid. A reviewer checks that the transaction has blinded outputs.`,
 	},
 	{
-		slug: "seqdex-swap", title: "Complete a SeqDEX swap", category: "Trading",
-		reward: 25, cap: 1500, needsTxid: true, sort: 50,
-		body: `Complete an atomic swap between two assets on SeqDEX, the order-book DEX.
+		slug: "bridge-in", title: "Bridge an asset into Sequentia with Compages", category: "Bridge",
+		reward: 30, cap: 1000, needsTxid: true, sort: 50,
+		body: `Lock an asset on Ethereum Sepolia or Solana devnet and receive the bridged asset on Sequentia.
 
-Take an existing offer from the book, or post your own and wait for it to fill. Both legs of the swap settle in a single atomic transaction on the Sequentia testnet.
+Compages, at sequentiatestnet.com/bridge/, locks the original in a vault and mints a Sequentia asset for it; later deposits of the same token reissue the same asset.
 
-- Submit the txid of the settlement transaction.
-- In the notes, mention which market you traded (for example GOLD/tSEQ).`,
+- Get some Sepolia ETH, or devnet SOL, from any public faucet for that network.
+- On the bridge page, connect your wallet, choose the asset and amount, and give a Sequentia address of yours as the destination.
+- Wait for the deposit to confirm and the bridged asset to be delivered.
+- Submit the Sequentia txid of the delivery (the bridge page shows it, and it appears in your wallet). In the notes, give the deposit transaction hash on the source chain.`,
 	},
 	{
-		slug: "cross-chain-swap", title: "Complete a cross-chain swap with Bitcoin testnet", category: "Trading",
-		reward: 40, cap: 750, needsTxid: true, sort: 60,
-		body: `Complete a cross-chain swap between Bitcoin testnet4 BTC and a Sequentia testnet asset.
+		slug: "bridge-out", title: "Bridge an asset back out with Compages", category: "Bridge",
+		reward: 40, cap: 500, needsTxid: true, sort: 60,
+		body: `Return a bridged asset to its original chain.
 
-Every Sequentia block is anchored to a Bitcoin block, which is what makes these swaps safe without a custodian: if Bitcoin reorganizes, Sequentia follows in real time.
+The vault releases the original only after the return transaction's Bitcoin anchor is buried deep enough that a Bitcoin reorganisation cannot undo it. That wait is deliberate, and this task exercises it end to end.
 
-- Use the cross-chain markets on SeqDEX.
-- Submit the txid of the Sequentia leg of your swap.
-- In the notes, include the Bitcoin testnet4 txid of the other leg.`,
+- On sequentiatestnet.com/bridge/, create a redemption address bound to your Ethereum or Solana address.
+- Send the bridged asset to that redemption address from your Sequentia wallet.
+- Wait for the release on the source chain; the bridge page tracks it.
+- Submit the Sequentia txid of your return transaction. In the notes, give the release transaction hash on the source chain and, roughly, how long the release took.`,
 	},
 	{
-		slug: "lightning-swap", title: "Complete a Lightning swap", category: "Trading",
-		reward: 40, cap: 750, needsTxid: true, sort: 70,
-		body: `Complete a swap over Lightning on the Sequentia testnet: a submarine swap between an on-chain asset and Lightning BTC, or a pure Lightning swap if you run SeqLN.
+		slug: "build-from-source", title: "Build Sequentia Core from source", category: "Infrastructure",
+		reward: 30, cap: 500, needsTxid: true, sort: 70,
+		body: `Build the node from the source repository on your own machine and use the result.
 
-- Submit the txid of the on-chain leg (for a submarine swap) or of your channel funding transaction (for a pure Lightning swap).
-- In the notes, include the payment hash of the Lightning leg.`,
+The download page offers Linux and Windows builds; everything else, and anyone who wants to read what they run, builds from github.com/ConcatenaLabs/Sequentia following its build documentation.
+
+- Build sequentiad and sequentia-cli (the desktop wallet is optional) on your platform.
+- Run your build on the testnet, create a wallet, claim from the faucet and send a transaction.
+- Submit that txid. In the notes, give your operating system and version, the output of sequentiad --version, and anything in the build instructions that was wrong or missing.
+
+Build problems reported here are worth as much to us as the build itself.`,
+	},
+	{
+		slug: "stake", title: "Stake tSEQ", category: "Infrastructure",
+		reward: 40, cap: 500, needsTxid: true, sort: 75,
+		body: `Lock a stake and register as a potential block producer.
+
+Only the Sequence token can stake, and the minimum is 40,000 tSEQ, which one faucet claim covers. A staking output keeps its weight for as long as it is unspent; the lock only gates withdrawal.
+
+- In Sequentia Core, open the Staking tab and create a staking output of at least 40,000 tSEQ with the shortest lock the chain allows. From a node, getstakescript builds the script and you send the stake to it.
+- Keep the node running; the Staking tab shows your weight and whether you are registered.
+- Submit the txid of the staking output. In the notes, include the output of getstakerinfo.
+
+With the testnet committee's weight you are unlikely to be elected soon, and that is fine: the registration and the weight are what this task checks.`,
+	},
+	{
+		slug: "delegate-stake", title: "Delegate your stake to a staking pool", category: "Infrastructure",
+		reward: 30, cap: 500, needsTxid: true, sort: 77,
+		body: `Lend your stake's block-signing rights to a pool without moving your coins.
+
+A delegation is a separate record on the chain that points your staking output at a pool's signer. The coins never leave your wallet, the pool can never spend them, and you can re-point or withdraw the delegation at any time. Pool payouts are proportional, through an on-chain pot anyone can claim.
+
+- Pick a pool on the board at sequentiatestnet.com/pools/.
+- In Sequentia Core's Staking tab, delegate your staking output (see the previous task) to that pool; from a node, delegatestake does the same.
+- Submit the txid of the delegation record. In the notes, name the pool and include the output of listdelegations.
+
+A reviewer checks that the record points a stake of yours at that pool's signer.`,
 	},
 	{
 		slug: "run-node", title: "Run a full node for a week", category: "Infrastructure",
@@ -124,7 +197,7 @@ Every Sequentia block is anchored to a Bitcoin block, which is what makes these 
 
 Full-node sovereignty is a core Sequentia principle: block producers cannot force rule changes on nodes that validate everything themselves.
 
-- Sync a full node from sequentiatestnet.com downloads or by building from source.
+- Sync a full node from sequentiatestnet.com/download/core/ or from your own build.
 - After seven days of uptime, send a transaction from the node's wallet and submit that txid.
 - In the notes, include your node's uptime and the output of getblockchaininfo (blocks and bestblockhash).`,
 	},

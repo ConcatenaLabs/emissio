@@ -45,16 +45,21 @@ The seeded catalog (`seed.go`; the live instance's admins can adjust rewards, ca
 | Task | Reward | Cap |
 |---|---|---|
 | Make your first testnet transaction | 10 | 5,000 |
+| Find the Bitcoin anchor of your transaction | 10 | 3,000 |
 | Issue your own asset | 20 | 2,500 |
+| Reissue an asset you created | 20 | 1,000 |
 | Pay a fee in an asset other than tSEQ | 15 | 2,500 |
+| Send two assets in one transaction | 15 | 2,000 |
 | Send an opt-in confidential transaction | 15 | 2,000 |
-| Complete a SeqDEX swap | 25 | 1,500 |
-| Complete a cross-chain swap with Bitcoin testnet | 40 | 750 |
-| Complete a Lightning swap | 40 | 750 |
+| Bridge an asset into Sequentia with Compages | 30 | 1,000 |
+| Bridge an asset back out with Compages | 40 | 500 |
+| Build Sequentia Core from source | 30 | 500 |
+| Stake tSEQ | 40 | 500 |
+| Delegate your stake to a staking pool | 30 | 500 |
 | Run a full node for a week | 50 | 1,000 |
 | Report a bug (a confirmed public issue, no txid) | 25 | 400 |
 
-Completing every task pays 240 SEQ; total task exposure across all users is 325,000 SEQ. Caps pay the first accounts whose evidence is approved, so the pool stays bounded.
+Completing every task pays 350 SEQ; total task exposure across all users is 407,500 SEQ. Caps pay the first accounts whose evidence is approved, so the pool stays bounded.
 
 ### Competitions
 
@@ -134,7 +139,7 @@ First run creates the schema and seeds the task catalog and the opening competit
 echo 'a-strong-password' | EMISSIO_DB=/tmp/emissio.db ./emissio createadmin you@example.com
 ```
 
-Running `createadmin` for an existing email resets that account's password and makes it an admin. The other subcommand, `./emissio reseed-tasks`, refreshes the title, category, and body of the seeded tasks from the current `seed.go` copy in an existing database and inserts any seeded task the database does not have yet, leaving admin-tuned rewards, caps, and active flags of existing tasks alone.
+Running `createadmin` for an existing email resets that account's password and makes it an admin. The other subcommand, `./emissio reseed-tasks`, refreshes the title, category, and body of the seeded tasks from the current `seed.go` copy in an existing database, inserts any seeded task the database does not have yet, and deactivates the tasks listed as retired in `seed.go`, leaving admin-tuned rewards, caps, and active flags of the other existing tasks alone.
 
 Tests:
 
