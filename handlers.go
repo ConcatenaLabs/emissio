@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // Page is the data envelope every template receives.
@@ -402,6 +403,7 @@ type accountData struct {
 	RefThreshold int64
 	RefCap       int
 	Verifs       []verifRow
+	RedditToken  bool
 	VerifBonus   int64
 	Verified     bool // at least one platform verified: payout-eligible
 }
@@ -464,7 +466,7 @@ func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
 		Balance: bal, Ledger: led, Submissions: subs,
 		RefLink:  scheme + "://" + r.Host + a.cfg.BasePath + "/r/" + user.ClaimCode,
 		RefCount: refCount, RefBonus: referralBonus, RefThreshold: referralThreshold, RefCap: referralCap,
-		Verifs: vrows, VerifBonus: verificationBonus, Verified: verified,
+		Verifs: vrows, RedditToken: a.cfg.RedditToken != "", VerifBonus: verificationBonus, Verified: verified,
 	})
 }
 
@@ -485,8 +487,21 @@ func (a *App) handleVerify(w http.ResponseWriter, r *http.Request) {
 		a.redirect(w, r, "/account", "", "Unknown platform.")
 		return
 	}
-	var handle, evidence string
-	if platform == "x" {
+	var handle, evidence, tokenNote string
+	if platform == "reddit" && a.cfg.RedditToken != "" {
+		t, err := parseRedditToken(a.cfg.RedditToken, r.FormValue("token"), time.Now())
+		if err != nil {
+			a.redirect(w, r, "/account", "", "Reddit token: "+err.Error()+".")
+			return
+		}
+		var ok bool
+		handle, tokenNote, ok = redditTokenCheck(t, user.ClaimCode)
+		if !ok {
+			a.redirect(w, r, "/account", "", "That token was issued for a different Emissio account code. Get one from the Reddit app with your own code.")
+			return
+		}
+		evidence = "reddit-app-token"
+	} else if platform == "x" {
 		// The handle comes from the post link, so the account locked by the
 		// unique index is the one that published the code.
 		var ok bool
@@ -525,8 +540,11 @@ func (a *App) handleVerify(w http.ResponseWriter, r *http.Request) {
 		a.redirect(w, r, "/account", "", "That "+platformName(platform)+" account already vouches for another Emissio account.")
 		return
 	}
-	note := a.verifCheck(platform, handle, evidence, user.ClaimCode)
-	if evidence != "" {
+	note := tokenNote
+	if note == "" {
+		note = a.verifCheck(platform, handle, evidence, user.ClaimCode)
+	}
+	if platform == "x" {
 		// The same post under a different handle in the link is the trick
 		// the reviewer is told to look for; flag it up front.
 		var reused int64

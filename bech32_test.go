@@ -209,3 +209,33 @@ func TestCheckReddit(t *testing.T) {
 		t.Errorf("missing user: %q", got)
 	}
 }
+
+func TestRedditToken(t *testing.T) {
+	// Token produced by the Reddit app's token.ts for secret "s3cret",
+	// u/Alice_X created 2019-05-04, code 0123456789, issued 2026-09-13T12:00Z.
+	const tok = "ERV1.eyJ1IjoiQWxpY2VfWCIsImMiOjE1NTY5NjQwMDAsImUiOiIwMTIzNDU2Nzg5IiwiaSI6MTc4OTMwMDgwMCwieCI6MTc4OTM4NzIwMH0.DLr9rBudVVjoVsOYe08MWhORJ-hiOdktfvcHEOF6XSM"
+	now := time.Date(2026, 9, 13, 13, 0, 0, 0, time.UTC)
+	p, err := parseRedditToken("s3cret", tok, now)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if p.Username != "Alice_X" || p.Code != "0123456789" || p.Created != 1556964000 {
+		t.Fatalf("claims %+v", p)
+	}
+	handle, note, ok := redditTokenCheck(p, "0123456789")
+	if !ok || handle != "alice_x" || !strings.HasPrefix(note, "signed by the r/sequentia app for u/Alice_X; account created May 2019 (age OK)") {
+		t.Fatalf("check = %q %q %v", handle, note, ok)
+	}
+	if _, _, ok := redditTokenCheck(p, "ffffffffff"); ok {
+		t.Fatalf("token accepted for another account code")
+	}
+	if _, err := parseRedditToken("other", tok, now); err == nil {
+		t.Fatalf("wrong secret accepted")
+	}
+	if _, err := parseRedditToken("s3cret", tok, now.AddDate(0, 0, 2)); err == nil {
+		t.Fatalf("expired token accepted")
+	}
+	if _, err := parseRedditToken("s3cret", tok[:len(tok)-2]+"AA", now); err == nil {
+		t.Fatalf("tampered signature accepted")
+	}
+}
