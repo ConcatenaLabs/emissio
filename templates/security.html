@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="eyebrow">Security rewards</div>
 <h1>Break it on the testnet, not at launch</h1>
-<p class="lede muted">Report vulnerabilities in the Sequentia node, the wallets, SeqDEX, SeqLN, or the project infrastructure. Reports are private: only you and the review team can see them. Accepted reports are credited in SEQ according to severity, and a proposed fix raises the award within its tier. An exceptional finding can be awarded up to <strong>{{seq .Data.Max}} SEQ</strong>; {{seq .Data.Reserve}} SEQ of the program pool is reserved for security awards.</p>
+<p class="lede muted">Report vulnerabilities in Sequentia Core (the node and its desktop wallet), the explorer, the faucet, Compages, this site, or the servers behind them. Reports are private: only you and the review team can see them. Accepted reports are credited in SEQ according to severity, and a proposed fix raises the award within its tier. An exceptional finding can be awarded up to <strong>{{seq .Data.Max}} SEQ</strong>; {{seq .Data.Reserve}} SEQ of the program pool is reserved for security awards.</p>
 
 <div class="section">
   <h2>Severity tiers</h2>
@@ -30,7 +30,7 @@
 <div class="section">
   <h2>What every accepted report needs</h2>
   <ul>
-    <li><strong>A defect in shipped code.</strong> The node, the wallets, SeqDEX, SeqLN or the project's public services, as released or on the default branch. Documentation, advice and configuration examples are not in scope here.</li>
+    <li><strong>A defect in shipped code.</strong> Sequentia Core, the explorer, the faucet, Compages, this site or the servers behind them, as released or on the default branch. Documentation, advice and configuration examples are not in scope here.</li>
     <li><strong>A security consequence you demonstrate.</strong> Show what an attacker gains or a user loses, even if it is small. "Could be dangerous combined with an unknown bug" does not qualify, and neither do missing headers, version disclosure, rate limits, or best-practice deviations without an exploit.</li>
     <li><strong>Reproduction a reviewer can confirm in under an hour</strong> from the steps as written. A report that cannot be reproduced is not accepted at any tier.</li>
     <li><strong>First and untracked.</strong> Anything already on the public issue trackers or fixed on the default branch is a duplicate.</li>
