@@ -49,6 +49,20 @@
 </div>
 
 <div class="section">
+  <h2>Encrypt your report</h2>
+  <p class="muted">Reports are private to you and the review team, but the text is stored on the project's server. For a finding you would rather the server never holds in the clear, encrypt the report to the team's key and paste the encrypted block into the form. Only the review team, on machines that never expose the private key, can read it.</p>
+  <div class="ledger wide">
+    <div class="ledger-row"><span class="label">Public key</span><span class="leader"></span><span class="amount plain"><a href="{{base}}/static/security-pgp.asc">security-pgp.asc</a></span></div>
+    <div class="ledger-row"><span class="label">Fingerprint</span><span class="leader"></span><span class="amount plain" style="font-family:var(--mono);font-size:.86rem">{{pgpfpr}}</span></div>
+  </div>
+  <pre class="small" style="margin-top:.8rem">curl -O https://sequentiatestnet.com/emissio/static/security-pgp.asc
+gpg --import security-pgp.asc
+gpg --armor --encrypt -r "Sequentia security reports" report.txt
+# paste the contents of report.txt.asc into the report field</pre>
+  <p class="small muted">Check the fingerprint after import; it must match the one above. Keep the title unencrypted so the report can be triaged, and put everything else, including your proposed fix, inside the encrypted block.</p>
+</div>
+
+<div class="section">
   <h2>Submit a report</h2>
   {{if not .User}}
     <p class="muted"><a href="{{base}}/login">Sign in</a> or <a href="{{base}}/register">create an account</a> to submit a report.</p>
@@ -65,7 +79,7 @@
       <option value="critical">Critical</option>
     </select>
     <label for="body">Report</label>
-    <textarea id="body" name="body" required style="min-height:12rem" placeholder="What is affected, steps to reproduce, impact, and your proposed fix if you have one."></textarea>
+    <textarea id="body" name="body" required style="min-height:12rem" placeholder="What is affected, steps to reproduce, impact, and your proposed fix if you have one. An encrypted report is a PGP message block pasted here as is."></textarea>
     <div class="actions"><button class="btn" type="submit">Send report privately</button></div>
   </form>
   {{end}}
