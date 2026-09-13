@@ -34,7 +34,7 @@ var verifPlatforms = []struct {
 }{
 	{"telegram", "Telegram", "Add your account code to your Telegram bio (Settings, Bio), then submit your public @username. The bio is checked automatically; account age is assessed by the reviewer.", "https://t.me/%s"},
 	{"x", "X", "Publish a post from your X account containing your account code, then submit the link to that post. Ownership and account age are checked automatically from the post; you can delete it once verified.", "https://x.com/%s"},
-	{"reddit", "Reddit", "Add your account code to your Reddit profile's public description (Profile, Edit), then submit your username. Ownership and account age are checked automatically.", "https://www.reddit.com/user/%s"},
+	{"reddit", "Reddit", "", "https://www.reddit.com/user/%s"},
 }
 
 var handleRe = regexp.MustCompile(`^@?[A-Za-z0-9_.\-]{2,32}$`)
@@ -166,7 +166,10 @@ func platformProfileURL(key, handle string) string {
 func (a *App) verifCheck(platform, handle, evidence, claimCode string) string {
 	switch platform {
 	case "reddit":
-		return checkReddit(a.cfg.RedditBase, handle, claimCode)
+		if a.cfg.RedditID == "" || a.cfg.RedditSecret == "" {
+			return "reddit blocks unauthenticated checks and no API credentials are configured; manual review"
+		}
+		return checkReddit(a.cfg.RedditBase, a.cfg.RedditOAuth, a.cfg.RedditID, a.cfg.RedditSecret, handle, claimCode)
 	case "telegram":
 		if a.cfg.TgBotToken != "" {
 			return a.checkTelegramBot(handle, claimCode)
@@ -177,6 +180,15 @@ func (a *App) verifCheck(platform, handle, evidence, claimCode string) string {
 	default:
 		return "no automatic check; manual review"
 	}
+}
+
+// redditHint says whether the check is automatic, which needs API
+// credentials because Reddit blocks unauthenticated requests.
+func (a *App) redditHint() string {
+	if a.cfg.RedditID != "" && a.cfg.RedditSecret != "" {
+		return "Add your account code to your Reddit profile's public description (Profile, Edit), then submit your username. Ownership and account age are checked automatically."
+	}
+	return "Add your account code to your Reddit profile's public description (Profile, Edit), then submit your username. A reviewer checks the description and that the account is at least two years old."
 }
 
 // telegramHint describes the flow that is actually active.
@@ -193,13 +205,48 @@ func (a *App) telegramHint() string {
 
 var verifClient = &http.Client{Timeout: 8 * time.Second}
 
+// redditToken fetches an application-only access token. Reddit refuses
+// unauthenticated requests, so every check goes through the API with the
+// registered app's credentials.
+func redditToken(base, id, secret string) (string, error) {
+	req, err := http.NewRequest("POST", strings.TrimRight(base, "/")+"/api/v1/access_token",
+		strings.NewReader("grant_type=client_credentials"))
+	if err != nil {
+		return "", err
+	}
+	req.SetBasicAuth(id, secret)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "emissio-verifier/1.0 (sequentiatestnet.com)")
+	resp, err := verifClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("token endpoint returned HTTP %d", resp.StatusCode)
+	}
+	var tok struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&tok); err != nil || tok.AccessToken == "" {
+		return "", fmt.Errorf("token unreadable")
+	}
+	return tok.AccessToken, nil
+}
+
 // checkReddit verifies ownership (account code in the profile's public
-// description) and age (created_utc) in one about.json fetch.
-func checkReddit(base, handle, claimCode string) string {
-	req, err := http.NewRequest("GET", strings.TrimRight(base, "/")+"/user/"+handle+"/about.json", nil)
+// description) and age (created_utc) in one about fetch through the API.
+// base is where tokens are issued, api where the profile is read.
+func checkReddit(base, api, id, secret, handle, claimCode string) string {
+	token, err := redditToken(base, id, secret)
+	if err != nil {
+		return "reddit token failed (" + err.Error() + "); manual review"
+	}
+	req, err := http.NewRequest("GET", strings.TrimRight(api, "/")+"/user/"+handle+"/about", nil)
 	if err != nil {
 		return "check failed; manual review"
 	}
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("User-Agent", "emissio-verifier/1.0 (sequentiatestnet.com)")
 	resp, err := verifClient.Do(req)
 	if err != nil {

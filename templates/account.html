@@ -40,7 +40,7 @@
   <p class="muted"><strong>At least one verified account is required to receive your payout at launch</strong> and for referral rewards; each verified platform also earns {{seq .Data.VerifBonus}} SEQ. Link accounts that are at least two years old: put your account code (above) in the profile's bio or public description first, then submit the handle; for X, publish a post containing the code and submit the link to it. You can remove the code once verified. A social account can vouch for one Emissio account only.</p>
   {{range .Data.Verifs}}
   <details {{if not .Mine}}{{else}}open{{end}}>
-    <summary><strong>{{.Name}}</strong>{{if .Mine}} · @{{.Mine.Handle}} · <span class="pill {{if eq .Mine.Status "verified"}}approved{{else}}{{.Mine.Status}}{{end}}">{{.Mine.Status}}</span>{{else}} · not linked · <span class="amount" style="font-family:var(--mono);color:var(--gold)">{{seq $.Data.VerifBonus}} SEQ</span>{{end}}</summary>
+    <summary><strong>{{.Name}}</strong>{{if .Mine}} · {{handlefmt .Platform .Mine.Handle}} · <span class="pill {{if eq .Mine.Status "verified"}}approved{{else}}{{.Mine.Status}}{{end}}">{{.Mine.Status}}</span>{{else}} · not linked · <span class="amount" style="font-family:var(--mono);color:var(--gold)">{{seq $.Data.VerifBonus}} SEQ</span>{{end}}</summary>
     <div class="inner">
       <p class="small muted">{{.Hint}}</p>
       {{if .Mine}}
@@ -61,8 +61,8 @@
           <label>Link to your post</label>
           <input class="mono" type="text" name="post" placeholder="https://x.com/handle/status/1234567890">
           {{else}}
-          <label>{{.Name}} handle</label>
-          <input class="mono" type="text" name="handle" placeholder="@handle">
+          <label>{{.Name}} {{if eq .Platform "reddit"}}username{{else}}handle{{end}}</label>
+          <input class="mono" type="text" name="handle" placeholder="{{if eq .Platform "reddit"}}username{{else}}@handle{{end}}">
           {{end}}
         </div>
         <button class="btn small" type="submit">Request verification</button>
