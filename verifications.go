@@ -13,32 +13,54 @@ import (
 
 // Social-account verification: a non-KYC farming deterrent. Users prove they
 // own a Telegram, X or Reddit account that is at least verifMinAgeYears old
-// by putting their public account code in the profile's bio, then submitting
-// the handle. A social account can vouch for exactly one Emissio account,
-// ever (unique index), so a farmer needs a distinct aged account per profile.
+// by putting their public account code where only the owner can: the bio
+// for Telegram and Reddit, a post for X. The handle is what the unique index
+// keys on, so a social account vouches for exactly one Emissio account,
+// ever, and a farmer needs a distinct aged account per profile. For X the
+// handle is derived from the post link rather than typed, so the account
+// that is locked is the one that published the code.
 const (
 	verificationBonus int64 = 15
 	verifMinAgeYears        = 2
 )
 
 var verifPlatforms = []struct {
-	Key   string
-	Name  string
-	Hint  string
+	Key    string
+	Name   string
+	Hint   string
 	URLFmt string
 }{
 	{"telegram", "Telegram", "Add your account code to your Telegram bio (Settings, Bio), then submit your public @username. The bio is checked automatically; account age is assessed by the reviewer.", "https://t.me/%s"},
-	{"x", "X", "Add your account code to your X bio, then submit your handle. A reviewer checks the bio and that the profile's join date is at least two years ago.", "https://x.com/%s"},
+	{"x", "X", "Publish a post from your X account containing your account code, then submit the link to that post. A reviewer checks that the post is yours, contains the code, and that the profile's join date is at least two years ago. You can delete the post once verified.", "https://x.com/%s"},
 	{"reddit", "Reddit", "Add your account code to your Reddit profile's public description (Profile, Edit), then submit your username. Ownership and account age are checked automatically.", "https://www.reddit.com/user/%s"},
 }
 
 var handleRe = regexp.MustCompile(`^@?[A-Za-z0-9_.\-]{2,32}$`)
+
+// xPostRe matches a link to a post on X: the handle and the numeric post id
+// are the two captures. x.com and twitter.com are the same site.
+var xPostRe = regexp.MustCompile(`^(?:https?://)?(?:www\.|mobile\.)?(?:x|twitter)\.com/([A-Za-z0-9_]{1,15})/status/([0-9]{5,25})(?:[/?#].*)?$`)
+
+// parseXPost returns the handle and canonical URL of a post link, or ok=false.
+func parseXPost(link string) (handle, canonical string, ok bool) {
+	m := xPostRe.FindStringSubmatch(strings.TrimSpace(link))
+	if m == nil {
+		return "", "", false
+	}
+	return strings.ToLower(m[1]), "https://x.com/" + m[1] + "/status/" + m[2], true
+}
+
+// xPostID returns the numeric id of a canonical post URL.
+func xPostID(canonical string) string {
+	return canonical[strings.LastIndex(canonical, "/")+1:]
+}
 
 type Verification struct {
 	ID         int64
 	UserID     int64
 	Platform   string
 	Handle     string
+	Evidence   string
 	Status     string
 	CheckNote  string
 	ReviewNote string
@@ -65,7 +87,7 @@ func pendingVerifications(db *sql.DB) ([]*Verification, error) {
 }
 
 func queryVerifications(db *sql.DB, where string, args ...any) ([]*Verification, error) {
-	rows, err := db.Query(`SELECT v.id, v.user_id, v.platform, v.handle, v.status, v.check_note, v.review_note,
+	rows, err := db.Query(`SELECT v.id, v.user_id, v.platform, v.handle, v.evidence, v.status, v.check_note, v.review_note,
 		v.created_at, v.reviewed_at, u.email, u.claim_code
 		FROM verifications v JOIN users u ON u.id = v.user_id `+where+` ORDER BY v.id LIMIT 200`, args...)
 	if err != nil {
@@ -75,7 +97,7 @@ func queryVerifications(db *sql.DB, where string, args ...any) ([]*Verification,
 	var out []*Verification
 	for rows.Next() {
 		var v Verification
-		if err := rows.Scan(&v.ID, &v.UserID, &v.Platform, &v.Handle, &v.Status, &v.CheckNote, &v.ReviewNote,
+		if err := rows.Scan(&v.ID, &v.UserID, &v.Platform, &v.Handle, &v.Evidence, &v.Status, &v.CheckNote, &v.ReviewNote,
 			&v.CreatedAt, &v.ReviewedAt, &v.UserEmail, &v.ClaimCode); err != nil {
 			return nil, err
 		}
@@ -149,7 +171,7 @@ func (a *App) verifCheck(platform, handle, claimCode string) string {
 		}
 		return checkTelegram(a.cfg.TelegramBase, handle, claimCode)
 	default:
-		return "no automatic check for X; open the profile, confirm the bio contains the account code and the join date is at least two years ago"
+		return "no automatic check for X; open the post, confirm its author is @" + handle + " (the site shows a post under any handle in the link), that it contains the account code, and that the profile's join date is at least two years ago"
 	}
 }
 
@@ -198,7 +220,7 @@ func checkReddit(base, handle, claimCode string) string {
 		return "reddit response unreadable; manual review"
 	}
 	created := time.Unix(int64(about.Data.CreatedUTC), 0)
-	ageOK := time.Since(created) >= time.Duration(verifMinAgeYears) * 365 * 24 * time.Hour
+	ageOK := time.Since(created) >= time.Duration(verifMinAgeYears)*365*24*time.Hour
 	owned := strings.Contains(about.Data.Subreddit.PublicDescription, claimCode)
 	note := fmt.Sprintf("account created %s (age %s)", created.Format("Jan 2006"), map[bool]string{true: "OK", false: "UNDER " + fmt.Sprint(verifMinAgeYears) + " YEARS"}[ageOK])
 	if owned {

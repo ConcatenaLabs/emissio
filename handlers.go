@@ -482,12 +482,24 @@ func (a *App) handleVerify(w http.ResponseWriter, r *http.Request) {
 		a.redirect(w, r, "/account", "", "Unknown platform.")
 		return
 	}
-	handle := strings.TrimPrefix(strings.TrimSpace(r.FormValue("handle")), "@")
-	if !handleRe.MatchString(handle) {
-		a.redirect(w, r, "/account", "", "Enter the handle only: letters, digits, dots, dashes and underscores.")
-		return
+	var handle, evidence string
+	if platform == "x" {
+		// The handle comes from the post link, so the account locked by the
+		// unique index is the one that published the code.
+		var ok bool
+		handle, evidence, ok = parseXPost(r.FormValue("post"))
+		if !ok {
+			a.redirect(w, r, "/account", "", "Paste the link to your post, like https://x.com/handle/status/1234567890.")
+			return
+		}
+	} else {
+		handle = strings.TrimPrefix(strings.TrimSpace(r.FormValue("handle")), "@")
+		if !handleRe.MatchString(handle) {
+			a.redirect(w, r, "/account", "", "Enter the handle only: letters, digits, dots, dashes and underscores.")
+			return
+		}
+		handle = strings.ToLower(handle)
 	}
-	handle = strings.ToLower(handle)
 	// One live request per platform per account.
 	var mine int64
 	if err := a.db.QueryRow(`SELECT COUNT(*) FROM verifications
@@ -511,8 +523,21 @@ func (a *App) handleVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	note := a.verifCheck(platform, handle, user.ClaimCode)
-	_, err := a.db.Exec(`INSERT INTO verifications (user_id, platform, handle, check_note, created_at)
-		VALUES (?,?,?,?,?)`, user.ID, platform, handle, note, now())
+	if evidence != "" {
+		// The same post under a different handle in the link is the trick
+		// the reviewer is told to look for; flag it up front.
+		var reused int64
+		if err := a.db.QueryRow(`SELECT COUNT(*) FROM verifications
+			WHERE platform = ? AND evidence LIKE ? AND status != 'rejected'`, platform, "%/status/"+xPostID(evidence)).Scan(&reused); err != nil {
+			a.serverError(w, err)
+			return
+		}
+		if reused > 0 {
+			note = "WARNING: this post is already attached to another verification request; " + note
+		}
+	}
+	_, err := a.db.Exec(`INSERT INTO verifications (user_id, platform, handle, evidence, check_note, created_at)
+		VALUES (?,?,?,?,?,?)`, user.ID, platform, handle, evidence, note, now())
 	if err != nil {
 		a.serverError(w, err)
 		return

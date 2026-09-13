@@ -32,7 +32,7 @@ This is testnet software supporting a testnet program. Reward balances are progr
 
 ## For users: earning rewards
 
-You need an account (email + password, 10 characters minimum). Every account gets a public claim code, which ties evidence to your account: you put it in social-media bios for verification, and it doubles as your referral code.
+You need an account (email + password, 10 characters minimum). Every account gets a public claim code, which ties evidence to your account: you put it in a social-media bio or an X post for verification, and it doubles as your referral code.
 
 All amounts below are whole SEQ, credited to your ledger. On the testnet you work with tSEQ and testnet assets; the rewards themselves are Sequence tokens paid at mainnet launch. Launch reference price: 0.175 USD per SEQ. Program pool: 32,285,714 SEQ.
 
@@ -71,7 +71,7 @@ Linking at least one verified social platform is required to receive the launch 
 You can link a Telegram, X, and Reddit account, 15 SEQ per platform. As sybil resistance, the linked account must be at least two years old, and a social account can vouch for exactly one Emissio account, ever. Ownership proof is your claim code:
 
 - Reddit: put the code in your profile's public description; ownership and account age are checked automatically.
-- X: put the code in your bio; a reviewer checks it and the join date manually.
+- X: publish a post containing the code and submit its link. The handle is taken from the link, so the account locked by the one-account-ever rule is the one that published the code. A reviewer confirms the post's author matches that handle (X shows a post under any handle in the URL), that it contains the code, and the join date; a post already attached to another request is flagged in the queue.
 - Telegram: if the instance runs a verification bot, you send your code as a message to the bot, which proves ownership via your authenticated numeric ID; account age is estimated from the ID (Telegram does not publish creation dates). Without a bot, the app falls back to a public t.me bio check with reviewer-judged age.
 
 All automatic checks are advisory; a human reviewer makes the final call.

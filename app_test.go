@@ -322,6 +322,42 @@ func TestVerifications(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("unknown platform accepted")
 	}
+	// X takes a post link; the handle is derived from it and stored lowercase.
+	alice.PostForm(srv.URL+"/account/verify", url.Values{
+		"csrf": {csrfA}, "platform": {"x"}, "post": {"https://twitter.com/Alice_X/status/1234567890?s=20"},
+	})
+	var handle, evidence string
+	if err := app.db.QueryRow("SELECT handle, evidence FROM verifications WHERE platform = 'x'").Scan(&handle, &evidence); err != nil {
+		t.Fatalf("x verification not recorded: %v", err)
+	}
+	if handle != "alice_x" || evidence != "https://x.com/Alice_X/status/1234567890" {
+		t.Fatalf("x verification stored %q %q", handle, evidence)
+	}
+	// A bare handle, or a link that is not a post, is refused for X.
+	jarC, _ := cookiejar.New(nil)
+	carol := &http.Client{Jar: jarC}
+	carol.PostForm(srv.URL+"/register", url.Values{
+		"email": {"carol@example.com"}, "password": {"a-long-password"},
+	})
+	csrfC := csrfOf(t, carol, srv.URL+"/account")
+	for _, bad := range []string{"@alice_x", "https://x.com/alice_x"} {
+		carol.PostForm(srv.URL+"/account/verify", url.Values{
+			"csrf": {csrfC}, "platform": {"x"}, "post": {bad},
+		})
+	}
+	app.db.QueryRow("SELECT COUNT(*) FROM verifications WHERE platform = 'x'").Scan(&n)
+	if n != 1 {
+		t.Fatalf("bad x evidence accepted, got %d", n)
+	}
+	// The same post under another handle in the link is recorded but flagged.
+	carol.PostForm(srv.URL+"/account/verify", url.Values{
+		"csrf": {csrfC}, "platform": {"x"}, "post": {"https://x.com/carol_x/status/1234567890"},
+	})
+	var note string
+	app.db.QueryRow("SELECT check_note FROM verifications WHERE platform = 'x' AND handle = 'carol_x'").Scan(&note)
+	if !strings.HasPrefix(note, "WARNING: this post is already attached") {
+		t.Fatalf("reused post not flagged: %q", note)
+	}
 
 	// Approve: bonus lands once.
 	app.db.Exec("UPDATE users SET is_admin = 1 WHERE id = 1")
@@ -351,7 +387,7 @@ func TestVerifications(t *testing.T) {
 	bob.PostForm(srv.URL+"/account/verify", url.Values{
 		"csrf": {csrfB}, "platform": {"reddit"}, "handle": {"old_account"},
 	})
-	app.db.QueryRow("SELECT COUNT(*) FROM verifications").Scan(&n)
+	app.db.QueryRow("SELECT COUNT(*) FROM verifications WHERE platform = 'reddit'").Scan(&n)
 	if n != 1 {
 		t.Fatalf("recycled social account accepted: %d verifications", n)
 	}
