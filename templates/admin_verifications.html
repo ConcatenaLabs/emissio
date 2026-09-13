@@ -5,7 +5,7 @@
 {{if not .Data}}<p class="muted">Queue is empty.</p>{{end}}
 {{range .Data}}
 <details open>
-  <summary><strong>{{.Platform}}</strong> · @{{.Handle}} · {{.UserEmail}} · {{datetime .CreatedAt}}</summary>
+  <summary><strong>{{.Platform}}</strong> · {{handlefmt .Platform .Handle}} · {{.UserEmail}} · {{datetime .CreatedAt}}</summary>
   <div class="inner">
     <p class="small"><a href="{{.ProfileURL}}" rel="nofollow noopener" target="_blank">{{.ProfileURL}}</a>{{if .Evidence}} · post: <a href="{{.Evidence}}" rel="nofollow noopener" target="_blank">{{.Evidence}}</a>{{end}} · account code: <code>{{.ClaimCode}}</code></p>
     <p class="small">check: <em>{{.CheckNote}}</em></p>

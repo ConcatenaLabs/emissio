@@ -30,6 +30,9 @@ type Config struct {
 	RedditBase    string // overridable in tests
 	TelegramBase  string
 	XBase         string // the keyless syndication endpoint that renders embedded posts
+	RedditOAuth   string // token endpoint base; the API host is derived from it in production
+	RedditID      string // Reddit app client id; with the secret, enables the automatic Reddit check
+	RedditSecret  string
 	TgBotToken    string // BotFather token; enables ID-based Telegram age checks
 	TgBotName     string // bot username shown to users, without @
 }
@@ -44,6 +47,9 @@ func loadConfig() Config {
 		RedditBase:    envOr("EMISSIO_REDDIT", "https://www.reddit.com"),
 		TelegramBase:  envOr("EMISSIO_TELEGRAM", "https://t.me"),
 		XBase:         envOr("EMISSIO_X", "https://cdn.syndication.twimg.com"),
+		RedditOAuth:   envOr("EMISSIO_REDDIT_OAUTH", "https://oauth.reddit.com"),
+		RedditID:      envOr("EMISSIO_REDDIT_CLIENT_ID", ""),
+		RedditSecret:  envOr("EMISSIO_REDDIT_CLIENT_SECRET", ""),
 		TgBotToken:    envOr("EMISSIO_TG_BOT_TOKEN", ""),
 		TgBotName:     envOr("EMISSIO_TG_BOT_NAME", ""),
 	}
@@ -87,6 +93,12 @@ func parseTemplates(cfg Config) map[string]*template.Template {
 			return time.Unix(ts, 0).UTC().Format("2 Jan 2006")
 		},
 		"pgpfpr": func() string { return securityPGPFingerprint },
+		"handlefmt": func(platform, handle string) string {
+			if platform == "reddit" {
+				return "u/" + handle
+			}
+			return "@" + handle
+		},
 		"encrypted": func(body string) bool {
 			return strings.HasPrefix(strings.TrimSpace(body), "-----BEGIN PGP MESSAGE-----")
 		},

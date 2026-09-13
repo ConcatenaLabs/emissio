@@ -440,8 +440,11 @@ func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
 	verified := false
 	for _, p := range verifPlatforms {
 		row := verifRow{Platform: p.Key, Name: p.Name, Hint: p.Hint}
-		if p.Key == "telegram" {
+		switch p.Key {
+		case "telegram":
 			row.Hint = a.telegramHint()
+		case "reddit":
+			row.Hint = a.redditHint()
 		}
 		for _, v := range verifs {
 			if v.Platform == p.Key && (row.Mine == nil || v.Status != "rejected") {

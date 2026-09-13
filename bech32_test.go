@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -173,5 +174,38 @@ func TestCheckX(t *testing.T) {
 		if got := checkX(srv.URL, "alice_x", id, "CODE123"); got != want {
 			t.Errorf("checkX(%s) = %q, want %q", id, got, want)
 		}
+	}
+}
+
+func TestCheckReddit(t *testing.T) {
+	old := float64(time.Now().AddDate(-3, 0, 0).Unix())
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/access_token":
+			if u, p, ok := r.BasicAuth(); !ok || u != "id" || p != "secret" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			w.Write([]byte(`{"access_token":"tok","token_type":"bearer"}`))
+		case "/user/old_account/about":
+			if r.Header.Get("Authorization") != "Bearer tok" {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			fmt.Fprintf(w, `{"data":{"created_utc":%f,"subreddit":{"public_description":"hello CODE123"}}}`, old)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	want := "code found in profile description; account created " + time.Now().AddDate(-3, 0, 0).Format("Jan 2006") + " (age OK)"
+	if got := checkReddit(srv.URL, srv.URL, "id", "secret", "old_account", "CODE123"); got != want {
+		t.Errorf("checkReddit = %q, want %q", got, want)
+	}
+	if got := checkReddit(srv.URL, srv.URL, "id", "wrong", "old_account", "CODE123"); !strings.HasPrefix(got, "reddit token failed") {
+		t.Errorf("bad credentials: %q", got)
+	}
+	if got := checkReddit(srv.URL, srv.URL, "id", "secret", "nobody", "CODE123"); got != "reddit user NOT FOUND" {
+		t.Errorf("missing user: %q", got)
 	}
 }
