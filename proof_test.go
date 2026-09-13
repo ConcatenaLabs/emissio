@@ -119,7 +119,7 @@ func TestEvidenceCheck(t *testing.T) {
 		{"anchor-lookup", "first", "no idea", "proof amount found (output 0, asset c8eccacf0953…); no hash in the notes matches the block's Bitcoin anchor; confirmed at height 42"},
 		{"bridge-in", "assetfee", "", "proof amount found (output 0, asset 2a515539da5e…); moves asset 2a515539da5e…; reviewer confirms it is a Compages asset; confirmed at height 42"},
 		{"bridge-in", "first", "", "proof amount found (output 0, asset c8eccacf0953…); proof output is tSEQ; it must move the bridged asset; confirmed at height 42"},
-		{"report-bug", "", "", "a maintainer confirms the linked issue"},
+		{"report-bug", "", "", "no link to an issue under github.com/ConcatenaLabs in the notes"},
 	}
 	for _, c := range cases {
 		if got := app.evidenceCheck(c.slug, c.txid, c.notes, user); got != c.want {
@@ -173,5 +173,89 @@ func TestUptimeVerdict(t *testing.T) {
 	}
 	if got := uptimeVerdict(db, "abc", now); !strings.HasSuffix(got, "(does NOT yet qualify)") {
 		t.Errorf("two days: %q", got)
+	}
+}
+
+func TestNormalizeURL(t *testing.T) {
+	a := normalizeURL("HTTPS://Example.COM/Work/Piece.png/#top")
+	b := normalizeURL("https://example.com/Work/Piece.png")
+	if a != b {
+		t.Errorf("%q != %q", a, b)
+	}
+	if normalizeURL("https://example.com/a") == normalizeURL("https://example.com/A") {
+		t.Errorf("path case must matter")
+	}
+}
+
+func TestEntryReportIssueChecks(t *testing.T) {
+	code := "0123456789"
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/page-with-code":
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte("<html><body>My entry, code 0123456789</body></html>"))
+		case "/page-without":
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte("<html><body>nothing</body></html>"))
+		case "/image.png":
+			w.Header().Set("Content-Type", "image/png")
+			w.Write([]byte{0x89, 'P', 'N', 'G'})
+		case "/repos/ConcatenaLabs/emissio/issues/7":
+			w.Write([]byte(`{"title":"Broken link","body":"Steps... my code 0123456789","state":"open","user":{"login":"tester"}}`))
+		case "/repos/ConcatenaLabs/emissio/issues/8":
+			w.Write([]byte(`{"title":"No code","body":"Steps...","state":"open","user":{"login":"tester"}}`))
+		case "/repos/ConcatenaLabs/emissio/issues/9":
+			w.Write([]byte(`{"title":"PR","body":"0123456789","state":"open","user":{"login":"tester"},"pull_request":{}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer site.Close()
+	app, _, _ := newTestServer(t)
+	app.cfg.GitHubAPI = site.URL
+
+	entries := map[string]string{
+		site.URL + "/page-with-code":         "account code found on the linked page (OK)",
+		site.URL + "/page-without":           "account code NOT found on the linked page; the judges check that the work itself carries the account code 0123456789",
+		site.URL + "/image.png":              "link is a file (image/png); the judges check that the work itself carries the account code 0123456789",
+		site.URL + "/gallery/0123456789.png": "account code is in the link (OK)",
+		site.URL + "/missing":                "link returned HTTP 404; the judges check that the work carries the account code 0123456789",
+	}
+	for u, want := range entries {
+		if got := app.entryCheck(u, code); got != want {
+			t.Errorf("entryCheck(%s)\n got %q\nwant %q", u, got, want)
+		}
+	}
+
+	uid, _ := createUser(app.db, "r1@example.com", "x", code, "")
+	other, _ := createUser(app.db, "r2@example.com", "x", "ffffffffff", "")
+	if got := app.reportCheck(uid, "0123456789\nThe node crashes when...", code); got != "first line carries the account code (OK)" {
+		t.Errorf("plain: %q", got)
+	}
+	if got := app.reportCheck(uid, "The node crashes when...", code); got != "account code NOT on the first line" {
+		t.Errorf("no code: %q", got)
+	}
+	if got := app.reportCheck(uid, "-----BEGIN PGP MESSAGE-----\nabc\n-----END PGP MESSAGE-----", code); !strings.HasPrefix(got, "encrypted: after decrypting") {
+		t.Errorf("encrypted: %q", got)
+	}
+	// The same body from another account is flagged.
+	if _, err := createReport(app.db, other, "t", "low", "ffffffffff\nsame text", "x"); err != nil {
+		t.Fatal(err)
+	}
+	if got := app.reportCheck(uid, "ffffffffff\nsame text", code); !strings.Contains(got, "IDENTICAL to report #") {
+		t.Errorf("duplicate: %q", got)
+	}
+
+	issues := map[string]string{
+		"see https://github.com/ConcatenaLabs/emissio/issues/7 thanks": "emissio#7 by tester (open): contains the account code (OK); a maintainer confirms the bug",
+		"https://github.com/ConcatenaLabs/emissio/issues/8":            "emissio#8 by tester (open): account code NOT in the issue",
+		"https://github.com/ConcatenaLabs/emissio/issues/9":            "emissio#9 is a pull request, not an issue",
+		"https://github.com/ConcatenaLabs/emissio/issues/10":           "issue emissio#10 NOT FOUND",
+		"no link here": "no link to an issue under github.com/ConcatenaLabs in the notes",
+	}
+	for notes, want := range issues {
+		if got := app.issueCheck(notes, code); got != want {
+			t.Errorf("issueCheck(%q)\n got %q\nwant %q", notes, got, want)
+		}
 	}
 }

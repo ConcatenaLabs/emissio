@@ -33,6 +33,7 @@
     <summary>#{{.ID}} · {{.UserEmail}} {{if .Place}}· <span class="pill awarded">place {{.Place}}</span>{{end}}</summary>
     <div class="inner">
       <p class="small"><a href="{{.URL}}" rel="nofollow noopener">{{.URL}}</a></p>
+      <p class="small">check: <em>{{.CheckNote}}</em></p>
       {{if .Notes}}<p class="small" style="white-space:pre-wrap">{{.Notes}}</p>{{end}}
       {{if not .Place}}
       <form method="post" action="{{base}}/admin/competitions/{{$.Data.Comp.Slug}}/award" style="display:flex;gap:.6rem;align-items:flex-end">

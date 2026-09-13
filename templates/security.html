@@ -34,6 +34,7 @@
     <li><strong>A security consequence you demonstrate.</strong> Show what an attacker gains or a user loses, even if it is small. "Could be dangerous combined with an unknown bug" does not qualify, and neither do missing headers, version disclosure, rate limits, or best-practice deviations without an exploit.</li>
     <li><strong>Reproduction a reviewer can confirm in under an hour</strong> from the steps as written. A report that cannot be reproduced is not accepted at any tier.</li>
     <li><strong>First and untracked.</strong> Anything already on the public issue trackers or fixed on the default branch is a duplicate.</li>
+    <li><strong>Your account code on the first line.</strong> Start the report with your account code, inside the encrypted block if you encrypt. That is how a report is known to be yours even if it is read long after it was sent.</li>
   </ul>
   <p class="small muted">Found a real bug without a security angle? The <a href="{{base}}/tasks/report-bug">Report a bug</a> task pays for those.</p>
 </div>
@@ -79,7 +80,7 @@ gpg --armor --encrypt -r "Sequentia security reports" report.txt
       <option value="critical">Critical</option>
     </select>
     <label for="body">Report</label>
-    <textarea id="body" name="body" required style="min-height:12rem" placeholder="What is affected, steps to reproduce, impact, and your proposed fix if you have one. An encrypted report is a PGP message block pasted here as is."></textarea>
+    <textarea id="body" name="body" required style="min-height:12rem" placeholder="First line: your account code {{if .User}}{{.User.ClaimCode}}{{end}}. Then what is affected, steps to reproduce, impact, and your proposed fix if you have one. An encrypted report is a PGP message block pasted here as is, with the code inside it."></textarea>
     <div class="actions"><button class="btn" type="submit">Send report privately</button></div>
   </form>
   {{end}}

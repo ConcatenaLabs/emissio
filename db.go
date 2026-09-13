@@ -1,9 +1,11 @@
 package main
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -140,6 +142,10 @@ func mustOpenDB(path string) *sql.DB {
 	db.Exec("ALTER TABLE users ADD COLUMN referred_by INTEGER NOT NULL DEFAULT 0")
 	db.Exec("ALTER TABLE users ADD COLUMN reg_ip TEXT NOT NULL DEFAULT ''")
 	db.Exec("ALTER TABLE verifications ADD COLUMN evidence TEXT NOT NULL DEFAULT ''")
+	db.Exec("ALTER TABLE entries ADD COLUMN check_note TEXT NOT NULL DEFAULT ''")
+	db.Exec("ALTER TABLE entries ADD COLUMN url_key TEXT NOT NULL DEFAULT ''")
+	db.Exec("ALTER TABLE reports ADD COLUMN check_note TEXT NOT NULL DEFAULT ''")
+	db.Exec("ALTER TABLE reports ADD COLUMN body_hash TEXT NOT NULL DEFAULT ''")
 	return db
 }
 
@@ -452,6 +458,7 @@ type Entry struct {
 	UserID    int64
 	URL       string
 	Notes     string
+	CheckNote string
 	Place     int64
 	CreatedAt int64
 	UpdatedAt int64
@@ -460,9 +467,9 @@ type Entry struct {
 
 func entryOf(db *sql.DB, compID, userID int64) (*Entry, error) {
 	var e Entry
-	err := db.QueryRow(`SELECT id, comp_id, user_id, url, notes, place, created_at, updated_at
+	err := db.QueryRow(`SELECT id, comp_id, user_id, url, notes, check_note, place, created_at, updated_at
 		FROM entries WHERE comp_id = ? AND user_id = ?`, compID, userID).
-		Scan(&e.ID, &e.CompID, &e.UserID, &e.URL, &e.Notes, &e.Place, &e.CreatedAt, &e.UpdatedAt)
+		Scan(&e.ID, &e.CompID, &e.UserID, &e.URL, &e.Notes, &e.CheckNote, &e.Place, &e.CreatedAt, &e.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -472,16 +479,16 @@ func entryOf(db *sql.DB, compID, userID int64) (*Entry, error) {
 	return &e, nil
 }
 
-func upsertEntry(db *sql.DB, compID, userID int64, url, notes string) error {
-	_, err := db.Exec(`INSERT INTO entries (comp_id, user_id, url, notes, created_at, updated_at)
-		VALUES (?,?,?,?,?,?)
-		ON CONFLICT(comp_id, user_id) DO UPDATE SET url = excluded.url, notes = excluded.notes, updated_at = excluded.updated_at`,
-		compID, userID, url, notes, now(), now())
+func upsertEntry(db *sql.DB, compID, userID int64, url, notes, checkNote string) error {
+	_, err := db.Exec(`INSERT INTO entries (comp_id, user_id, url, url_key, notes, check_note, created_at, updated_at)
+		VALUES (?,?,?,?,?,?,?,?)
+		ON CONFLICT(comp_id, user_id) DO UPDATE SET url = excluded.url, url_key = excluded.url_key, notes = excluded.notes, check_note = excluded.check_note, updated_at = excluded.updated_at`,
+		compID, userID, url, normalizeURL(url), notes, checkNote, now(), now())
 	return err
 }
 
 func entriesOf(db *sql.DB, compID int64) ([]*Entry, error) {
-	rows, err := db.Query(`SELECT e.id, e.comp_id, e.user_id, e.url, e.notes, e.place, e.created_at, e.updated_at, u.email
+	rows, err := db.Query(`SELECT e.id, e.comp_id, e.user_id, e.url, e.notes, e.check_note, e.place, e.created_at, e.updated_at, u.email
 		FROM entries e JOIN users u ON u.id = e.user_id WHERE e.comp_id = ? ORDER BY e.id`, compID)
 	if err != nil {
 		return nil, err
@@ -490,7 +497,7 @@ func entriesOf(db *sql.DB, compID int64) ([]*Entry, error) {
 	var out []*Entry
 	for rows.Next() {
 		var e Entry
-		if err := rows.Scan(&e.ID, &e.CompID, &e.UserID, &e.URL, &e.Notes, &e.Place, &e.CreatedAt, &e.UpdatedAt, &e.UserEmail); err != nil {
+		if err := rows.Scan(&e.ID, &e.CompID, &e.UserID, &e.URL, &e.Notes, &e.CheckNote, &e.Place, &e.CreatedAt, &e.UpdatedAt, &e.UserEmail); err != nil {
 			return nil, err
 		}
 		out = append(out, &e)
@@ -532,14 +539,16 @@ type Report struct {
 	Status     string
 	Award      int64
 	ReviewNote string
+	CheckNote  string
 	CreatedAt  int64
 	ReviewedAt int64
 	UserEmail  string
 }
 
-func createReport(db *sql.DB, userID int64, title, severity, body string) (int64, error) {
-	res, err := db.Exec("INSERT INTO reports (user_id, title, severity, body, created_at) VALUES (?,?,?,?,?)",
-		userID, title, severity, body, now())
+func createReport(db *sql.DB, userID int64, title, severity, body, checkNote string) (int64, error) {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(body)))
+	res, err := db.Exec("INSERT INTO reports (user_id, title, severity, body, check_note, body_hash, created_at) VALUES (?,?,?,?,?,?,?)",
+		userID, title, severity, body, checkNote, fmt.Sprintf("%x", sum[:]), now())
 	if err != nil {
 		return 0, err
 	}
@@ -555,7 +564,7 @@ func allReports(db *sql.DB) ([]*Report, error) {
 }
 
 func queryReports(db *sql.DB, where string, args ...any) ([]*Report, error) {
-	rows, err := db.Query(`SELECT r.id, r.user_id, r.title, r.severity, r.body, r.status, r.award, r.review_note,
+	rows, err := db.Query(`SELECT r.id, r.user_id, r.title, r.severity, r.body, r.status, r.award, r.review_note, r.check_note,
 		r.created_at, r.reviewed_at, u.email
 		FROM reports r JOIN users u ON u.id = r.user_id `+where+` ORDER BY r.id DESC LIMIT 200`, args...)
 	if err != nil {
@@ -565,7 +574,7 @@ func queryReports(db *sql.DB, where string, args ...any) ([]*Report, error) {
 	var out []*Report
 	for rows.Next() {
 		var r Report
-		if err := rows.Scan(&r.ID, &r.UserID, &r.Title, &r.Severity, &r.Body, &r.Status, &r.Award, &r.ReviewNote,
+		if err := rows.Scan(&r.ID, &r.UserID, &r.Title, &r.Severity, &r.Body, &r.Status, &r.Award, &r.ReviewNote, &r.CheckNote,
 			&r.CreatedAt, &r.ReviewedAt, &r.UserEmail); err != nil {
 			return nil, err
 		}

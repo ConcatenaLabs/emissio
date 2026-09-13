@@ -37,6 +37,7 @@ type Config struct {
 	PolicyAsset   string // asset id of tSEQ on this chain, for the fee and stake checks
 	NodeCLI       string // sequentia-cli path; with NodeDatadir, enables peer-based checks
 	NodeDatadir   string
+	GitHubAPI     string // for the bug-report issue check
 	TgBotToken    string // BotFather token; enables ID-based Telegram age checks
 	TgBotName     string // bot username shown to users, without @
 }
@@ -58,6 +59,7 @@ func loadConfig() Config {
 		PolicyAsset:   envOr("EMISSIO_POLICY_ASSET", "c8eccacf0953e1931cd31e434d8319101cc36e6c38b0e2104d8687552fae3e40"),
 		NodeCLI:       envOr("EMISSIO_CLI", ""),
 		NodeDatadir:   envOr("EMISSIO_DATADIR", ""),
+		GitHubAPI:     envOr("EMISSIO_GITHUB_API", "https://api.github.com"),
 		TgBotToken:    envOr("EMISSIO_TG_BOT_TOKEN", ""),
 		TgBotName:     envOr("EMISSIO_TG_BOT_NAME", ""),
 	}
@@ -311,6 +313,16 @@ func runCommand(db *sql.DB, args []string) {
 			}
 			inserted++
 		}
+		comps := 0
+		for _, c := range seedComps {
+			res, err := db.Exec("UPDATE competitions SET title = ?, body = ? WHERE slug = ?", c.title, c.body, c.slug)
+			if err != nil {
+				log.Fatal(err)
+			}
+			if n, _ := res.RowsAffected(); n > 0 {
+				comps++
+			}
+		}
 		retired := 0
 		for _, slug := range retiredTasks {
 			res, err := db.Exec("UPDATE tasks SET active = 0 WHERE slug = ? AND active = 1", slug)
@@ -321,7 +333,7 @@ func runCommand(db *sql.DB, args []string) {
 				retired++
 			}
 		}
-		fmt.Printf("updated copy of %d seeded tasks, inserted %d, retired %d\n", updated, inserted, retired)
+		fmt.Printf("updated copy of %d seeded tasks, inserted %d, retired %d; refreshed %d seeded competitions\n", updated, inserted, retired, comps)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n", args[0])
 		os.Exit(2)

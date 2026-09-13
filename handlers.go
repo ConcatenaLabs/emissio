@@ -329,7 +329,19 @@ func (a *App) handleCompetitionEnter(w http.ResponseWriter, r *http.Request) {
 		a.redirect(w, r, back, "", "Enter a public http(s) link to your work.")
 		return
 	}
-	if err := upsertEntry(a.db, comp.ID, user.ID, entryURL, notes); err != nil {
+	// One work, one entrant: a link another account already entered in this
+	// competition is refused outright.
+	var taken int64
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM entries WHERE comp_id = ? AND user_id != ? AND url_key = ?`,
+		comp.ID, user.ID, normalizeURL(entryURL)).Scan(&taken); err != nil {
+		a.serverError(w, err)
+		return
+	}
+	if taken > 0 {
+		a.redirect(w, r, back, "", "Another account has already entered that link. Enter your own work.")
+		return
+	}
+	if err := upsertEntry(a.db, comp.ID, user.ID, entryURL, notes, a.entryCheck(entryURL, user.ClaimCode)); err != nil {
 		a.serverError(w, err)
 		return
 	}
@@ -377,7 +389,7 @@ func (a *App) handleSecurityReport(w http.ResponseWriter, r *http.Request) {
 	if len(bodyText) > 20000 {
 		bodyText = bodyText[:20000]
 	}
-	if _, err := createReport(a.db, user.ID, title, severity, bodyText); err != nil {
+	if _, err := createReport(a.db, user.ID, title, severity, bodyText, a.reportCheck(user.ID, bodyText, user.ClaimCode)); err != nil {
 		a.serverError(w, err)
 		return
 	}

@@ -208,8 +208,8 @@ The check counts the ten-minute slots of the last week in which your node was se
 		reward: 25, cap: 400, needsTxid: false, sort: 90,
 		body: `Find and report a real bug that is not a security vulnerability: a documentation error that would send a user the wrong way, a wallet or explorer screen that shows the wrong thing, a crash or hang you can reproduce, a command in a guide that no longer works.
 
-- File the bug as a public issue in the repository that owns the code, under github.com/ConcatenaLabs, with steps to reproduce.
-- Paste the issue link in the notes below.
+- File the bug as a public issue in the repository that owns the code, under github.com/ConcatenaLabs, with steps to reproduce, and put your account code {CODE} in the issue text so the issue is known to be yours.
+- Paste the issue link in the notes below. The issue is read from GitHub and checked for the code.
 
 The task pays once per account, for the first issue of yours that a maintainer confirms. Further confirmed bugs are welcome on GitHub and count toward competitions when one is running. Anything with a security consequence belongs on the security page instead, where it is reviewed privately and paid by severity.`,
 	},
@@ -232,6 +232,7 @@ What to submit
 
 - One image (PNG or SVG preferred), plus optional variants.
 - Host it anywhere public (an image host, a git repository, a portfolio page) and paste the link in your entry.
+- Put your account code on the work or its page: a small caption in the image, the file name, or the page's description. An entry that does not carry the entrant's code is not judged.
 - Original work only. You keep your copyright and grant Sequentia a license to use the artwork in community material.
 
 Judging
