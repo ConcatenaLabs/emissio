@@ -70,7 +70,7 @@ Linking at least one verified social platform is required to receive the launch 
 
 You can link a Telegram, X, and Reddit account, 15 SEQ per platform. As sybil resistance, the linked account must be at least two years old, and a social account can vouch for exactly one Emissio account, ever. Ownership proof is your claim code:
 
-- Reddit: put the code in your profile's public description. With Reddit app credentials configured, ownership and account age are checked automatically through the API; Reddit blocks unauthenticated requests, so without them the reviewer checks the profile by hand.
+- Reddit: with `EMISSIO_REDDIT_TOKEN_SECRET` set, the user gets a signed token from the Emissio app installed on r/sequentia (the `emissio-reddit-verifier` repository), which Reddit authenticates, and pastes it into the account page; the token carries the username, the account creation date and the account code, and is verified here with the shared secret. Without that secret, the user puts the code in their profile description; with Reddit API app credentials the description and age are checked through the API, otherwise a reviewer checks by hand, since Reddit blocks unauthenticated requests.
 - X: publish a post containing the code and submit its link. The handle is taken from the link, so the account locked by the one-account-ever rule is the one that published the code. The app fetches the post from X's keyless embedded-post endpoint (`EMISSIO_X`, default `https://cdn.syndication.twimg.com`) and checks that the author matches that handle (X shows a post under any handle in the URL), that the text contains the code, and the account age, derived from the author's numeric id, which encodes the creation time for accounts made since 2016 and predates that for smaller ids. A post already attached to another request is flagged in the queue.
 - Telegram: if the instance runs a verification bot, you send your code as a message to the bot, which proves ownership via your authenticated numeric ID; account age is estimated from the ID (Telegram does not publish creation dates). Without a bot, the app falls back to a public t.me bio check with reviewer-judged age.
 
@@ -157,6 +157,7 @@ All configuration is environment variables (`loadConfig` in `main.go`):
 | `EMISSIO_SECURE` | `0` | Set `1` behind HTTPS so cookies are marked Secure |
 | `EMISSIO_TG_BOT_TOKEN` | empty | Telegram bot token (placeholder: `123456:ABC-...`); enables automatic Telegram ownership + ID-based age checks |
 | `EMISSIO_TG_BOT_NAME` | empty | The bot's username (without `@`), shown in user instructions |
+| `EMISSIO_REDDIT_TOKEN_SECRET` | empty | Secret shared with the Reddit app on r/sequentia that signs ownership tokens; enables the token flow for Reddit |
 | `EMISSIO_REDDIT_CLIENT_ID`, `EMISSIO_REDDIT_CLIENT_SECRET` | empty | Credentials of a Reddit app (created at reddit.com/prefs/apps, type "script"); enables the automatic Reddit check. Reddit blocks unauthenticated requests, so without them Reddit requests go to manual review |
 | `EMISSIO_REDDIT` | `https://www.reddit.com` | Reddit base URL, where tokens are issued (overridden in tests) |
 | `EMISSIO_REDDIT_OAUTH` | `https://oauth.reddit.com` | Reddit API host, where profiles are read (overridden in tests) |

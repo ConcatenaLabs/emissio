@@ -60,6 +60,9 @@
           {{if eq .Platform "x"}}
           <label>Link to your post</label>
           <input class="mono" type="text" name="post" placeholder="https://x.com/handle/status/1234567890">
+          {{else if and (eq .Platform "reddit") $.Data.RedditToken}}
+          <label>Token from the r/sequentia app</label>
+          <input class="mono" type="text" name="token" placeholder="ERV1.…">
           {{else}}
           <label>{{.Name}} {{if eq .Platform "reddit"}}username{{else}}handle{{end}}</label>
           <input class="mono" type="text" name="handle" placeholder="{{if eq .Platform "reddit"}}username{{else}}@handle{{end}}">

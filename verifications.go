@@ -1,7 +1,10 @@
 package main
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -185,6 +188,9 @@ func (a *App) verifCheck(platform, handle, evidence, claimCode string) string {
 // redditHint says whether the check is automatic, which needs API
 // credentials because Reddit blocks unauthenticated requests.
 func (a *App) redditHint() string {
+	if a.cfg.RedditToken != "" {
+		return "Open r/sequentia on Reddit, choose \"Verify for Emissio\" from the subreddit's menu (the three dots), enter your account code, and paste the token it gives you here. Reddit itself confirms which account you are and when it was created."
+	}
 	if a.cfg.RedditID != "" && a.cfg.RedditSecret != "" {
 		return "Add your account code to your Reddit profile's public description (Profile, Edit), then submit your username. Ownership and account age are checked automatically."
 	}
@@ -404,4 +410,61 @@ func checkX(base, handle, postID, claimCode string) string {
 		return "post by @" + post.User.ScreenName + " contains the code; " + note
 	}
 	return "code NOT found in the post; " + note
+}
+
+// Reddit ownership tokens. Reddit blocks unauthenticated reads and will not
+// let an app on its platform call our server, so the proof travels with the
+// user: an app installed on r/sequentia signs "username, account created,
+// Emissio code, issued, expires" with a secret shared with this server, and
+// the user pastes the token into their account page. Reddit authenticates
+// the user for the app, so the signature is the ownership proof.
+//
+//	ERV1.<base64url(payload JSON)>.<base64url(HMAC-SHA256("ERV1." + payload))>
+const redditTokenPrefix = "ERV1"
+
+type redditAppToken struct {
+	Username string `json:"u"`
+	Created  int64  `json:"c"`
+	Code     string `json:"e"`
+	Issued   int64  `json:"i"`
+	Expires  int64  `json:"x"`
+}
+
+// parseRedditToken verifies the signature and expiry and returns the claims.
+func parseRedditToken(secret, token string, now time.Time) (*redditAppToken, error) {
+	parts := strings.Split(strings.TrimSpace(token), ".")
+	if len(parts) != 3 || parts[0] != redditTokenPrefix {
+		return nil, fmt.Errorf("not a token from the Reddit app")
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(redditTokenPrefix + "." + parts[1]))
+	given, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil || !hmac.Equal(given, mac.Sum(nil)) {
+		return nil, fmt.Errorf("token signature is not valid")
+	}
+	body, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("token is damaged")
+	}
+	var t redditAppToken
+	if err := json.Unmarshal(body, &t); err != nil || t.Username == "" {
+		return nil, fmt.Errorf("token is damaged")
+	}
+	if t.Expires < now.Unix() {
+		return nil, fmt.Errorf("token has expired; get a new one from the Reddit app")
+	}
+	return &t, nil
+}
+
+// redditTokenCheck turns a verified token into the handle, evidence and
+// check note the verification row stores.
+func redditTokenCheck(t *redditAppToken, claimCode string) (handle, note string, ok bool) {
+	if t.Code != claimCode {
+		return "", "", false
+	}
+	created := time.Unix(t.Created, 0)
+	ageOK := time.Since(created) >= time.Duration(verifMinAgeYears)*365*24*time.Hour
+	note = fmt.Sprintf("signed by the r/sequentia app for u/%s; account created %s (age %s)", t.Username, created.Format("Jan 2006"),
+		map[bool]string{true: "OK", false: "UNDER " + fmt.Sprint(verifMinAgeYears) + " YEARS"}[ageOK])
+	return strings.ToLower(t.Username), note, true
 }

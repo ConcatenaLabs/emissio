@@ -33,6 +33,7 @@ type Config struct {
 	RedditOAuth   string // token endpoint base; the API host is derived from it in production
 	RedditID      string // Reddit app client id; with the secret, enables the automatic Reddit check
 	RedditSecret  string
+	RedditToken   string // secret shared with the Reddit app that issues signed ownership tokens
 	TgBotToken    string // BotFather token; enables ID-based Telegram age checks
 	TgBotName     string // bot username shown to users, without @
 }
@@ -50,6 +51,7 @@ func loadConfig() Config {
 		RedditOAuth:   envOr("EMISSIO_REDDIT_OAUTH", "https://oauth.reddit.com"),
 		RedditID:      envOr("EMISSIO_REDDIT_CLIENT_ID", ""),
 		RedditSecret:  envOr("EMISSIO_REDDIT_CLIENT_SECRET", ""),
+		RedditToken:   envOr("EMISSIO_REDDIT_TOKEN_SECRET", ""),
 		TgBotToken:    envOr("EMISSIO_TG_BOT_TOKEN", ""),
 		TgBotName:     envOr("EMISSIO_TG_BOT_NAME", ""),
 	}
