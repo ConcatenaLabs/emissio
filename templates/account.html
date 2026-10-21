@@ -33,6 +33,31 @@
       <input class="mono" type="text" id="address" name="address" placeholder="bc1q...">
       <div class="actions"><button class="btn" type="submit">Save address</button></div>
     </form>
+    {{with .Data.Payout}}
+    {{if .Line}}<div class="flash ok" style="margin:1rem 0 0" data-payout-line>{{.Line}}</div>{{end}}
+    {{if .NeedsKey}}
+    <div class="eyebrow" style="margin-top:1.4rem">Public key of this address</div>
+    {{if .LaunchKey}}
+      <p class="small muted">On file: the payout is paid to the key of this address.</p>
+    {{else}}
+      <p class="small muted">An address starting bc1q names only a hash of its key, so the payout needs the key itself once. Your wallet shows it as the address's public key (66 characters, starting 02 or 03). It is public: it lets nobody spend.</p>
+    {{end}}
+    <form class="stack" method="post" action="{{base}}/account/payout-key">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <input class="mono" type="text" name="key" placeholder="02..." value="{{.PayoutKey}}" aria-label="public key of the payout address">
+      <div class="actions"><button class="btn ghost" type="submit">Save public key</button></div>
+    </form>
+    {{end}}
+    {{if .Rehearsing}}
+    <div class="eyebrow" style="margin-top:1.4rem">Testnet rehearsal</div>
+    <p class="small muted">The payout is rehearsed on the testnet first, in tSEQ, paid straight to your Sequentia testnet wallet, which collects it by itself the next time it opens. Give a public key of that wallet: its identity key, or the public key of one of its receive addresses. The rehearsal moves nothing in your ledger.</p>
+    <form class="stack" method="post" action="{{base}}/account/rehearsal-key">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <input class="mono" type="text" name="key" placeholder="public key, or tb1p..." value="{{.RehKey}}" aria-label="testnet wallet key">
+      <div class="actions"><button class="btn ghost" type="submit">Save testnet wallet key</button></div>
+    </form>
+    {{end}}
+    {{end}}
   </div>
 </div>
 

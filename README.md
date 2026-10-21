@@ -101,6 +101,28 @@ Your claim code is also a referral link: `https://sequentiatestnet.com/emissio/r
 
 You register a Sequentia mainnet receiving address on your account page. Sequentia's transparent addresses use Bitcoin's own bech32/bech32m encoding, so a mainnet address starts with `bc1` (segwit v0 or v1), and any audited Bitcoin wallet can generate one; the in-app guide explains safe key generation. Validation does a full checksum check and gives specific errors for testnet (`tb1`), confidential (`sqb1`), Liquid, and legacy formats.
 
+### The payout
+
+Balances are paid in one payment from the paying wallet, straight to each account's wallet: a payout run. Each account's allocation is a share of its own that its wallet collects by itself the next time it opens; what is not collected by the run's deadline (a few weeks after the payment) goes back to the paying wallet, and the run records each account as collected or returned.
+
+Each account is named by a public key its wallet holds:
+
+- **The launch payout** names the key of the registered mainnet address. A taproot address (`bc1p…`) is its key. An address starting `bc1q` names only a hash of its key, so the account page asks for its public key once (66 characters, `02…` or `03…`) and checks it against the address. A script address (a `bc1q` of 62 characters) cannot be paid this way.
+- **The testnet rehearsal** names a key of the account's Sequentia testnet wallet, given on the account page: the public key of one of its receive addresses, or its identity key, or a taproot address. A rehearsal pays tSEQ and moves nothing in any ledger.
+
+A run takes every account with a positive balance, at least one verified platform and a key, at its balance times `EMISSIO_PAYOUT_ATOMS_PER_SEQ` atoms of `EMISSIO_PAYOUT_ASSET`; every other account is listed as left out with the reason. A wallet key is paid for one account only, and an account is in one open run at a time. On mainnet a collected allocation is a `payout` ledger row that takes it off the balance, once; one that comes back stays owed and goes into the next run.
+
+The admin's side is `/admin/payouts`:
+
+1. **Open a run.** The page shows how many accounts are paid, the total, the most the fee can be, and who is left out.
+2. **Pay it.** Download the payment list (a line `KEY ATOMS` each) and pay it from the paying wallet, whose key never touches this host. With the `arca` command line: `arca distribute LIST --asset ASSET --quote` shows the exact fee; `arca distribute LIST --asset ASSET --shown FEE` pays; `arca sync` once its round is final.
+3. **Record its reference.** Paste the payment's reference (the distribution id the wallet answers). It is recorded only when the payment service's public status names exactly the run's list: the asset, every key once, every amount, nobody else.
+4. **Watch it.** The follower reads the status every `EMISSIO_PAYOUT_POLL_SECS` and records each allocation as paid, collected or returned; the account page tells the account in plain words.
+
+The payment service is an Arca operator (`EMISSIO_PAYOUT_URL`), and the payment is a distribution in its claim-tree sense. Emissio only reads its public `/v1/info` and `/v1/distribution_status`; no page names it.
+
+The launch payout needs, beyond this code: the Sequentia mainnet and an operator on it paying SEQ; for a `bc1p` key from a BIP86 wallet, a wallet library that looks for payments under BIP86 output keys (it looks under BIP84 keys and the identity key); and the public keys of `bc1q` accounts collected before launch.
+
 ## The review model
 
 Every reward flows through human review: task submissions, security reports, and verifications sit in admin queues, and competitions are judged by admins. Automatic checks (explorer txid lookup, Reddit `about.json`, the Telegram bot) only annotate the queue. Admin accounts are ordinary accounts with an admin flag, created from the server command line; there is no self-service admin signup.
@@ -159,7 +181,7 @@ Tests:
 go test ./...
 ```
 
-`app_test.go` drives the full HTTP surface against a temporary database: registration, submission and review lifecycle, prize and report awards, referral qualification, verifications (with stubbed Reddit/Telegram servers), duplicate-txid rejection, base-path handling, CSRF, and anonymous-access denial. `bech32_test.go` covers address validation and formatting helpers.
+`app_test.go` drives the full HTTP surface against a temporary database: registration, submission and review lifecycle, prize and report awards, referral qualification, verifications (with stubbed Reddit/Telegram servers), duplicate-txid rejection, base-path handling, CSRF, and anonymous-access denial. `bech32_test.go` covers address validation and formatting helpers. `payout_test.go` covers payout keys, a rehearsal run against a stand-in payment service (left-out reasons, every refusal of a reference, collected and returned allocations, no balance moved) and the launch's single debit. `regtest_payout_test.go` runs the rehearsal end to end against a real payment service: an Arca operator from arca's `arca_operator_for_browsers` harness, named by `EMISSIO_REGTEST_CONTROL`, with `EMISSIO_REGTEST_ARCA` the `arca` binary; it is skipped without them.
 
 ### Configuration
 
@@ -183,6 +205,12 @@ All configuration is environment variables (`loadConfig` in `main.go`):
 | `EMISSIO_REDDIT_OAUTH` | `https://oauth.reddit.com` | Reddit API host, where profiles are read (overridden in tests) |
 | `EMISSIO_X` | `https://cdn.syndication.twimg.com` | X embedded-post endpoint (overridden in tests) |
 | `EMISSIO_TELEGRAM` | `https://t.me` | t.me base URL (overridden in tests) |
+| `EMISSIO_PAYOUT_URL` | empty | Base URL (no `/v1`) of the payment service the payout runs pay through, an Arca operator serving the payout asset; empty turns payout runs off |
+| `EMISSIO_PAYOUT_NETWORK` | `testnet` | `testnet`: the rehearsal, tSEQ to each account's testnet wallet key, no balance moved. `mainnet`: SEQ to the key of each account's payout address, a collected allocation debited |
+| `EMISSIO_PAYOUT_ASSET` | `EMISSIO_POLICY_ASSET` on the testnet; none on mainnet | Asset id the payout pays in; required on mainnet |
+| `EMISSIO_PAYOUT_ATOMS_PER_SEQ` | `100000000` | Atoms of the payout asset paid for each SEQ of balance (a rehearsal may pay less) |
+| `EMISSIO_PAYOUT_HRPS` | `tb` | Address prefixes a testnet wallet key may be given in as a taproot address, comma-separated |
+| `EMISSIO_PAYOUT_POLL_SECS` | `60` | How often the follower reads the status of a run with a payment |
 
 Keep real secrets (such as the bot token) out of the repo and out of unit files under version control; on a systemd host, use a drop-in (`systemctl edit emissio`).
 
@@ -201,12 +229,13 @@ Keep real secrets (such as the bot token) out of the repo and out of unit files 
 | `verifications.go` | Social verification: platform definitions and Reddit/t.me checks |
 | `telegram.go` | Telegram bot check and ID-based account-age estimation |
 | `esplora.go` | Explorer txid check |
+| `payout.go` | Payout runs: keys, the run's list, the reference check, the follower, the admin's and the account's pages |
 | `templates/`, `static/` | HTML templates and assets, embedded into the binary |
 | `deploy/` | systemd unit and box install script |
 
 ### Data storage
 
-One SQLite file (WAL mode, foreign keys on, a single connection to serialize writers). Tables: `users`, `sessions`, `tasks`, `submissions`, `competitions`, `entries`, `reports`, `ledger`, `verifications`. Every reward is a ledger row; a balance is `SUM(amount)` over the user's rows. Ledger kinds: `submission`, `entry`, `report`, `verification`, `referral`, `referral-welcome`, `adjustment`, and the reserved `presale`. Partial unique indexes on `(kind, ref_id)` are the double-credit guard.
+One SQLite file (WAL mode, foreign keys on, a single connection to serialize writers). Tables: `users`, `sessions`, `tasks`, `submissions`, `competitions`, `entries`, `reports`, `ledger`, `verifications`, and for the payout `payout_keys`, `payout_runs`, `payout_rows`. Every reward is a ledger row; a balance is `SUM(amount)` over the user's rows. Ledger kinds: `submission`, `entry`, `report`, `verification`, `referral`, `referral-welcome`, `adjustment`, `payout` (a collected launch allocation, negative), and the reserved `presale`. Partial unique indexes on `(kind, ref_id)` are the double-credit guard.
 
 ### Deployment
 

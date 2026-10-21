@@ -146,6 +146,9 @@ func mustOpenDB(path string) *sql.DB {
 	db.Exec("ALTER TABLE entries ADD COLUMN url_key TEXT NOT NULL DEFAULT ''")
 	db.Exec("ALTER TABLE reports ADD COLUMN check_note TEXT NOT NULL DEFAULT ''")
 	db.Exec("ALTER TABLE reports ADD COLUMN body_hash TEXT NOT NULL DEFAULT ''")
+	if _, err := db.Exec(payoutSchema); err != nil {
+		panic(err)
+	}
 	return db
 }
 

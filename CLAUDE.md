@@ -59,6 +59,14 @@ that must not regress:
   Sequentia uses Bitcoin's seed phrases, derivation and address formats, so an audited Bitcoin
   wallet is a valid way to generate one.
 
+- **The payout never holds a key and never pays.** A payout run (`payout.go`) lists each payable
+  account under a key its wallet holds; the paying wallet pays the list elsewhere, and a
+  reference is recorded only when the payment service's public status names exactly that list.
+  A rehearsal (`EMISSIO_PAYOUT_NETWORK=testnet`) moves no balance; on mainnet a collected
+  allocation is a `payout` ledger row, unique per payout row, and a returned one stays owed. An
+  account is in one open run at a time and a wallet key is paid for one account only, both in
+  the schema. No page names the payment service.
+
 Manual ledger adjustments are always visible to the user. Keep it that way.
 
 ## Naming
