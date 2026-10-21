@@ -91,6 +91,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS payout_rows_key ON payout_rows(run_id, named_k
 -- came back can be paid again but never twice.
 CREATE UNIQUE INDEX IF NOT EXISTS payout_rows_open ON payout_rows(user_id) WHERE state IN ('planned', 'pending', 'paid');
 CREATE UNIQUE INDEX IF NOT EXISTS ledger_payout ON ledger(kind, ref_id) WHERE kind = 'payout';
+-- Whether the testnet rehearsal is asking accounts for their wallet now.
+CREATE TABLE IF NOT EXISTS payout_settings (
+	name TEXT PRIMARY KEY,
+	value TEXT NOT NULL
+);
 `
 
 // ---------- keys ----------
@@ -265,21 +270,45 @@ func (a *App) handleRehearsalKey(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	given := strings.TrimSpace(r.FormValue("key"))
-	key := ""
-	if given != "" {
-		k, err := namedKey(given, a.cfg.PayoutHRPs)
-		if err != nil {
-			a.redirect(w, r, "/account", "", "Key not saved: "+err.Error()+".")
-			return
-		}
-		key = k
+	if !a.accountPayoutOf(user).Rehearsing {
+		a.redirect(w, r, "/account", "", "The testnet rehearsal is not asking for wallets now.")
+		return
+	}
+	key, err := a.walletKey(r.FormValue("key"))
+	if err != nil {
+		a.redirect(w, r, "/account", "", "Not saved: "+err.Error()+".")
+		return
 	}
 	if err := setKey(a.db, user.ID, "rehearsal_key", key); err != nil {
 		a.serverError(w, err)
 		return
 	}
-	a.redirect(w, r, "/account", "Testnet wallet key saved.", "")
+	a.redirect(w, r, "/account", "Saved: the rehearsal pays your testnet wallet.", "")
+}
+
+// rehearsalOpen reports whether the testnet rehearsal is asking accounts for
+// their wallet now: an admin opens and closes that on the payouts page.
+func rehearsalOpen(db *sql.DB) bool {
+	var v string
+	db.QueryRow(`SELECT value FROM payout_settings WHERE name = 'rehearsal_open'`).Scan(&v)
+	return v == "1"
+}
+
+func (a *App) handleAdminPayoutCollection(w http.ResponseWriter, r *http.Request) {
+	v := "0"
+	if r.FormValue("open") == "1" {
+		v = "1"
+	}
+	if _, err := a.db.Exec(`INSERT INTO payout_settings (name, value) VALUES ('rehearsal_open', ?)
+		ON CONFLICT(name) DO UPDATE SET value = excluded.value`, v); err != nil {
+		a.serverError(w, err)
+		return
+	}
+	msg := "Accounts are no longer asked for their testnet wallet."
+	if v == "1" {
+		msg = "Accounts are asked for their testnet wallet on their account page."
+	}
+	a.redirect(w, r, "/admin/payouts", msg, "")
 }
 
 // ---------- the payment service ----------
@@ -800,11 +829,12 @@ func (a *App) startPayoutFollower() {
 // ---------- admin pages ----------
 
 type payoutsPage struct {
-	Runs      []*PayoutRun
-	Rehearsal bool
-	Asset     string
-	PerSEQ    int64
-	Available bool
+	Collecting bool
+	Runs       []*PayoutRun
+	Rehearsal  bool
+	Asset      string
+	PerSEQ     int64
+	Available  bool
 }
 
 func (a *App) handleAdminPayouts(w http.ResponseWriter, r *http.Request) {
@@ -813,7 +843,7 @@ func (a *App) handleAdminPayouts(w http.ResponseWriter, r *http.Request) {
 		a.serverError(w, err)
 		return
 	}
-	a.render(w, r, "admin_payouts", "Payouts", payoutsPage{Runs: runs, Rehearsal: a.rehearsal(), Asset: a.cfg.PayoutAsset,
+	a.render(w, r, "admin_payouts", "Payouts", payoutsPage{Collecting: rehearsalOpen(a.db), Runs: runs, Rehearsal: a.rehearsal(), Asset: a.cfg.PayoutAsset,
 		PerSEQ: a.cfg.PayoutAtomsPerSEQ, Available: a.cfg.PayoutURL != ""})
 }
 
@@ -961,7 +991,13 @@ type accountPayout struct {
 // launch payout will name, and the account's allocation in the latest run.
 func (a *App) accountPayoutOf(u *User) accountPayout {
 	k, _ := keysOf(a.db, u.ID)
-	ap := accountPayout{PayoutKey: k.PayoutKey, RehKey: k.RehearsalKey, Rehearsing: a.cfg.PayoutURL != "" && a.rehearsal()}
+	// The rehearsal panel shows while an admin has the rehearsal asking for
+	// wallets, and to an account that saved one or was paid one; to nobody
+	// else, so the page stays as it is for everyone the rehearsal is not for.
+	var paid int
+	a.db.QueryRow(`SELECT COUNT(*) FROM payout_rows WHERE user_id = ? AND state NOT IN ('left_out', 'planned')`, u.ID).Scan(&paid)
+	ap := accountPayout{PayoutKey: k.PayoutKey, RehKey: k.RehearsalKey,
+		Rehearsing: a.cfg.PayoutURL != "" && a.rehearsal() && (rehearsalOpen(a.db) || k.RehearsalKey != "" || paid > 0)}
 	ap.LaunchKey, ap.LaunchWhy = launchKey(u.MainnetAddress, k.PayoutKey)
 	if u.MainnetAddress != "" {
 		if _, v, prog, err := segwitProgram(u.MainnetAddress); err == nil && v == 0 && len(prog) == 20 {

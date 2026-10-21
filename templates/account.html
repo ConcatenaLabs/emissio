@@ -50,11 +50,16 @@
     {{end}}
     {{if .Rehearsing}}
     <div class="eyebrow" style="margin-top:1.4rem">Testnet rehearsal</div>
-    <p class="small muted">The payout is rehearsed on the testnet first, in tSEQ, paid straight to your Sequentia testnet wallet, which collects it by itself the next time it opens. Give a public key of that wallet: its identity key, or the public key of one of its receive addresses. The rehearsal moves nothing in your ledger.</p>
+    {{if .RehKey}}
+    <p class="small muted" data-rehearsal-saved>Your testnet wallet is saved. The rehearsal pays tSEQ straight to it, and the wallet collects it by itself the next time you open it. Nothing in your ledger changes.</p>
+    {{else}}
+    <p class="small muted">Before launch the payout is rehearsed on the testnet, in tSEQ, paid straight to your Sequentia testnet wallet. Nothing in your ledger changes.</p>
+    <p class="small muted">To take part, open the web wallet, go to <strong>Receive</strong>, press <strong>Show xpub</strong>, then <strong>Copy</strong>, and paste it here. Emissio keeps only what it needs to pay that wallet. An address of your wallet that has already sent a transaction works too.</p>
+    {{end}}
     <form class="stack" method="post" action="{{base}}/account/rehearsal-key">
       <input type="hidden" name="csrf" value="{{$.CSRF}}">
-      <input class="mono" type="text" name="key" placeholder="public key, or tb1p..." value="{{.RehKey}}" aria-label="testnet wallet key">
-      <div class="actions"><button class="btn ghost" type="submit">Save testnet wallet key</button></div>
+      <input class="mono" type="text" name="key" placeholder="tpub..." aria-label="your testnet wallet">
+      <div class="actions"><button class="btn ghost" type="submit">{{if .RehKey}}Replace{{else}}Save{{end}}</button></div>
     </form>
     {{end}}
     {{end}}

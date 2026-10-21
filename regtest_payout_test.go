@@ -310,6 +310,11 @@ func (r *reg) run() {
 	if _, msg := admin.post("/login", url.Values{"email": {"admin@example.com"}, "password": {"a-regtest-password"}}); msg != "" {
 		r.log("admin login: %s", msg)
 	}
+	admin.get("/admin/payouts")
+	if _, msg := admin.post("/admin/payouts/collection", url.Values{"open": {"1"}}); !strings.Contains(msg, "are asked") {
+		t.Fatalf("opening the rehearsal for wallets: %q", msg)
+	}
+	r.log("the admin has the rehearsal ask accounts for their testnet wallet")
 	admin.get("/admin/users")
 
 	// --- twelve accounts, each with its own wallet ---
@@ -345,7 +350,7 @@ func (r *reg) run() {
 			}
 			a.key = given
 			b.get("/account")
-			if _, msg := b.post("/account/rehearsal-key", url.Values{"key": {given}}); !strings.Contains(msg, "saved") {
+			if _, msg := b.post("/account/rehearsal-key", url.Values{"key": {given}}); !strings.Contains(msg, "Saved") {
 				t.Fatalf("%s's key: %q", email, msg)
 			}
 		}
