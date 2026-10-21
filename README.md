@@ -108,16 +108,17 @@ Balances are paid in one payment from the paying wallet, straight to each accoun
 Each account is named by a public key its wallet holds:
 
 - **The launch payout** names the key of the registered mainnet address. A taproot address (`bc1p…`) is its key. An address starting `bc1q` names only a hash of its key, so the account page asks for its public key once (66 characters, `02…` or `03…`) and checks it against the address. A script address (a `bc1q` of 62 characters) cannot be paid this way.
-- **The testnet rehearsal** names a key of the account's Sequentia testnet wallet, given on the account page: the public key of one of its receive addresses, or its identity key, or a taproot address. A rehearsal pays tSEQ and moves nothing in any ledger.
+- **The testnet rehearsal** names the key of the first receive address of the account's Sequentia testnet wallet. The account page asks for it only while an admin has the rehearsal asking for wallets (`/admin/payouts`), and keeps showing it to an account that gave one or was paid; to anyone else the page shows nothing of the rehearsal. The account pastes its wallet's account key, which the web wallet shows under Receive, Show xpub (a `tpub`, with or without its `[fingerprint/84h/1h/0h]` origin, or the descriptor lines): Emissio derives the key of `m/84'/1'/0'/0/0` from it and keeps only that key. An address of the wallet that has already sent a transaction works too: its key is read from that spend through the explorer (`EMISSIO_ESPLORA`). A public key or a taproot address is taken as it is. A rehearsal pays tSEQ and moves nothing in any ledger.
 
 A run takes every account with a positive balance, at least one verified platform and a key, at its balance times `EMISSIO_PAYOUT_ATOMS_PER_SEQ` atoms of `EMISSIO_PAYOUT_ASSET`; every other account is listed as left out with the reason. A wallet key is paid for one account only, and an account is in one open run at a time. On mainnet a collected allocation is a `payout` ledger row that takes it off the balance, once; one that comes back stays owed and goes into the next run.
 
 The admin's side is `/admin/payouts`:
 
-1. **Open a run.** The page shows how many accounts are paid, the total, the most the fee can be, and who is left out.
-2. **Pay it.** Download the payment list (a line `KEY ATOMS` each) and pay it from the paying wallet, whose key never touches this host. With the `arca` command line: `arca distribute LIST --asset ASSET --quote` shows the exact fee; `arca distribute LIST --asset ASSET --shown FEE` pays; `arca sync` once its round is final.
-3. **Record its reference.** Paste the payment's reference (the distribution id the wallet answers). It is recorded only when the payment service's public status names exactly the run's list: the asset, every key once, every amount, nobody else.
-4. **Watch it.** The follower reads the status every `EMISSIO_PAYOUT_POLL_SECS` and records each allocation as paid, collected or returned; the account page tells the account in plain words.
+1. **For the rehearsal, ask for wallets first** ("Ask accounts for their testnet wallet"), and stop asking when the run is paid.
+2. **Open a run.** The page shows how many accounts are paid, the total, the most the fee can be, and who is left out.
+3. **Pay it.** Download the payment list (a line `KEY ATOMS` each) and pay it from the paying wallet, whose key never touches this host. With the `arca` command line: `arca distribute LIST --asset ASSET --quote` shows the exact fee; `arca distribute LIST --asset ASSET --shown FEE` pays; `arca sync` once its round is final.
+4. **Record its reference.** Paste the payment's reference (the distribution id the wallet answers). It is recorded only when the payment service's public status names exactly the run's list: the asset, every key once, every amount, nobody else.
+5. **Watch it.** The follower reads the status every `EMISSIO_PAYOUT_POLL_SECS` and records each allocation as paid, collected or returned; the account page tells the account in plain words.
 
 The payment service is an Arca operator (`EMISSIO_PAYOUT_URL`), and the payment is a distribution in its claim-tree sense. Emissio only reads its public `/v1/info` and `/v1/distribution_status`; no page names it.
 
@@ -181,7 +182,7 @@ Tests:
 go test ./...
 ```
 
-`app_test.go` drives the full HTTP surface against a temporary database: registration, submission and review lifecycle, prize and report awards, referral qualification, verifications (with stubbed Reddit/Telegram servers), duplicate-txid rejection, base-path handling, CSRF, and anonymous-access denial. `bech32_test.go` covers address validation and formatting helpers. `payout_test.go` covers payout keys, a rehearsal run against a stand-in payment service (left-out reasons, every refusal of a reference, collected and returned allocations, no balance moved) and the launch's single debit. `regtest_payout_test.go` runs the rehearsal end to end against a real payment service: an Arca operator from arca's `arca_operator_for_browsers` harness, named by `EMISSIO_REGTEST_CONTROL`, with `EMISSIO_REGTEST_ARCA` the `arca` binary; it is skipped without them.
+`app_test.go` drives the full HTTP surface against a temporary database: registration, submission and review lifecycle, prize and report awards, referral qualification, verifications (with stubbed Reddit/Telegram servers), duplicate-txid rejection, base-path handling, CSRF, and anonymous-access denial. `bech32_test.go` covers address validation and formatting helpers. `walletkey_test.go` covers reading a wallet's key from its account key (BIP84's own vector) and from an address that has spent, and that the rehearsal shows only when asked. `payout_test.go` covers payout keys, a rehearsal run against a stand-in payment service (left-out reasons, every refusal of a reference, collected and returned allocations, no balance moved) and the launch's single debit. `regtest_payout_test.go` runs the rehearsal end to end against a real payment service: an Arca operator from arca's `arca_operator_for_browsers` harness, named by `EMISSIO_REGTEST_CONTROL`, with `EMISSIO_REGTEST_ARCA` the `arca` binary; it is skipped without them.
 
 ### Configuration
 
@@ -230,12 +231,13 @@ Keep real secrets (such as the bot token) out of the repo and out of unit files 
 | `telegram.go` | Telegram bot check and ID-based account-age estimation |
 | `esplora.go` | Explorer txid check |
 | `payout.go` | Payout runs: keys, the run's list, the reference check, the follower, the admin's and the account's pages |
+| `walletkey.go` | Reading what an account pastes (an account key, an address that has spent, a key) into the key the rehearsal pays |
 | `templates/`, `static/` | HTML templates and assets, embedded into the binary |
 | `deploy/` | systemd unit and box install script |
 
 ### Data storage
 
-One SQLite file (WAL mode, foreign keys on, a single connection to serialize writers). Tables: `users`, `sessions`, `tasks`, `submissions`, `competitions`, `entries`, `reports`, `ledger`, `verifications`, and for the payout `payout_keys`, `payout_runs`, `payout_rows`. Every reward is a ledger row; a balance is `SUM(amount)` over the user's rows. Ledger kinds: `submission`, `entry`, `report`, `verification`, `referral`, `referral-welcome`, `adjustment`, `payout` (a collected launch allocation, negative), and the reserved `presale`. Partial unique indexes on `(kind, ref_id)` are the double-credit guard.
+One SQLite file (WAL mode, foreign keys on, a single connection to serialize writers). Tables: `users`, `sessions`, `tasks`, `submissions`, `competitions`, `entries`, `reports`, `ledger`, `verifications`, and for the payout `payout_keys`, `payout_runs`, `payout_rows`, `payout_settings`. Every reward is a ledger row; a balance is `SUM(amount)` over the user's rows. Ledger kinds: `submission`, `entry`, `report`, `verification`, `referral`, `referral-welcome`, `adjustment`, `payout` (a collected launch allocation, negative), and the reserved `presale`. Partial unique indexes on `(kind, ref_id)` are the double-credit guard.
 
 ### Deployment
 

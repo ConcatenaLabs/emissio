@@ -281,6 +281,7 @@ func TestPayoutAccountPage(t *testing.T) {
 	app.cfg.PayoutURL, app.cfg.PayoutNetwork, app.cfg.PayoutHRPs = "http://127.0.0.1:9", "testnet", []string{"tb"}
 	resp, _ := client.PostForm(srv.URL+"/register", url.Values{"email": {"k@example.com"}, "password": {"a-long-password"}})
 	resp.Body.Close()
+	app.db.Exec(`INSERT INTO payout_settings (name, value) VALUES ('rehearsal_open', '1')`)
 	csrf := csrfOf(t, client, srv.URL+"/account")
 	client.PostForm(srv.URL+"/account/address", url.Values{"csrf": {csrf}, "address": {"bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"}})
 	page := get(t, client, srv.URL+"/account")

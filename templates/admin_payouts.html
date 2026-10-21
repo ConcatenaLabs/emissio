@@ -4,6 +4,16 @@
 <p class="muted">A payout run pays every payable account its balance in one payment from the paying wallet, straight to each account's wallet, which collects it by itself the next time it opens. What is not collected by the deadline comes back to the paying wallet.
 {{if .Data.Rehearsal}}This is the testnet rehearsal: it pays tSEQ ({{.Data.PerSEQ}} atoms for each SEQ of balance) to each account's testnet wallet key and moves nothing in any ledger.{{else}}This is the launch payout: it pays SEQ to the key of each account's payout address, and an allocation is taken off the account's balance once its wallet collects it.{{end}}</p>
 {{if .Data.Available}}
+{{if .Data.Rehearsal}}
+<form method="post" action="{{base}}/admin/payouts/collection" style="margin:1rem 0">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  {{if .Data.Collecting}}
+  <p class="small">Accounts are asked for their testnet wallet on their account page. <input type="hidden" name="open" value="0"><button class="btn ghost" type="submit">Stop asking</button></p>
+  {{else}}
+  <p class="small muted">Accounts are not asked for their testnet wallet: the account page shows nothing of the rehearsal, except to an account that already gave a wallet. <input type="hidden" name="open" value="1"><button class="btn ghost" type="submit">Ask accounts for their testnet wallet</button></p>
+  {{end}}
+</form>
+{{end}}
 <form class="stack" method="post" action="{{base}}/admin/payouts/new" style="max-width:32rem">
   <input type="hidden" name="csrf" value="{{.CSRF}}">
   <label>Note</label><input type="text" name="note" placeholder="Rehearsal 1">

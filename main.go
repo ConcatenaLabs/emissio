@@ -426,6 +426,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("GET /admin/allocations.csv", a.admin(a.handleAdminExport))
 	mux.HandleFunc("GET /admin/payouts", a.admin(a.handleAdminPayouts))
 	mux.HandleFunc("POST /admin/payouts/new", a.admin(a.handleAdminPayoutNew))
+	mux.HandleFunc("POST /admin/payouts/collection", a.admin(a.handleAdminPayoutCollection))
 	mux.HandleFunc("GET /admin/payouts/{id}", a.admin(a.handleAdminPayout))
 	mux.HandleFunc("GET /admin/payouts/{id}/list.txt", a.admin(a.handleAdminPayoutList))
 	mux.HandleFunc("POST /admin/payouts/{id}/reference", a.admin(a.handleAdminPayoutReference))
