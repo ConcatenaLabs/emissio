@@ -284,7 +284,22 @@ func TestPayoutAccountPage(t *testing.T) {
 	app.db.Exec(`INSERT INTO payout_settings (name, value) VALUES ('rehearsal_open', '1')`)
 	csrf := csrfOf(t, client, srv.URL+"/account")
 	client.PostForm(srv.URL+"/account/address", url.Values{"csrf": {csrf}, "address": {"bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"}})
+	// The launch key is asked only where the launch payout is paid as claims.
 	page := get(t, client, srv.URL+"/account")
+	if strings.Contains(page, "Public key of this address") {
+		t.Fatal("the launch key is asked with EMISSIO_PAYOUT_LAUNCH_KEY off")
+	}
+	client.PostForm(srv.URL+"/account/payout-key", url.Values{"csrf": {csrf}, "key": {"02" + gX}})
+	var off User
+	app.db.QueryRow(`SELECT id FROM users WHERE email = 'k@example.com'`).Scan(&off.ID)
+	if k, _ := keysOf(app.db, off.ID); k.PayoutKey != "" {
+		t.Fatal("a launch key was saved with EMISSIO_PAYOUT_LAUNCH_KEY off")
+	}
+	app.cfg.PayoutLaunchKey = true
+	page = get(t, client, srv.URL+"/account")
+	if !strings.Contains(page, "rather than as an on-chain payment") {
+		t.Fatal("the launch key does not say it is needed only for a payout into the wallet")
+	}
 	for _, want := range []string{"Public key of this address", "Testnet rehearsal"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the account page lacks %q", want)

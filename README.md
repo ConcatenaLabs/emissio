@@ -107,7 +107,7 @@ Balances are paid in one payment from the paying wallet, straight to each accoun
 
 Each account is named by a public key its wallet holds:
 
-- **The launch payout** names the key of the registered mainnet address. A taproot address (`bc1p…`) is its key. An address starting `bc1q` names only a hash of its key, so the account page asks for its public key once (66 characters, `02…` or `03…`) and checks it against the address. A script address (a `bc1q` of 62 characters) cannot be paid this way.
+- **The launch payout**, when it is paid this way, names the key of the registered mainnet address. A taproot address (`bc1p…`) is its key. An address starting `bc1q` names only a hash of its key, so with `EMISSIO_PAYOUT_LAUNCH_KEY=1` the account page asks for its public key once (66 characters, `02…` or `03…`) and checks it against the address; off (the default), the page asks for nothing, as an on-chain payment to the address needs no key. A script address (a `bc1q` of 62 characters) cannot be paid this way.
 - **The testnet rehearsal** names the key of the first receive address of the account's Sequentia testnet wallet. The account page asks for it only while an admin has the rehearsal asking for wallets (`/admin/payouts`), and keeps showing it to an account that gave one or was paid; to anyone else the page shows nothing of the rehearsal. The account pastes its wallet's account key, which the web wallet shows under Receive, Show xpub (a `tpub`, with or without its `[fingerprint/84h/1h/0h]` origin, or the descriptor lines): Emissio derives the key of `m/84'/1'/0'/0/0` from it and keeps only that key. An address of the wallet that has already sent a transaction works too: its key is read from that spend through the explorer (`EMISSIO_ESPLORA`). A public key or a taproot address is taken as it is. A rehearsal pays tSEQ and moves nothing in any ledger.
 
 A run takes every account with a positive balance, at least one verified platform and a key, at its balance times `EMISSIO_PAYOUT_ATOMS_PER_SEQ` atoms of `EMISSIO_PAYOUT_ASSET`; every other account is listed as left out with the reason. A wallet key is paid for one account only, and an account is in one open run at a time. On mainnet a collected allocation is a `payout` ledger row that takes it off the balance, once; one that comes back stays owed and goes into the next run.
@@ -212,6 +212,7 @@ All configuration is environment variables (`loadConfig` in `main.go`):
 | `EMISSIO_PAYOUT_ATOMS_PER_SEQ` | `100000000` | Atoms of the payout asset paid for each SEQ of balance (a rehearsal may pay less) |
 | `EMISSIO_PAYOUT_HRPS` | `tb` | Address prefixes a testnet wallet key may be given in as a taproot address, comma-separated |
 | `EMISSIO_PAYOUT_POLL_SECS` | `60` | How often the follower reads the status of a run with a payment |
+| `EMISSIO_PAYOUT_LAUNCH_KEY` | `0` | `1`: the account page asks a `bc1q` account for its address's public key, which a launch payout paid into wallets needs and an on-chain payment does not |
 
 Keep real secrets (such as the bot token) out of the repo and out of unit files under version control; on a systemd host, use a drop-in (`systemctl edit emissio`).
 

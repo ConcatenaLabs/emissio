@@ -53,6 +53,10 @@ type Config struct {
 	PayoutAtomsPerSEQ int64
 	PayoutHRPs        []string
 	PayoutPoll        time.Duration
+	// PayoutLaunchKey has the account page ask a bc1q account for its
+	// address's public key: needed only when the launch payout is paid into
+	// wallets as claims, never for an on-chain payment. Off unless set.
+	PayoutLaunchKey bool
 }
 
 func loadConfig() Config {
@@ -97,6 +101,7 @@ func loadConfig() Config {
 		secs = 60
 	}
 	cfg.PayoutPoll = time.Duration(secs) * time.Second
+	cfg.PayoutLaunchKey = envOr("EMISSIO_PAYOUT_LAUNCH_KEY", "0") == "1"
 	return cfg
 }
 

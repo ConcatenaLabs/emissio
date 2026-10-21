@@ -33,22 +33,22 @@
       <input class="mono" type="text" id="address" name="address" placeholder="bc1q...">
       <div class="actions"><button class="btn" type="submit">Save address</button></div>
     </form>
-    {{with .Data.Payout}}
-    {{if .Line}}<div class="flash ok" style="margin:1rem 0 0" data-payout-line>{{.Line}}</div>{{end}}
-    {{if .NeedsKey}}
+    {{- with .Data.Payout}}
+    {{- if .Line}}<div class="flash ok" style="margin:1rem 0 0" data-payout-line>{{.Line}}</div>{{end}}
+    {{- if .NeedsKey}}
     <div class="eyebrow" style="margin-top:1.4rem">Public key of this address</div>
     {{if .LaunchKey}}
-      <p class="small muted">On file: the payout is paid to the key of this address.</p>
+      <p class="small muted">On file: a launch payout into your wallet is paid to the key of this address.</p>
     {{else}}
-      <p class="small muted">An address starting bc1q names only a hash of its key, so the payout needs the key itself once. Your wallet shows it as the address's public key (66 characters, starting 02 or 03). It is public: it lets nobody spend.</p>
+      <p class="small muted">Only if your launch payout is paid into your wallet as a share the wallet collects, rather than as an on-chain payment to this address, it needs this address's public key, which an address starting bc1q does not show. Your wallet shows it as the address's public key (66 characters, starting 02 or 03). It is public: it lets nobody spend.</p>
     {{end}}
     <form class="stack" method="post" action="{{base}}/account/payout-key">
       <input type="hidden" name="csrf" value="{{$.CSRF}}">
       <input class="mono" type="text" name="key" placeholder="02..." value="{{.PayoutKey}}" aria-label="public key of the payout address">
       <div class="actions"><button class="btn ghost" type="submit">Save public key</button></div>
     </form>
-    {{end}}
-    {{if .Rehearsing}}
+    {{- end}}
+    {{- if .Rehearsing}}
     <div class="eyebrow" style="margin-top:1.4rem">Testnet rehearsal</div>
     {{if .RehKey}}
     <p class="small muted" data-rehearsal-saved>Your testnet wallet is saved. The rehearsal pays tSEQ straight to it, and the wallet collects it by itself the next time you open it. Nothing in your ledger changes.</p>
@@ -61,8 +61,8 @@
       <input class="mono" type="text" name="key" placeholder="tpub..." aria-label="your testnet wallet">
       <div class="actions"><button class="btn ghost" type="submit">{{if .RehKey}}Replace{{else}}Save{{end}}</button></div>
     </form>
-    {{end}}
-    {{end}}
+    {{- end}}
+    {{- end}}
   </div>
 </div>
 
