@@ -249,6 +249,10 @@ func (a *App) handlePayoutKey(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !a.cfg.PayoutLaunchKey {
+		a.redirect(w, r, "/account", "", "Nothing to save: the launch payout does not ask for a key.")
+		return
+	}
 	given := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
 	if given != "" {
 		if _, why := launchKey(user.MainnetAddress, given); why != "" {
@@ -999,7 +1003,10 @@ func (a *App) accountPayoutOf(u *User) accountPayout {
 	ap := accountPayout{PayoutKey: k.PayoutKey, RehKey: k.RehearsalKey,
 		Rehearsing: a.cfg.PayoutURL != "" && a.rehearsal() && (rehearsalOpen(a.db) || k.RehearsalKey != "" || paid > 0)}
 	ap.LaunchKey, ap.LaunchWhy = launchKey(u.MainnetAddress, k.PayoutKey)
-	if u.MainnetAddress != "" {
+	// Only a launch payout paid into wallets as claims needs a bc1q address's
+	// key; an on-chain payment to the address needs none, so the page asks
+	// only when the deployment says the launch payout is paid that way.
+	if a.cfg.PayoutLaunchKey && u.MainnetAddress != "" {
 		if _, v, prog, err := segwitProgram(u.MainnetAddress); err == nil && v == 0 && len(prog) == 20 {
 			ap.NeedsKey = true
 		}
