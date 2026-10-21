@@ -40,6 +40,19 @@ type Config struct {
 	GitHubAPI     string // for the bug-report issue check
 	TgBotToken    string // BotFather token; enables ID-based Telegram age checks
 	TgBotName     string // bot username shown to users, without @
+
+	// The payout (payout.go). PayoutURL is the payment service's base URL,
+	// without /v1; empty turns payout runs off. PayoutNetwork is "testnet"
+	// (the rehearsal: tSEQ to each account's testnet wallet key, no balance
+	// moved) or "mainnet" (SEQ to each account's payout key, a collected
+	// allocation debited). PayoutHRPs are the address prefixes a testnet
+	// wallet key may be given as a taproot address in.
+	PayoutURL         string
+	PayoutNetwork     string
+	PayoutAsset       string
+	PayoutAtomsPerSEQ int64
+	PayoutHRPs        []string
+	PayoutPoll        time.Duration
 }
 
 func loadConfig() Config {
@@ -62,7 +75,28 @@ func loadConfig() Config {
 		GitHubAPI:     envOr("EMISSIO_GITHUB_API", "https://api.github.com"),
 		TgBotToken:    envOr("EMISSIO_TG_BOT_TOKEN", ""),
 		TgBotName:     envOr("EMISSIO_TG_BOT_NAME", ""),
+		PayoutURL:     envOr("EMISSIO_PAYOUT_URL", ""),
+		PayoutNetwork: envOr("EMISSIO_PAYOUT_NETWORK", "testnet"),
+		PayoutHRPs:    strings.Split(envOr("EMISSIO_PAYOUT_HRPS", "tb"), ","),
 	}
+	// The payout asset is tSEQ on the testnet unless named, and must be named
+	// for any other payout: SEQ is not assumed anywhere else.
+	cfg.PayoutAsset = envOr("EMISSIO_PAYOUT_ASSET", "")
+	if cfg.PayoutAsset == "" && cfg.PayoutNetwork != "mainnet" {
+		cfg.PayoutAsset = cfg.PolicyAsset
+	}
+	cfg.PayoutAtomsPerSEQ, _ = strconv.ParseInt(envOr("EMISSIO_PAYOUT_ATOMS_PER_SEQ", "100000000"), 10, 64)
+	if cfg.PayoutAtomsPerSEQ <= 0 {
+		log.Fatal("EMISSIO_PAYOUT_ATOMS_PER_SEQ must be positive")
+	}
+	if cfg.PayoutNetwork != "testnet" && cfg.PayoutNetwork != "mainnet" {
+		log.Fatal("EMISSIO_PAYOUT_NETWORK is testnet or mainnet")
+	}
+	secs, _ := strconv.Atoi(envOr("EMISSIO_PAYOUT_POLL_SECS", "60"))
+	if secs < 1 {
+		secs = 60
+	}
+	cfg.PayoutPoll = time.Duration(secs) * time.Second
 	return cfg
 }
 
@@ -121,6 +155,7 @@ func parseTemplates(cfg Config) map[string]*template.Template {
 		},
 		"body":     renderBody,
 		"prooftag": proofTag,
+		"atoms":    atomsText,
 		"prizes":   parsePrizes,
 		"add":      func(a, b int) int { return a + b },
 		"tmap": func(t any, csrf string) map[string]any {
@@ -248,6 +283,7 @@ func main() {
 
 	app := NewApp(cfg, db)
 	app.startPeerPoller()
+	app.startPayoutFollower()
 	log.Printf("emissio listening on %s (base path %q, db %s)", cfg.Listen, cfg.BasePath, cfg.DBPath)
 	srv := &http.Server{
 		Addr:              cfg.Listen,
@@ -388,6 +424,13 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("GET /admin/users", a.admin(a.handleAdminUsers))
 	mux.HandleFunc("POST /admin/adjust", a.admin(a.handleAdminAdjust))
 	mux.HandleFunc("GET /admin/allocations.csv", a.admin(a.handleAdminExport))
+	mux.HandleFunc("GET /admin/payouts", a.admin(a.handleAdminPayouts))
+	mux.HandleFunc("POST /admin/payouts/new", a.admin(a.handleAdminPayoutNew))
+	mux.HandleFunc("GET /admin/payouts/{id}", a.admin(a.handleAdminPayout))
+	mux.HandleFunc("GET /admin/payouts/{id}/list.txt", a.admin(a.handleAdminPayoutList))
+	mux.HandleFunc("POST /admin/payouts/{id}/reference", a.admin(a.handleAdminPayoutReference))
+	mux.HandleFunc("POST /account/payout-key", a.handlePayoutKey)
+	mux.HandleFunc("POST /account/rehearsal-key", a.handleRehearsalKey)
 
 	var h http.Handler = mux
 	if base := a.cfg.BasePath; base != "" {

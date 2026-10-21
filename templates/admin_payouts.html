@@ -1,0 +1,30 @@
+{{define "content"}}
+<div class="eyebrow">Admin</div>
+<h1>Payouts</h1>
+<p class="muted">A payout run pays every payable account its balance in one payment from the paying wallet, straight to each account's wallet, which collects it by itself the next time it opens. What is not collected by the deadline comes back to the paying wallet.
+{{if .Data.Rehearsal}}This is the testnet rehearsal: it pays tSEQ ({{.Data.PerSEQ}} atoms for each SEQ of balance) to each account's testnet wallet key and moves nothing in any ledger.{{else}}This is the launch payout: it pays SEQ to the key of each account's payout address, and an allocation is taken off the account's balance once its wallet collects it.{{end}}</p>
+{{if .Data.Available}}
+<form class="stack" method="post" action="{{base}}/admin/payouts/new" style="max-width:32rem">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label>Note</label><input type="text" name="note" placeholder="Rehearsal 1">
+  <div class="actions"><button class="btn" type="submit">Open a payout run</button></div>
+</form>
+{{else}}
+<p class="small muted">No payment service is configured on this deployment.</p>
+{{end}}
+<div class="section">
+<div class="table-scroll"><table class="table">
+  <tr><th>Run</th><th>Opened</th><th>State</th><th>Accounts</th><th>Total</th><th>Note</th></tr>
+  {{range .Data.Runs}}
+  <tr>
+    <td><a href="{{base}}/admin/payouts/{{.ID}}">#{{.ID}}</a></td>
+    <td>{{date .CreatedAt}}</td>
+    <td><span class="pill">{{.State}}</span></td>
+    <td>{{.Accounts}}{{if .LeftOut}} <span class="muted small">({{.LeftOut}} left out)</span>{{end}}</td>
+    <td class="mono">{{.TotalAtoms}} atoms</td>
+    <td>{{.Note}}</td>
+  </tr>
+  {{end}}
+</table></div>
+</div>
+{{end}}

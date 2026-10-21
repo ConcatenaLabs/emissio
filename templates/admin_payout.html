@@ -1,0 +1,52 @@
+{{define "content"}}
+<div class="eyebrow">Admin · Payouts</div>
+<h1>Payout run #{{.Data.Run.ID}}{{if .Data.Rehearsal}} <span class="pill">testnet rehearsal</span>{{end}}</h1>
+<p data-payout-summary>{{.Data.Summary}}</p>
+<div class="ledger" style="margin-top:1rem">
+  <div class="ledger-row"><span class="label">Accounts paid</span><span class="leader"></span><span class="amount plain">{{.Data.Run.Accounts}}</span></div>
+  <div class="ledger-row"><span class="label">Total</span><span class="leader"></span><span class="amount">{{atoms .Data.Run.TotalAtoms}} <small>{{.Data.Unit}}</small></span></div>
+  {{if eq .Data.Run.State "planned"}}
+  <div class="ledger-row"><span class="label">Fee, at most</span><span class="leader"></span><span class="amount">{{atoms .Data.Run.FeeBound}} <small>{{.Data.Unit}}</small></span></div>
+  {{else}}
+  <div class="ledger-row"><span class="label">Collected</span><span class="leader"></span><span class="amount">{{atoms .Data.Run.CollectedAtoms}} <small>{{.Data.Unit}}</small></span></div>
+  <div class="ledger-row"><span class="label">Came back</span><span class="leader"></span><span class="amount">{{atoms .Data.Run.ReturnedAtoms}} <small>{{.Data.Unit}}</small></span></div>
+  {{end}}
+  <div class="ledger-row"><span class="label">Collect by</span><span class="leader"></span><span class="amount plain">{{if .Data.Run.Deadline}}{{datetime .Data.Run.Deadline}}{{else}}set when it is paid{{end}}</span></div>
+</div>
+
+{{if .Data.LeftOut}}
+<div class="section">
+  <h2>Not in this run ({{len .Data.LeftOut}})</h2>
+  <p class="small muted">Their balance is untouched and can be paid in a later run.</p>
+  <div class="table-scroll"><table class="table">
+    <tr><th>Account</th><th>Balance</th><th>Why</th></tr>
+    {{range .Data.LeftOut}}<tr><td>#{{.UserID}} {{.Email}}</td><td>{{seq .SEQ}} SEQ</td><td>{{.Reason}}</td></tr>{{end}}
+  </table></div>
+</div>
+{{end}}
+
+{{if eq .Data.Run.State "planned"}}
+<div class="section">
+  <h2>Pay it</h2>
+  <p class="small muted">1. Pay the list from the paying wallet. The wallet shows the exact fee before it pays, and gives a payment reference.</p>
+  <p><a class="btn ghost" href="{{base}}/admin/payouts/{{.Data.Run.ID}}/list.txt">Download the payment list</a></p>
+  <p class="small muted">2. Record the payment's reference. It is recorded only if the payment pays exactly this list: every account, each amount, nobody else.</p>
+  <form class="stack" method="post" action="{{base}}/admin/payouts/{{.Data.Run.ID}}/reference" style="max-width:40rem">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input class="mono" type="text" name="reference" placeholder="payment reference (64 characters)" required>
+    <div class="actions"><button class="btn" type="submit">Record the payment</button></div>
+  </form>
+</div>
+{{end}}
+
+<div class="section">
+  <details>
+    <summary><strong>Accounts in this run</strong> · {{index .Data.Counts "collected"}} collected, {{index .Data.Counts "paid"}} waiting, {{index .Data.Counts "returned"}} came back</summary>
+    <div class="table-scroll"><table class="table">
+      <tr><th>Account</th><th>Wallet key</th><th>Amount</th><th>State</th></tr>
+      {{range .Data.Paid}}<tr><td>#{{.UserID}} {{.Email}}</td><td class="mono">{{short .Key}}</td><td class="mono">{{atoms .Atoms}} {{$.Data.Unit}}</td><td><span class="pill">{{.State}}</span></td></tr>{{end}}
+    </table></div>
+    {{if .Data.Run.Reference}}<p class="small muted mono">Payment reference {{.Data.Run.Reference}}{{if .Data.Run.RoundTxid}} · paid in {{.Data.Run.RoundTxid}}{{end}}{{if .Data.Run.ReturnTxids}} · returned in {{.Data.Run.ReturnTxids}}{{end}}</p>{{end}}
+  </details>
+</div>
+{{end}}

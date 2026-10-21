@@ -412,6 +412,7 @@ type verifRow struct {
 }
 
 type accountData struct {
+	Payout       accountPayout
 	Balance      int64
 	Ledger       []LedgerEntry
 	Submissions  []*Submission
@@ -485,6 +486,7 @@ func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
 		RefLink:  scheme + "://" + r.Host + a.cfg.BasePath + "/r/" + user.ClaimCode,
 		RefCount: refCount, RefBonus: referralBonus, RefThreshold: referralThreshold, RefCap: referralCap,
 		Verifs: vrows, RedditToken: a.cfg.RedditToken != "", VerifBonus: verificationBonus, Verified: verified,
+		Payout: a.accountPayoutOf(user),
 	})
 }
 
