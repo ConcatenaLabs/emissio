@@ -2,6 +2,15 @@
 <div class="eyebrow">Your account</div>
 <h1>Your issue ledger</h1>
 
+{{if and .Data.MailOn (not .User.EmailVerifiedAt)}}
+<div class="flash err" style="margin:1rem 0 0">
+  Confirm your email address to start earning: open the link we sent to {{.User.Email}}.
+  <form method="post" action="{{base}}/account/verify-email" style="display:inline">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button class="btn ghost small" type="submit">Send the link again</button>
+  </form>
+</div>
+{{end}}
 <div class="hero-grid" style="margin-top:1.4rem">
   <div>
     <div class="balance-figure">{{seq .Data.Balance}} <small>SEQ</small></div>

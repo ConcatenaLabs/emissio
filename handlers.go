@@ -209,6 +209,9 @@ func (a *App) handleTaskSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	back := "/tasks/" + task.Slug
+	if !a.gate(w, r, user, back) {
+		return
+	}
 	if !task.Active {
 		a.redirect(w, r, back, "", "This task is closed.")
 		return
@@ -316,6 +319,9 @@ func (a *App) handleCompetitionEnter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	back := "/competitions/" + comp.Slug
+	if !a.gate(w, r, user, back) {
+		return
+	}
 	if comp.Status != "open" || comp.ClosesAt <= now() {
 		a.redirect(w, r, back, "", "This competition is closed to new entries.")
 		return
@@ -425,6 +431,7 @@ type accountData struct {
 	RedditToken  bool
 	VerifBonus   int64
 	Verified     bool // at least one platform verified: payout-eligible
+	MailOn       bool // this instance confirms email addresses
 }
 
 func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
@@ -486,7 +493,7 @@ func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
 		RefLink:  scheme + "://" + r.Host + a.cfg.BasePath + "/r/" + user.ClaimCode,
 		RefCount: refCount, RefBonus: referralBonus, RefThreshold: referralThreshold, RefCap: referralCap,
 		Verifs: vrows, RedditToken: a.cfg.RedditToken != "", VerifBonus: verificationBonus, Verified: verified,
-		Payout: a.accountPayoutOf(user),
+		Payout: a.accountPayoutOf(user), MailOn: a.mailOn(),
 	})
 }
 
@@ -494,6 +501,9 @@ func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleVerify(w http.ResponseWriter, r *http.Request) {
 	user, ok := a.postGuard(w, r)
 	if !ok {
+		return
+	}
+	if !a.gate(w, r, user, "/account") {
 		return
 	}
 	platform := r.FormValue("platform")
@@ -682,6 +692,15 @@ func (a *App) handleRegister(w http.ResponseWriter, r *http.Request) {
 	a.attachReferrer(r, id)
 	if err := a.createSession(w, id); err != nil {
 		a.serverError(w, err)
+		return
+	}
+	if a.mailOn() {
+		if u, err := getUserByID(a.db, id); err == nil && a.mailAllowed("ip|"+clientIP(r)) {
+			if err := a.sendVerification(r, u); err != nil {
+				log.Printf("mail: verification to user %d: %v", id, err)
+			}
+		}
+		a.redirect(w, r, "/account", "Welcome to Emissio. We sent a link to "+email+": open it to confirm your address, and then you can start earning.", "")
 		return
 	}
 	a.redirect(w, r, "/account", "Welcome to Emissio. Your claim code is on this page; you will use it in task evidence.", "")

@@ -22,9 +22,8 @@ Protocol documentation lives in [`Sequentia/doc/sequentia/`](https://github.com/
 
 Accounts, the task catalog with explorer-backed txid checks, bug reports (from a form, or sent from inside a wallet), competitions, private security reports, social-account verification (Telegram, X, Reddit), referrals, mainnet payout-address registration, and the admin review desk.
 
-Three things it deliberately does not do, which a user or an operator needs to know:
+Two things it deliberately does not do, which a user or an operator needs to know:
 
-- There is no email verification and no self-service password reset; an admin resets a password with the `createadmin` command.
 - Evidence is checked automatically only for a transaction id's existence and confirmation. Fee-asset checks, blinded-output checks and claim-code matching are human review steps, and the task pages say so.
 - There is no pre-sale purchase flow. The rules page describes pre-sale windows and the ledger reserves a `presale` kind, but no sale mechanics exist here.
 
@@ -32,7 +31,7 @@ This is testnet software supporting a testnet program. Reward balances are progr
 
 ## For users: earning rewards
 
-You need an account (email + password, 10 characters minimum). Every account gets a public claim code, which ties evidence to your account: you put it in a social-media bio or an X post for verification, and it doubles as your referral code.
+You need an account (email + password, 10 characters minimum). When the instance sends mail, a link confirms the address, and an account earns (submits evidence, files bug reports, requests a verification, enters a competition) once it has; a forgotten password is reset from a link sent to the address. Without mail, an admin makes a one-time reset link from the user list and sends it to the account's address by hand. Every account gets a public claim code, which ties evidence to your account: you put it in a social-media bio or an X post for verification, and it doubles as your referral code.
 
 All amounts below are whole SEQ, credited to your ledger. On the testnet you work with tSEQ and testnet assets; the rewards themselves are Sequence tokens paid at mainnet launch. Launch reference price: 0.175 USD per SEQ. Program pool: 32,285,714 SEQ.
 
@@ -198,6 +197,8 @@ Public routes, for orientation (see `routes()` in `main.go` for the full list in
 | `GET /account`, `POST /account/address`, `POST /account/verify` | Ledger, payout address, verifications |
 | `GET /r/{code}` | Referral link (sets a 30-day cookie, redirects to registration) |
 | `GET|POST /register`, `GET|POST /login`, `POST /logout` | Accounts (auth endpoints are rate-limited per IP) |
+| `GET /verify-email`, `POST /account/verify-email` | Confirming the email address, sending the link again |
+| `GET|POST /reset`, `GET|POST /reset/confirm` | Password reset by email |
 
 Emissio consumes one external API surface itself: an Esplora-compatible REST API (`GET <base>/tx/<txid>`) for txid checks, configured with `EMISSIO_ESPLORA`. The public Sequentia instance is `https://sequentiatestnet.com/api`.
 
@@ -220,7 +221,7 @@ First run creates the schema and seeds the task catalog and the opening competit
 echo 'a-strong-password' | EMISSIO_DB=/tmp/emissio.db ./emissio createadmin you@example.com
 ```
 
-Running `createadmin` for an existing email resets that account's password and makes it an admin. The other subcommand, `./emissio reseed-tasks`, refreshes the title, category, and body of the seeded tasks from the current `seed.go` copy in an existing database, inserts any seeded task the database does not have yet, and deactivates the tasks listed as retired in `seed.go`, leaving admin-tuned rewards, caps, and active flags of the other existing tasks alone.
+Running `createadmin` for an existing email resets that account's password and makes it an admin; a new admin's address counts as confirmed. The other subcommand, `./emissio reseed-tasks`, refreshes the title, category, and body of the seeded tasks from the current `seed.go` copy in an existing database, inserts any seeded task the database does not have yet, and deactivates the tasks listed as retired in `seed.go`, leaving admin-tuned rewards, caps, and active flags of the other existing tasks alone.
 
 Tests:
 
@@ -228,7 +229,7 @@ Tests:
 go test ./...
 ```
 
-`app_test.go` drives the full HTTP surface against a temporary database: registration, submission and review lifecycle, prize and report awards, referral qualification, verifications (with stubbed Reddit/Telegram servers), duplicate-txid rejection, base-path handling, CSRF, and anonymous-access denial. `bugs_test.go` covers the bug page (refusals, the screenshot's privacy, acceptance by severity paying once, duplicate merging) and the wallet intake (every answer of its contract, the limits, attribution by account code). `bech32_test.go` covers address validation and formatting helpers. `walletkey_test.go` covers reading a wallet's key from its account key (BIP84's own vector) and from an address that has spent, and that the rehearsal shows only when asked. `payout_test.go` covers payout keys, a rehearsal run against a stand-in payment service (left-out reasons, every refusal of a reference, collected and returned allocations, no balance moved) and the launch's single debit. `regtest_payout_test.go` runs the rehearsal end to end against a real payment service: an Arca operator from arca's `arca_operator_for_browsers` harness, named by `EMISSIO_REGTEST_CONTROL`, with `EMISSIO_REGTEST_ARCA` the `arca` binary; it is skipped without them.
+`app_test.go` drives the full HTTP surface against a temporary database: registration, submission and review lifecycle, prize and report awards, referral qualification, verifications (with stubbed Reddit/Telegram servers), duplicate-txid rejection, base-path handling, CSRF, and anonymous-access denial. `bugs_test.go` covers the bug page (refusals, the screenshot's privacy, acceptance by severity paying once, duplicate merging) and the wallet intake (every answer of its contract, the limits, attribution by account code). `mail_test.go` covers confirming the address (the gate, resend limits, only the newest link working), password reset (the same answer for unknown addresses, a link that works once, sessions ended), admin reset links, and the SMTP exchange itself against a stand-in server, credentials only after STARTTLS. `bech32_test.go` covers address validation and formatting helpers. `walletkey_test.go` covers reading a wallet's key from its account key (BIP84's own vector) and from an address that has spent, and that the rehearsal shows only when asked. `payout_test.go` covers payout keys, a rehearsal run against a stand-in payment service (left-out reasons, every refusal of a reference, collected and returned allocations, no balance moved) and the launch's single debit. `regtest_payout_test.go` runs the rehearsal end to end against a real payment service: an Arca operator from arca's `arca_operator_for_browsers` harness, named by `EMISSIO_REGTEST_CONTROL`, with `EMISSIO_REGTEST_ARCA` the `arca` binary; it is skipped without them.
 
 ### Configuration
 
@@ -243,6 +244,10 @@ All configuration is environment variables (`loadConfig` in `main.go`):
 | `EMISSIO_POLICY_ASSET` | the testnet's tSEQ id | Asset id of tSEQ, for the fee and stake checks |
 | `EMISSIO_CLI`, `EMISSIO_DATADIR` | empty | `sequentia-cli` path and the public node's data directory; enables the peer-based checks and the ten-minute sighting poller |
 | `EMISSIO_SECURE` | `0` | Set `1` behind HTTPS so cookies are marked Secure |
+| `EMISSIO_SMTP_HOST`, `EMISSIO_SMTP_PORT` | empty, `587` | SMTP submission service for verification and reset mail; with a sender set, mail is on. Port 587 uses STARTTLS (required before credentials are sent), 465 implicit TLS |
+| `EMISSIO_SMTP_USER`, `EMISSIO_SMTP_PASS` | empty | Its credentials; keep the password in a systemd drop-in, never in the repo |
+| `EMISSIO_MAIL_FROM` | empty | Sender, e.g. `Sequentia Emissio <emissio@sequentiatestnet.com>` |
+| `EMISSIO_PUBLIC_URL` | derived from the request | Public base address used in mailed links, e.g. `https://sequentiatestnet.com/emissio` |
 | `EMISSIO_TG_BOT_TOKEN` | empty | Telegram bot token (placeholder: `123456:ABC-...`); enables automatic Telegram ownership + ID-based age checks |
 | `EMISSIO_TG_BOT_NAME` | empty | The bot's username (without `@`), shown in user instructions |
 | `EMISSIO_REDDIT_TOKEN_SECRET` | empty | Secret shared with the Reddit app on r/sequentia that signs ownership tokens; enables the token flow for Reddit |
@@ -258,6 +263,10 @@ All configuration is environment variables (`loadConfig` in `main.go`):
 | `EMISSIO_PAYOUT_HRPS` | `tb` | Address prefixes a testnet wallet key may be given in as a taproot address, comma-separated |
 | `EMISSIO_PAYOUT_POLL_SECS` | `60` | How often the follower reads the status of a run with a payment |
 | `EMISSIO_PAYOUT_LAUNCH_KEY` | `0` | `1`: the account page asks a `bc1q` account for its address's public key, which a launch payout paid into wallets needs and an on-chain payment does not |
+
+### Sending mail
+
+Mail goes out through an SMTP submission service: any transactional provider (Amazon SES, Postmark, Brevo, Mailgun and the like) works. For mail from `sequentiatestnet.com` to be delivered rather than filed as spam, the domain's DNS needs the provider's records: its SPF include merged into the existing SPF record (one `v=spf1` record per domain, so `v=spf1 include:spf.efwd.registrar-servers.com include:<provider> ~all`), the DKIM records the provider issues for the domain, and a DMARC record (`_dmarc` TXT, `v=DMARC1; p=none` to start). On the host, the SMTP password lives in a systemd drop-in readable by root alone, next to `EMISSIO_SMTP_HOST`, `EMISSIO_SMTP_USER`, `EMISSIO_MAIL_FROM` and `EMISSIO_PUBLIC_URL`, and the host must reach the provider on port 587. One account gets at most three mails an hour, one network address causes at most ten, and a link works once: a day for confirming the address, an hour for a reset (a day for a link an admin makes).
 
 Keep real secrets (such as the bot token) out of the repo and out of unit files under version control; on a systemd host, use a drop-in (`systemctl edit emissio`).
 
@@ -277,6 +286,7 @@ Keep real secrets (such as the bot token) out of the repo and out of unit files 
 | `telegram.go` | Telegram bot check and ID-based account-age estimation |
 | `esplora.go` | Explorer txid check |
 | `bugs.go` | Bug reports: the form, screenshots, the wallet intake, the admin review |
+| `mail.go` | Mail: the SMTP sender, confirming the address, password reset, admin reset links |
 | `payout.go` | Payout runs: keys, the run's list, the reference check, the follower, the admin's and the account's pages |
 | `walletkey.go` | Reading what an account pastes (an account key, an address that has spent, a key) into the key the rehearsal pays |
 | `templates/`, `static/` | HTML templates and assets, embedded into the binary |
@@ -284,7 +294,7 @@ Keep real secrets (such as the bot token) out of the repo and out of unit files 
 
 ### Data storage
 
-One SQLite file (WAL mode, foreign keys on, a single connection to serialize writers). Tables: `users`, `sessions`, `tasks`, `submissions`, `competitions`, `entries`, `reports`, `ledger`, `verifications`, and for the payout `payout_keys`, `payout_runs`, `payout_rows`, `payout_settings`, and for bug reports `bugs` and `bug_files` (screenshots). Every reward is a ledger row; a balance is `SUM(amount)` over the user's rows. Ledger kinds: `submission`, `entry`, `report`, `bug`, `verification`, `referral`, `referral-welcome`, `adjustment`, `payout` (a collected launch allocation, negative), and the reserved `presale`. Partial unique indexes on `(kind, ref_id)` are the double-credit guard.
+One SQLite file (WAL mode, foreign keys on, a single connection to serialize writers). Tables: `users`, `sessions`, `tasks`, `submissions`, `competitions`, `entries`, `reports`, `ledger`, `verifications`, and for the payout `payout_keys`, `payout_runs`, `payout_rows`, `payout_settings`, for bug reports `bugs` and `bug_files` (screenshots), and `email_tokens` for the hashes of mailed links. Every reward is a ledger row; a balance is `SUM(amount)` over the user's rows. Ledger kinds: `submission`, `entry`, `report`, `bug`, `verification`, `referral`, `referral-welcome`, `adjustment`, `payout` (a collected launch allocation, negative), and the reserved `presale`. Partial unique indexes on `(kind, ref_id)` are the double-credit guard.
 
 ### Deployment
 

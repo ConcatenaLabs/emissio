@@ -2,16 +2,17 @@
 <div class="eyebrow">Admin</div>
 <h1>Users</h1>
 <div class="table-scroll"><table class="table">
-  <tr><th>#</th><th>Email</th><th>Code</th><th>Mainnet address</th><th>Reg IP</th><th>Joined</th><th>Balance</th></tr>
+  <tr><th>#</th><th>Email</th><th>Code</th><th>Mainnet address</th><th>Reg IP</th><th>Joined</th><th>Balance</th><th></th></tr>
   {{range .Data}}
   <tr>
     <td>{{.ID}}</td>
-    <td>{{.Email}}{{if .IsAdmin}} <span class="pill">admin</span>{{end}}{{if .ReferredBy}} <span class="pill">ref:{{.ReferredBy}}</span>{{end}}</td>
+    <td>{{.Email}}{{if .EmailVerifiedAt}} <span class="pill approved">email</span>{{end}}{{if .IsAdmin}} <span class="pill">admin</span>{{end}}{{if .ReferredBy}} <span class="pill">ref:{{.ReferredBy}}</span>{{end}}</td>
     <td class="mono">{{.ClaimCode}}</td>
     <td class="mono">{{if .MainnetAddress}}{{short .MainnetAddress}}{{end}}</td>
     <td class="mono">{{.RegIP}}{{if gt .IPPeers 1}} <span class="pill rejected">x{{.IPPeers}}</span>{{end}}</td>
     <td>{{date .CreatedAt}}</td>
     <td class="amount">{{seq .Balance}} SEQ</td>
+    <td><form method="post" action="{{base}}/admin/users/{{.ID}}/reset-link"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn ghost small" type="submit">Reset link</button></form></td>
   </tr>
   {{end}}
 </table></div>

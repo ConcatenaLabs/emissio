@@ -1,0 +1,7 @@
+{{define "content"}}
+<div class="eyebrow">Admin</div>
+<h1>Reset link for {{.Data.User.Email}}</h1>
+<p class="muted">Send this link to the account's owner at {{.Data.User.Email}}. It works once, for 24 hours, and lets whoever opens it set the account's password, so send it to that address only. It is shown only on this page.</p>
+<div class="kv" style="word-break:break-all">{{.Data.Link}}</div>
+<p style="margin-top:1rem"><a class="btn ghost" href="{{base}}/admin/users">Back to users</a></p>
+{{end}}
