@@ -1,0 +1,20 @@
+{{define "content"}}
+<div class="eyebrow">Admin</div>
+<h1>Bug reports</h1>
+<div class="table-scroll"><table class="table">
+  <tr><th>#</th><th>Report</th><th>From</th><th>Filed</th><th>Status</th><th>Award</th></tr>
+  {{range .Data}}
+  <tr>
+    <td>{{.ID}}</td>
+    <td><a href="{{base}}/admin/bugs/{{.ID}}">{{.Title}}</a>{{if .HasFile}} <span class="pill">screenshot</span>{{end}}
+      <div class="small muted">{{surfacename .Surface}}{{if eq .Source "wallet"}} · sent from the wallet{{end}}{{if .DupOf}} · duplicate of #{{.DupOf}}{{end}}</div></td>
+    <td>{{if .UserEmail}}{{.UserEmail}}{{else}}<span class="muted">unattributed</span>{{end}}</td>
+    <td>{{date .CreatedAt}}</td>
+    <td><span class="pill {{.Status}}">{{.Status}}</span>{{if .Severity}} <span class="pill">{{.Severity}}</span>{{end}}</td>
+    <td class="amount">{{if .Award}}{{seq .Award}} SEQ{{end}}</td>
+  </tr>
+  {{else}}
+  <tr><td colspan="6" class="muted">No reports.</td></tr>
+  {{end}}
+</table></div>
+{{end}}

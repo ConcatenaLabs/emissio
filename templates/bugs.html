@@ -1,0 +1,68 @@
+{{define "content"}}
+<div class="eyebrow">Bug reports</div>
+<h1>Report a bug, earn by severity</h1>
+<p class="lede muted">Found something wrong on the testnet? Report it here: the explorer, the faucet, Compages, Sequentia Core, the staking pool board or this site. A reviewer reproduces each report, and an accepted report is credited according to its severity. The first report of a bug earns the reward; later reports of the same bug are merged into it.</p>
+
+<div class="section">
+  <h2>Rewards</h2>
+  <div class="ledger wide">
+    {{range .Data.Tiers}}
+    <div class="ledger-row">
+      <span class="label"><strong>{{.Name}}</strong><span class="sub">{{.Desc}}</span></span>
+      <span class="leader"></span>
+      <span class="amount">{{seq .Reward}} <small>SEQ</small></span>
+    </div>
+    {{end}}
+  </div>
+  <p class="small muted" style="margin-top:.8rem">A report with a security consequence belongs on the <a href="{{base}}/security">security page</a>, where it is reviewed privately and rewarded far higher.</p>
+</div>
+
+<div class="section">
+  <h2>File a report</h2>
+  {{if not .User}}
+    <p class="muted"><a href="{{base}}/login">Sign in</a> or <a href="{{base}}/register">create an account</a> to file a report.</p>
+  {{else}}
+  <form class="stack wide" method="post" action="{{base}}/bugs" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label for="surface">Where is the bug?</label>
+    <select id="surface" name="surface" required>
+      {{range .Data.Surfaces}}<option value="{{.Key}}">{{.Name}}</option>{{end}}
+    </select>
+    <label for="title">Title</label>
+    <input type="text" id="title" name="title" maxlength="160" required placeholder="One line: what goes wrong, where">
+    <label for="steps">Steps to reproduce</label>
+    <textarea id="steps" name="steps" required placeholder="1. Open ...&#10;2. Press ...&#10;Include the page address, the version of Sequentia Core, your operating system, and any txid involved."></textarea>
+    <label for="expected">What you expected</label>
+    <textarea id="expected" name="expected" style="min-height:5rem"></textarea>
+    <label for="actual">What happened instead</label>
+    <textarea id="actual" name="actual" required style="min-height:5rem" placeholder="The exact error message, if there was one."></textarea>
+    <label for="screenshot">Screenshot (optional, up to 2 MB)</label>
+    <input type="file" id="screenshot" name="screenshot" accept="image/png,image/jpeg,image/gif,image/webp">
+    <div class="field-note">Up to ten reports a day. A screenshot showing the problem makes a report much quicker to confirm.</div>
+    <div class="actions"><button class="btn" type="submit">Send report</button></div>
+  </form>
+  {{end}}
+</div>
+
+{{if .Data.Mine}}
+<div class="section">
+  <h2>Your reports</h2>
+  {{template "bugtable" .Data.Mine}}
+</div>
+{{end}}
+{{end}}
+
+{{define "bugtable"}}
+<div class="table-scroll"><table class="table">
+  <tr><th>#</th><th>Report</th><th>Filed</th><th>Status</th><th>Reward</th></tr>
+  {{range .}}
+  <tr>
+    <td>{{.ID}}</td>
+    <td>{{.Title}}<div class="small muted">{{surfacename .Surface}}{{if .ReviewNote}} · {{.ReviewNote}}{{end}}{{if .DupOf}} · same bug as report #{{.DupOf}}{{end}}</div></td>
+    <td>{{date .CreatedAt}}</td>
+    <td><span class="pill {{.Status}}">{{.Status}}</span></td>
+    <td class="amount">{{if .Award}}{{seq .Award}} SEQ{{end}}</td>
+  </tr>
+  {{end}}
+</table></div>
+{{end}}

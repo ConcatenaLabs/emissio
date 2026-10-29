@@ -20,7 +20,7 @@ Protocol documentation lives in [`Sequentia/doc/sequentia/`](https://github.com/
 
 ## What it does
 
-Accounts, the task catalog with explorer-backed txid checks, competitions, private security reports, social-account verification (Telegram, X, Reddit), referrals, mainnet payout-address registration, and the admin review desk.
+Accounts, the task catalog with explorer-backed txid checks, bug reports (from a form, or sent from inside a wallet), competitions, private security reports, social-account verification (Telegram, X, Reddit), referrals, mainnet payout-address registration, and the admin review desk.
 
 Three things it deliberately does not do, which a user or an operator needs to know:
 
@@ -50,7 +50,7 @@ Two tasks are proven by the node rather than by a transaction. With `EMISSIO_CLI
 
 Task instructions carry the user's own values where `{PROOF}` (proof decimals) and `{CODE}` (account code) appear in the seeded text.
 
-The same binding applies outside tasks. A **competition entry** must carry the account code on the work or its page; the app looks for it in the link and in the linked page's text, notes what it found for the judges, and refuses a link another account already entered. A **security report** must start with the account code, inside the encrypted block when encrypted, so a report read long after it was sent still names its account; identical bodies from two accounts are flagged. The **bug-report task** reads the linked GitHub issue through the API (`EMISSIO_GITHUB_API`) and checks that the issue text contains the code.
+The same binding applies outside tasks. A **competition entry** must carry the account code on the work or its page; the app looks for it in the link and in the linked page's text, notes what it found for the judges, and refuses a link another account already entered. A **security report** must start with the account code, inside the encrypted block when encrypted, so a report read long after it was sent still names its account; identical bodies from two accounts are flagged.
 
 The seeded catalog (`seed.go`; the live instance's admins can adjust rewards, caps, and active flags):
 
@@ -69,9 +69,22 @@ The seeded catalog (`seed.go`; the live instance's admins can adjust rewards, ca
 | Stake tSEQ | 40 | 500 |
 | Delegate your stake to a staking pool | 30 | 500 |
 | Run a full node for a week (no txid; a week of peer sightings is the proof) | 50 | 1,000 |
-| Report a bug (a confirmed public issue, no txid) | 25 | 400 |
 
-Completing every task pays 350 SEQ; total task exposure across all users is 407,500 SEQ. Caps pay the first accounts whose evidence is approved, so the pool stays bounded.
+Completing every task pays 325 SEQ; total task exposure across all users is 397,500 SEQ. Caps pay the first accounts whose evidence is approved, so the pool stays bounded.
+
+### Bug reports
+
+The bug page (`/bugs`) takes a report of anything wrong on the public testnet: the surface (explorer, faucet, Compages, Sequentia Core, the staking pool board, this site), a title, the steps to reproduce, what was expected and what happened, and an optional screenshot (PNG, JPEG, GIF or WebP, up to 2 MB, judged by its bytes). An account files up to ten a day and follows each one's status on the same page. A report earns nothing until an admin reproduces and accepts it, at a severity whose reward is fixed in `bugTiers` (`bugs.go`):
+
+| Severity | Reward |
+|---|---|
+| Minor: wrong text, a confusing screen, a broken link | 10 |
+| Major: a feature that does not work as documented, a wrong number shown | 25 |
+| Severe: lost or stuck testnet funds, a reproducible crash, a flow that cannot be completed | 50 |
+
+The first report of a bug is the one rewarded. An admin marks a later one a duplicate of it, which merges it into the original (a duplicate of a duplicate is merged into the original too), and a report whose text is identical to another's is flagged on its page. Anything with a security consequence belongs on the security page.
+
+Wallets file reports through the JSON intake described under "For integrators"; they land in the same queue and pay the same way, to the account whose code the person gave.
 
 ### Competitions
 
@@ -138,7 +151,38 @@ Anti-farming, mechanically enforced in the database:
 
 ## For integrators
 
-Emissio has no public machine-readable API. It is a server-rendered HTML application: session cookies (HttpOnly, SameSite=Lax), a per-session CSRF token on every POST, and a strict same-origin Content-Security-Policy. The only machine-readable endpoint is the admin-only launch-allocation export at `/admin/allocations.csv` (columns: `user_id, email, mainnet_address, balance_seq, verified_platforms`).
+Emissio is a server-rendered HTML application: session cookies (HttpOnly, SameSite=Lax), a per-session CSRF token on every POST, and a strict same-origin Content-Security-Policy. Its machine-readable endpoints are the problem-report intake below and the admin-only exports.
+
+### Problem-report intake
+
+`POST /api/problem-reports` (on the live instance, `https://sequentiatestnet.com/emissio/api/problem-reports`) takes a problem report from inside a wallet. It is anonymous: no cookies, no CSRF token, and `Access-Control-Allow-Origin: *` on every answer, with `OPTIONS` answered for the preflight (`POST`, `Content-Type`, max age a day). The body is JSON, at most 32 KiB:
+
+```json
+{
+  "v": 1,
+  "wallet": "web-wallet",
+  "version": "1.2.3",
+  "mode": "default",
+  "description": "what happened",
+  "account_code": "0123456789",
+  "errors": [{"at": "2026-01-01T12:00:00Z", "message": "..."}],
+  "context": {"platform": "...", "user_agent": "...", "network": "testnet"},
+  "attached": {"addresses": ["tb1..."]}
+}
+```
+
+`wallet` is one of `web-wallet`, `ambra-browser`, `ambra-mobile`; `description` is required. `account_code` is optional and links the report to the account with that code; a code that matches no account is kept with the report, which stays unattributed. Longer fields are cut to their limits (description 4,000 characters, version 40, mode 20, 20 errors of 500 characters each, the newest kept, context values 300, 20 addresses of 120) and unknown fields are ignored. Keys and seeds are never part of a report.
+
+| Answer | Body | When |
+|---|---|---|
+| `201` | `{"id": 123, "account": "linked"}` (or `"unknown"`, `"none"`) | stored |
+| `400` | `{"error": "Describe what happened."}` | not JSON, `v` other than 1, an unknown wallet, no description |
+| `409` | `{"error": "This report was already received."}` | the same description from the same address within the hour |
+| `413` | `{"error": "This report is too large."}` | over 32 KiB |
+| `415` | `{"error": "Send the report as JSON."}` | another content type |
+| `429` | `{"error": "Too many reports from here. Try again later."}`, with `Retry-After` | over 5 an hour or 20 a day from one address, or 10 a day for one account code |
+
+A report is credited only when an admin accepts it, by severity, as for the bug page.
 
 Public routes, for orientation (see `routes()` in `main.go` for the full list including the `/admin/*` desk):
 
@@ -147,6 +191,8 @@ Public routes, for orientation (see `routes()` in `main.go` for the full list in
 | `GET /` | Home: program overview and stats |
 | `GET /tasks`, `GET /tasks/{slug}`, `POST /tasks/{slug}/submit` | Task catalog and evidence submission |
 | `GET /competitions`, `GET /competitions/{slug}`, `POST .../enter` | Competitions and entries |
+| `GET /bugs`, `POST /bugs`, `GET /bugs/{id}/screenshot` | Bug reports and their screenshots (to the reporter and admins only) |
+| `POST /api/problem-reports` | Problem reports from wallets (see above) |
 | `GET /security`, `POST /security/report` | Security program and private reports |
 | `GET /guide`, `GET /rules` | Wallet/key-safety guide and program rules |
 | `GET /account`, `POST /account/address`, `POST /account/verify` | Ledger, payout address, verifications |
@@ -182,7 +228,7 @@ Tests:
 go test ./...
 ```
 
-`app_test.go` drives the full HTTP surface against a temporary database: registration, submission and review lifecycle, prize and report awards, referral qualification, verifications (with stubbed Reddit/Telegram servers), duplicate-txid rejection, base-path handling, CSRF, and anonymous-access denial. `bech32_test.go` covers address validation and formatting helpers. `walletkey_test.go` covers reading a wallet's key from its account key (BIP84's own vector) and from an address that has spent, and that the rehearsal shows only when asked. `payout_test.go` covers payout keys, a rehearsal run against a stand-in payment service (left-out reasons, every refusal of a reference, collected and returned allocations, no balance moved) and the launch's single debit. `regtest_payout_test.go` runs the rehearsal end to end against a real payment service: an Arca operator from arca's `arca_operator_for_browsers` harness, named by `EMISSIO_REGTEST_CONTROL`, with `EMISSIO_REGTEST_ARCA` the `arca` binary; it is skipped without them.
+`app_test.go` drives the full HTTP surface against a temporary database: registration, submission and review lifecycle, prize and report awards, referral qualification, verifications (with stubbed Reddit/Telegram servers), duplicate-txid rejection, base-path handling, CSRF, and anonymous-access denial. `bugs_test.go` covers the bug page (refusals, the screenshot's privacy, acceptance by severity paying once, duplicate merging) and the wallet intake (every answer of its contract, the limits, attribution by account code). `bech32_test.go` covers address validation and formatting helpers. `walletkey_test.go` covers reading a wallet's key from its account key (BIP84's own vector) and from an address that has spent, and that the rehearsal shows only when asked. `payout_test.go` covers payout keys, a rehearsal run against a stand-in payment service (left-out reasons, every refusal of a reference, collected and returned allocations, no balance moved) and the launch's single debit. `regtest_payout_test.go` runs the rehearsal end to end against a real payment service: an Arca operator from arca's `arca_operator_for_browsers` harness, named by `EMISSIO_REGTEST_CONTROL`, with `EMISSIO_REGTEST_ARCA` the `arca` binary; it is skipped without them.
 
 ### Configuration
 
@@ -195,7 +241,6 @@ All configuration is environment variables (`loadConfig` in `main.go`):
 | `EMISSIO_BASEPATH` | empty | Path prefix when served under one, e.g. `/emissio` |
 | `EMISSIO_ESPLORA` | empty | Esplora API base URL for the transaction checks, e.g. `https://sequentiatestnet.com/api` (empty disables them; submissions then go to manual review) |
 | `EMISSIO_POLICY_ASSET` | the testnet's tSEQ id | Asset id of tSEQ, for the fee and stake checks |
-| `EMISSIO_GITHUB_API` | `https://api.github.com` | GitHub API base for the bug-report issue check (overridden in tests) |
 | `EMISSIO_CLI`, `EMISSIO_DATADIR` | empty | `sequentia-cli` path and the public node's data directory; enables the peer-based checks and the ten-minute sighting poller |
 | `EMISSIO_SECURE` | `0` | Set `1` behind HTTPS so cookies are marked Secure |
 | `EMISSIO_TG_BOT_TOKEN` | empty | Telegram bot token (placeholder: `123456:ABC-...`); enables automatic Telegram ownership + ID-based age checks |
@@ -231,6 +276,7 @@ Keep real secrets (such as the bot token) out of the repo and out of unit files 
 | `verifications.go` | Social verification: platform definitions and Reddit/t.me checks |
 | `telegram.go` | Telegram bot check and ID-based account-age estimation |
 | `esplora.go` | Explorer txid check |
+| `bugs.go` | Bug reports: the form, screenshots, the wallet intake, the admin review |
 | `payout.go` | Payout runs: keys, the run's list, the reference check, the follower, the admin's and the account's pages |
 | `walletkey.go` | Reading what an account pastes (an account key, an address that has spent, a key) into the key the rehearsal pays |
 | `templates/`, `static/` | HTML templates and assets, embedded into the binary |
@@ -238,7 +284,7 @@ Keep real secrets (such as the bot token) out of the repo and out of unit files 
 
 ### Data storage
 
-One SQLite file (WAL mode, foreign keys on, a single connection to serialize writers). Tables: `users`, `sessions`, `tasks`, `submissions`, `competitions`, `entries`, `reports`, `ledger`, `verifications`, and for the payout `payout_keys`, `payout_runs`, `payout_rows`, `payout_settings`. Every reward is a ledger row; a balance is `SUM(amount)` over the user's rows. Ledger kinds: `submission`, `entry`, `report`, `verification`, `referral`, `referral-welcome`, `adjustment`, `payout` (a collected launch allocation, negative), and the reserved `presale`. Partial unique indexes on `(kind, ref_id)` are the double-credit guard.
+One SQLite file (WAL mode, foreign keys on, a single connection to serialize writers). Tables: `users`, `sessions`, `tasks`, `submissions`, `competitions`, `entries`, `reports`, `ledger`, `verifications`, and for the payout `payout_keys`, `payout_runs`, `payout_rows`, `payout_settings`, and for bug reports `bugs` and `bug_files` (screenshots). Every reward is a ledger row; a balance is `SUM(amount)` over the user's rows. Ledger kinds: `submission`, `entry`, `report`, `bug`, `verification`, `referral`, `referral-welcome`, `adjustment`, `payout` (a collected launch allocation, negative), and the reserved `presale`. Partial unique indexes on `(kind, ref_id)` are the double-credit guard.
 
 ### Deployment
 

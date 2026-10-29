@@ -149,6 +149,9 @@ func mustOpenDB(path string) *sql.DB {
 	if _, err := db.Exec(payoutSchema); err != nil {
 		panic(err)
 	}
+	if _, err := db.Exec(bugSchema); err != nil {
+		panic(err)
+	}
 	return db
 }
 
@@ -634,6 +637,7 @@ type Stats struct {
 	Pending       int64
 	OpenReports   int64
 	PendingVerifs int64
+	NewBugs       int64
 }
 
 func loadStats(db *sql.DB) (Stats, error) {
@@ -652,7 +656,10 @@ func loadStats(db *sql.DB) (Stats, error) {
 	if err := db.QueryRow("SELECT COUNT(*) FROM reports WHERE status = 'new'").Scan(&s.OpenReports); err != nil {
 		return s, err
 	}
-	err := db.QueryRow("SELECT COUNT(*) FROM verifications WHERE status = 'pending'").Scan(&s.PendingVerifs)
+	if err := db.QueryRow("SELECT COUNT(*) FROM verifications WHERE status = 'pending'").Scan(&s.PendingVerifs); err != nil {
+		return s, err
+	}
+	err := db.QueryRow("SELECT COUNT(*) FROM bugs WHERE status = 'new'").Scan(&s.NewBugs)
 	return s, err
 }
 
