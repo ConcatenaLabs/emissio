@@ -51,18 +51,3 @@
 </div>
 {{end}}
 {{end}}
-
-{{define "bugtable"}}
-<div class="table-scroll"><table class="table">
-  <tr><th>#</th><th>Report</th><th>Filed</th><th>Status</th><th>Reward</th></tr>
-  {{range .}}
-  <tr>
-    <td>{{.ID}}</td>
-    <td>{{.Title}}<div class="small muted">{{surfacename .Surface}}{{if .ReviewNote}} · {{.ReviewNote}}{{end}}{{if .DupOf}} · same bug as report #{{.DupOf}}{{end}}</div></td>
-    <td>{{date .CreatedAt}}</td>
-    <td><span class="pill {{.Status}}">{{.Status}}</span></td>
-    <td class="amount">{{if .Award}}{{seq .Award}} SEQ{{end}}</td>
-  </tr>
-  {{end}}
-</table></div>
-{{end}}

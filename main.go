@@ -40,6 +40,18 @@ type Config struct {
 	TgBotToken    string // BotFather token; enables ID-based Telegram age checks
 	TgBotName     string // bot username shown to users, without @
 
+	// Task checks against the public services (checks.go).
+	CompagesURL string   // the bridge's API base, e.g. https://sequentiatestnet.com/bridge/api
+	PoolsURL    string   // the pool board's feed, e.g. https://sequentiatestnet.com/pools/pools.json
+	SumsURL     string   // the download page's checksum list
+	FaucetAddrs []string // addresses the faucet pays from
+
+	// Emissio's own testnet wallet (counterparty.go), held by the node
+	// NodeCLI reaches. Empty: the counterparty tasks are off.
+	Wallet         string
+	WalletAssets   []string // assets it may pay in; empty: any it holds
+	WalletDailyCap int64
+
 	// Mail (mail.go): an SMTP submission service. Without a host and a
 	// sender, email verification and reset by email are off.
 	SMTPHost  string
@@ -86,6 +98,12 @@ func loadConfig() Config {
 		NodeDatadir:   envOr("EMISSIO_DATADIR", ""),
 		TgBotToken:    envOr("EMISSIO_TG_BOT_TOKEN", ""),
 		TgBotName:     envOr("EMISSIO_TG_BOT_NAME", ""),
+		CompagesURL:   envOr("EMISSIO_COMPAGES", ""),
+		PoolsURL:      envOr("EMISSIO_POOLS", ""),
+		SumsURL:       envOr("EMISSIO_SUMS", ""),
+		FaucetAddrs:   strings.Split(envOr("EMISSIO_FAUCET_ADDRESSES", "tb1phruj5gk2nqrd4atn58rjr7msakm64fxsh5famwwerraz5wu29qnqkk43tk"), ","),
+		Wallet:        envOr("EMISSIO_WALLET", ""),
+		WalletAssets:  strings.Split(envOr("EMISSIO_WALLET_ASSETS", ""), ","),
 		SMTPHost:      envOr("EMISSIO_SMTP_HOST", ""),
 		SMTPPort:      envOr("EMISSIO_SMTP_PORT", "587"),
 		SMTPUser:      envOr("EMISSIO_SMTP_USER", ""),
@@ -115,6 +133,7 @@ func loadConfig() Config {
 	}
 	cfg.PayoutPoll = time.Duration(secs) * time.Second
 	cfg.PayoutLaunchKey = envOr("EMISSIO_PAYOUT_LAUNCH_KEY", "0") == "1"
+	cfg.WalletDailyCap, _ = strconv.ParseInt(envOr("EMISSIO_WALLET_DAILY_CAP", "200"), 10, 64)
 	return cfg
 }
 
@@ -136,6 +155,7 @@ type App struct {
 	mailer          Mailer // nil: this instance sends no mail
 	mailLimit       *slidingLimiter
 	mailIPLimit     *slidingLimiter
+	faucetAddr      map[string]bool
 }
 
 func NewApp(cfg Config, db *sql.DB) *App {
@@ -148,6 +168,12 @@ func NewApp(cfg Config, db *sql.DB) *App {
 		mailer:          newMailer(cfg),
 		mailLimit:       newSlidingLimiter(limitRule{time.Hour, 3}, limitRule{24 * time.Hour, 10}),
 		mailIPLimit:     newSlidingLimiter(limitRule{time.Hour, 10}, limitRule{24 * time.Hour, 40}),
+	}
+	a.faucetAddr = map[string]bool{}
+	for _, s := range cfg.FaucetAddrs {
+		if s = strings.ToLower(strings.TrimSpace(s)); s != "" {
+			a.faucetAddr[s] = true
+		}
 	}
 	a.tpls = parseTemplates(cfg)
 	return a
@@ -189,9 +215,11 @@ func parseTemplates(cfg Config) map[string]*template.Template {
 		"add":      func(a, b int) int { return a + b },
 		"tmap": func(t any, csrf string) map[string]any {
 			task, _ := t.(*Task)
-			return map[string]any{"Task": task, "CSRF": csrf}
+			return map[string]any{"Task": task, "CSRF": csrf, "Checks": checkKinds, "Surfaces": surfaces}
 		},
-		"surfacename": surfaceName,
+		"surfacename":  surfaceName,
+		"surfacetitle": surfaceTitle,
+		"amounttext":   amountText,
 		"short": func(s string) string {
 			if len(s) <= 16 {
 				return s
@@ -363,8 +391,8 @@ func runCommand(db *sql.DB, args []string) {
 		// left alone so admin tuning survives.
 		updated, inserted := 0, 0
 		for _, t := range seedTasks {
-			res, err := db.Exec("UPDATE tasks SET title = ?, category = ?, body = ? WHERE slug = ?",
-				t.title, t.category, t.body, t.slug)
+			res, err := db.Exec("UPDATE tasks SET title = ?, category = ?, body = ?, surface = ?, check_kind = ?, needs_txid = ? WHERE slug = ?",
+				t.title, t.category, t.body, t.surface, t.check, t.needsTxid, t.slug)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -372,9 +400,9 @@ func runCommand(db *sql.DB, args []string) {
 				updated++
 				continue
 			}
-			if _, err := db.Exec(`INSERT INTO tasks (slug, title, category, body, reward, cap, needs_txid, active, sort)
-				VALUES (?,?,?,?,?,?,?,1,?)`,
-				t.slug, t.title, t.category, t.body, t.reward, t.cap, t.needsTxid, t.sort); err != nil {
+			if _, err := db.Exec(`INSERT INTO tasks (slug, title, category, body, surface, check_kind, reward, cap, needs_txid, active, sort)
+				VALUES (?,?,?,?,?,?,?,?,?,1,?)`,
+				t.slug, t.title, t.category, t.body, t.surface, t.check, t.reward, t.cap, t.needsTxid, t.sort); err != nil {
 				log.Fatal(err)
 			}
 			inserted++
@@ -419,6 +447,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("GET /tasks", a.handleTasks)
 	mux.HandleFunc("GET /tasks/{slug}", a.handleTask)
 	mux.HandleFunc("POST /tasks/{slug}/submit", a.handleTaskSubmit)
+	mux.HandleFunc("POST /tasks/{slug}/request", a.handlePaymentRequest)
 	mux.HandleFunc("GET /competitions", a.handleCompetitions)
 	mux.HandleFunc("GET /competitions/{slug}", a.handleCompetition)
 	mux.HandleFunc("POST /competitions/{slug}/enter", a.handleCompetitionEnter)

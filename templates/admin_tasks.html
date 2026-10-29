@@ -3,7 +3,7 @@
 <h1>Tasks</h1>
 {{range .Data}}
 <details>
-  <summary>{{.Title}} · {{seq .Reward}} SEQ · {{if .Active}}active{{else}}inactive{{end}}{{if .Cap}} · {{seq .Awarded}}/{{seq .Cap}}{{end}}</summary>
+  <summary>{{.Title}} · {{surfacetitle .Surface}} · {{seq .Reward}} SEQ · {{if .Active}}active{{else}}inactive{{end}}{{if .Cap}} · {{seq .Awarded}}/{{seq .Cap}}{{end}}</summary>
   <div class="inner">{{template "taskeditform" tmap . $.CSRF}}</div>
 </details>
 {{end}}
@@ -20,7 +20,15 @@
   <label>Slug</label><input class="mono" type="text" name="slug" required value="{{if .Task}}{{.Task.Slug}}{{end}}">
   <label>Title</label><input type="text" name="title" required value="{{if .Task}}{{.Task.Title}}{{end}}">
   <label>Category</label><input type="text" name="category" value="{{if .Task}}{{.Task.Category}}{{else}}Testnet{{end}}">
-  <label>Body (blank line = paragraph, "- " = list item, "## " = heading)</label>
+  <label>Surface (where the dashboard counts it)</label>
+  <select name="surface">{{$cur := ""}}{{if .Task}}{{$cur = .Task.Surface}}{{end}}
+    {{range .Surfaces}}<option value="{{.Key}}"{{if eq .Key $cur}} selected{{end}}>{{.Name}}</option>{{end}}
+  </select>
+  <label>Check (which automatic check the evidence runs; a pass is credited at once)</label>
+  <select name="check_kind">{{$ck := "none"}}{{if .Task}}{{$ck = .Task.CheckKind}}{{end}}
+    {{range .Checks}}<option value="{{.Key}}"{{if eq .Key $ck}} selected{{end}}>{{.Key}}: {{.Desc}}</option>{{end}}
+  </select>
+  <label>Body (blank line = paragraph, "- " = list item, "## " = heading; {PROOF} and {CODE} become the reader's proof decimals and account code)</label>
   <textarea name="body" style="min-height:12rem">{{if .Task}}{{.Task.Body}}{{end}}</textarea>
   <div style="display:flex;gap:1rem;flex-wrap:wrap">
     <div><label>Reward (SEQ)</label><input type="number" name="reward" required min="1" value="{{if .Task}}{{.Task.Reward}}{{end}}"></div>

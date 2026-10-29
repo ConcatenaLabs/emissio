@@ -48,7 +48,9 @@ func (a *App) handleAdminReview(w http.ResponseWriter, r *http.Request) {
 		}
 		if action == "approve" {
 			var userID int64
-			if a.db.QueryRow("SELECT user_id FROM submissions WHERE id = ?", id).Scan(&userID) == nil {
+			var txid string
+			if a.db.QueryRow("SELECT user_id, txid FROM submissions WHERE id = ?", id).Scan(&userID, &txid) == nil {
+				a.recordFunding(userID, txid)
 				a.processReferrals(userID)
 			}
 		}
@@ -66,7 +68,9 @@ func (a *App) handleAdminReview(w http.ResponseWriter, r *http.Request) {
 			a.serverError(w, err)
 			return
 		}
-		chainNote := a.evidenceCheck(slug, txid, notes, user)
+		var kind string
+		a.db.QueryRow("SELECT t.check_kind FROM submissions s JOIN tasks t ON t.id = s.task_id WHERE s.id = ?", id).Scan(&kind)
+		chainNote := a.evidenceCheck(kind, txid, notes, user).Note
 		if _, err := a.db.Exec("UPDATE submissions SET chain_note = ? WHERE id = ?", chainNote, id); err != nil {
 			a.serverError(w, err)
 			return
@@ -91,6 +95,12 @@ func (a *App) handleAdminTaskSave(w http.ResponseWriter, r *http.Request) {
 	slug := strings.TrimSpace(r.FormValue("slug"))
 	title := strings.TrimSpace(r.FormValue("title"))
 	category := strings.TrimSpace(r.FormValue("category"))
+	surface := strings.TrimSpace(r.FormValue("surface"))
+	check := strings.TrimSpace(r.FormValue("check_kind"))
+	if !knownCheck(check) {
+		a.redirect(w, r, "/admin/tasks", "", "Pick one of the listed checks.")
+		return
+	}
 	body := strings.ReplaceAll(strings.TrimSpace(r.FormValue("body")), "\r\n", "\n")
 	reward, _ := strconv.ParseInt(r.FormValue("reward"), 10, 64)
 	cap, _ := strconv.ParseInt(r.FormValue("cap"), 10, 64)
@@ -103,11 +113,11 @@ func (a *App) handleAdminTaskSave(w http.ResponseWriter, r *http.Request) {
 	}
 	var err error
 	if id > 0 {
-		_, err = a.db.Exec(`UPDATE tasks SET slug=?, title=?, category=?, body=?, reward=?, cap=?, needs_txid=?, active=?, sort=? WHERE id=?`,
-			slug, title, category, body, reward, cap, needsTxid, active, sort, id)
+		_, err = a.db.Exec(`UPDATE tasks SET slug=?, title=?, category=?, surface=?, check_kind=?, body=?, reward=?, cap=?, needs_txid=?, active=?, sort=? WHERE id=?`,
+			slug, title, category, surface, check, body, reward, cap, needsTxid, active, sort, id)
 	} else {
-		_, err = a.db.Exec(`INSERT INTO tasks (slug, title, category, body, reward, cap, needs_txid, active, sort) VALUES (?,?,?,?,?,?,?,?,?)`,
-			slug, title, category, body, reward, cap, needsTxid, active, sort)
+		_, err = a.db.Exec(`INSERT INTO tasks (slug, title, category, surface, check_kind, body, reward, cap, needs_txid, active, sort) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+			slug, title, category, surface, check, body, reward, cap, needsTxid, active, sort)
 	}
 	if err != nil {
 		a.redirect(w, r, "/admin/tasks", "", "Save failed: "+err.Error())

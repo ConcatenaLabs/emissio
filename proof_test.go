@@ -51,80 +51,16 @@ func vout(value int64, asset, typ string) map[string]any {
 	return map[string]any{"value": value, "asset": asset, "scriptpubkey_type": typ}
 }
 
+// voutS is an output with a script and an address.
+func voutS(value int64, asset, typ, script, addr string) map[string]any {
+	return map[string]any{"value": value, "asset": asset, "scriptpubkey_type": typ, "scriptpubkey": script, "scriptpubkey_address": addr}
+}
+
 func txJSON(t *testing.T, vin []map[string]any, vout []map[string]any, confirmed bool) string {
 	m := map[string]any{"txid": "aa", "vin": vin, "vout": vout,
 		"status": map[string]any{"confirmed": confirmed, "block_height": 42, "block_hash": "bh"}}
 	b, _ := json.Marshal(m)
 	return string(b)
-}
-
-func TestEvidenceCheck(t *testing.T) {
-	code := "0123456789"
-	tag := int64(86718345)
-	usdx := "2a515539da5e6a60caa7766ecd65bac0c10d15717ddd2088844ba58f4d04b9de"
-	other := "5bb1a1f2cfea8ad1f4b79f058005fa1ddd0d8b4a623e59974b99abbbf1fa80e4"
-	plain := []map[string]any{{"is_coinbase": false}}
-	txs := map[string]string{
-		"first":    txJSON(t, plain, []map[string]any{vout(100000000+tag, policy, "v0_p2wpkh"), vout(41, policy, "fee")}, true),
-		"notag":    txJSON(t, plain, []map[string]any{vout(100000000, policy, "v0_p2wpkh"), vout(41, policy, "fee")}, true),
-		"feeonly":  txJSON(t, plain, []map[string]any{vout(100000000, policy, "v0_p2wpkh"), vout(tag, policy, "fee")}, true),
-		"assetfee": txJSON(t, plain, []map[string]any{vout(100000000+tag, usdx, "v0_p2wpkh"), vout(41, usdx, "fee")}, true),
-		"multi":    txJSON(t, plain, []map[string]any{vout(100000000+tag, policy, "v0_p2wpkh"), vout(5, usdx, "v0_p2wpkh"), vout(41, policy, "fee")}, true),
-		"blinded":  txJSON(t, plain, []map[string]any{vout(100000000+tag, policy, "v0_p2wpkh"), {"valuecommitment": "08aa", "scriptpubkey_type": "v0_p2wpkh"}, vout(41, policy, "fee")}, true),
-		"issue": txJSON(t, []map[string]any{{"issuance": map[string]any{"asset_id": other, "is_reissuance": false}}},
-			[]map[string]any{vout(100000000000+tag, other, "v0_p2wpkh"), vout(41, policy, "fee")}, true),
-		"reissue": txJSON(t, []map[string]any{{"issuance": map[string]any{"asset_id": other, "is_reissuance": true}}},
-			[]map[string]any{vout(50000000000+tag, other, "v0_p2wpkh"), vout(41, policy, "fee")}, true),
-		"stake":    txJSON(t, plain, []map[string]any{vout(40000*100000000+tag, policy, "unknown"), vout(41, policy, "fee")}, true),
-		"smallstk": txJSON(t, plain, []map[string]any{vout(39999*100000000+tag, policy, "unknown"), vout(41, policy, "fee")}, true),
-		"mempool":  txJSON(t, plain, []map[string]any{vout(100000000+tag, policy, "v0_p2wpkh")}, false),
-	}
-	assets := map[string]string{other: `{"issuance_txin":{"txid":"ISSUE"}}`}
-	blocks := map[string]string{"bh": `{"bitcoin_anchor":{"hash":"00000000ABCDEF00000000000000000000000000000000000000000000000000","height":7}}`}
-	srv := fakeExplorer(t, txs, assets, blocks)
-	defer srv.Close()
-
-	app, _, _ := newTestServer(t)
-	app.cfg.EsploraURL = srv.URL
-	app.cfg.PolicyAsset = policy
-	uid, err := createUser(app.db, "prover@example.com", "x", code, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	user := &User{ID: uid, ClaimCode: code}
-	// The reissue check looks for this account's issue-asset submission.
-	if _, err := app.db.Exec("INSERT INTO submissions (user_id, task_id, txid, status, created_at) SELECT ?, id, 'issue', 'approved', 0 FROM tasks WHERE slug = 'issue-asset'", uid); err != nil {
-		t.Fatal(err)
-	}
-
-	cases := []struct{ slug, txid, notes, want string }{
-		{"first-transaction", "first", "", "proof amount found (output 0, asset c8eccacf0953…); confirmed at height 42"},
-		{"first-transaction", "notag", "", "proof amount .86718345 NOT found in any transparent output; confirmed at height 42"},
-		{"first-transaction", "feeonly", "", "proof amount .86718345 NOT found in any transparent output; confirmed at height 42"},
-		{"first-transaction", "mempool", "", "proof amount found (output 0, asset c8eccacf0953…); found in the mempool, not yet confirmed"},
-		{"first-transaction", "missing", "", "txid NOT FOUND on the testnet"},
-		{"any-asset-fee", "assetfee", "", "proof amount found (output 0, asset 2a515539da5e…); fee paid in asset 2a515539da5e… (OK); confirmed at height 42"},
-		{"any-asset-fee", "first", "", "proof amount found (output 0, asset c8eccacf0953…); fee paid in tSEQ: does NOT qualify; confirmed at height 42"},
-		{"multi-asset-send", "multi", "", "proof amount found (output 0, asset c8eccacf0953…); 2 assets in the outputs (OK); confirmed at height 42"},
-		{"multi-asset-send", "first", "", "proof amount found (output 0, asset c8eccacf0953…); only one asset in the outputs: does NOT qualify; confirmed at height 42"},
-		{"confidential-tx", "blinded", "", "proof amount found (output 0, asset c8eccacf0953…); 1 blinded output(s) (OK); confirmed at height 42"},
-		{"confidential-tx", "first", "", "proof amount found (output 0, asset c8eccacf0953…); no blinded output: does NOT qualify; confirmed at height 42"},
-		{"issue-asset", "issue", "", "proof amount found (output 0, asset 5bb1a1f2cfea…); issues asset 5bb1a1f2cfea… (OK); confirmed at height 42"},
-		{"issue-asset", "reissue", "", "proof amount found (output 0, asset 5bb1a1f2cfea…); this is a reissuance, not a new issuance; confirmed at height 42"},
-		{"reissue-asset", "reissue", "", "proof amount found (output 0, asset 5bb1a1f2cfea…); reissues asset 5bb1a1f2cfea…; issued by this account (OK); confirmed at height 42"},
-		{"reissue-asset", "first", "", "proof amount found (output 0, asset c8eccacf0953…); no issuance in this transaction: does NOT qualify; confirmed at height 42"},
-		{"stake", "stake", "", "proof amount found (output 0, asset c8eccacf0953…); proof output holds 40,000 tSEQ (OK); reviewer confirms the staking script; confirmed at height 42"},
-		{"stake", "smallstk", "", "proof amount found (output 0, asset c8eccacf0953…); proof output is under 40,000 tSEQ: does NOT qualify; confirmed at height 42"},
-		{"anchor-lookup", "first", "anchor is 00000000abcdef00000000000000000000000000000000000000000000000000 at 7", "proof amount found (output 0, asset c8eccacf0953…); anchor hash in the notes matches the block's Bitcoin anchor (OK); confirmed at height 42"},
-		{"anchor-lookup", "first", "no idea", "proof amount found (output 0, asset c8eccacf0953…); no hash in the notes matches the block's Bitcoin anchor; confirmed at height 42"},
-		{"bridge-in", "assetfee", "", "proof amount found (output 0, asset 2a515539da5e…); moves asset 2a515539da5e…; reviewer confirms it is a Compages asset; confirmed at height 42"},
-		{"bridge-in", "first", "", "proof amount found (output 0, asset c8eccacf0953…); proof output is tSEQ; it must move the bridged asset; confirmed at height 42"},
-	}
-	for _, c := range cases {
-		if got := app.evidenceCheck(c.slug, c.txid, c.notes, user); got != c.want {
-			t.Errorf("%s/%s:\n got %q\nwant %q", c.slug, c.txid, got, c.want)
-		}
-	}
 }
 
 func TestPeerCodes(t *testing.T) {

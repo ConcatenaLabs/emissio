@@ -1,5 +1,5 @@
 {{define "content"}}
-<div class="eyebrow">{{.Data.Task.Category}} · task</div>
+<div class="eyebrow">{{surfacetitle .Data.Task.Surface}} · {{.Data.Task.Category}}</div>
 <h1>{{.Data.Task.Title}}</h1>
 <div class="ledger" style="margin:1.2rem 0">
   <div class="ledger-row"><span class="label">Reward</span><span class="leader"></span><span class="amount">{{seq .Data.Task.Reward}} <small>SEQ</small></span></div>
@@ -9,6 +9,37 @@
 </div>
 
 {{body .Data.Task.Body}}
+
+{{with .Data.Pay}}
+<div class="section">
+  <h2>Emissio's payment</h2>
+  {{if not $.User}}
+    <p class="muted"><a href="{{base}}/login">Sign in</a> to ask Emissio for a payment.</p>
+  {{else if not .Available}}
+    <p class="muted">Emissio's wallet is not paying on this site right now.</p>
+  {{else}}
+    {{with .Payment}}
+    <div class="ledger wide">
+      <div class="ledger-row"><span class="label">Paid to</span><span class="leader"></span><span class="amount plain mono small">{{.Address}}</span></div>
+      <div class="ledger-row"><span class="label">Asset</span><span class="leader"></span><span class="amount plain mono small">{{.Asset}}</span></div>
+      {{if $.Data.Pay.Amount}}<div class="ledger-row"><span class="label">Amount</span><span class="leader"></span><span class="amount plain mono">{{$.Data.Pay.Amount}}</span></div>{{end}}
+      <div class="ledger-row"><span class="label">Transaction</span><span class="leader"></span><span class="amount plain mono small"><a href="https://sequentiatestnet.com/explorer/tx/{{.Txid}}" target="_blank" rel="noopener">{{short .Txid}}</a></span></div>
+      <div class="ledger-row"><span class="label">Sent</span><span class="leader"></span><span class="amount plain">{{datetime .CreatedAt}}</span></div>
+    </div>
+    {{end}}
+    {{if .ReturnAddress}}<p class="small muted" style="margin-top:.8rem">Emissio's address, to return the payment to: <span class="mono">{{.ReturnAddress}}</span></p>{{end}}
+    {{if or (not $.Data.Mine) (eq $.Data.Mine.Status "rejected")}}
+    <form class="stack wide" method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/request" style="margin-top:1rem">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <label for="address">{{if .Confidential}}A confidential address of your wallet (tsqb...){{else}}A transparent address of your wallet (tb1...){{end}}</label>
+      <input class="mono" type="text" id="address" name="address" required>
+      <div class="field-note">{{if .Payment}}You can ask for a new payment a day after the last, up to three times.{{else}}Emissio pays accounts that have completed the first-transaction task.{{end}}</div>
+      <div class="actions"><button class="btn{{if .Payment}} ghost{{end}}" type="submit">{{if .Payment}}Ask for a new payment{{else}}Ask Emissio to pay me{{end}}</button></div>
+    </form>
+    {{end}}
+  {{end}}
+</div>
+{{end}}
 
 <div class="section">
   <h2>Your submission</h2>
@@ -23,6 +54,7 @@
       <p><span class="pill {{.Data.Mine.Status}}">{{.Data.Mine.Status}}</span>
       {{if .Data.Mine.Txid}}<span class="mono small muted"> txid {{short .Data.Mine.Txid}}</span>{{end}}</p>
       {{if eq .Data.Mine.Status "pending"}}<p class="muted small">A reviewer will check your evidence. Approved rewards appear on your <a href="{{base}}/account">account</a>.</p>{{end}}
+      {{if .Data.Mine.ChainNote}}<p class="muted small">Check: {{.Data.Mine.ChainNote}}</p>{{end}}
       {{if eq .Data.Mine.Status "approved"}}<p class="muted small">Approved and credited to your <a href="{{base}}/account">ledger</a>.</p>{{end}}
     {{end}}
   {{else if .Data.Full}}
@@ -42,7 +74,11 @@
   <div class="field-note">The txid of the transaction that proves you completed this task, on the Sequentia testnet.{{if .Data.ProofTag}} It must contain a transparent output whose amount ends in <strong class="mono">.{{.Data.ProofTag}}</strong>, your proof decimals.{{end}}</div>
   {{end}}
   <label for="notes">Notes</label>
-  <textarea id="notes" name="notes" placeholder="Anything the task asks for (asset ids, markets, payment hashes) and context for the reviewer."></textarea>
+  <textarea id="notes" name="notes" placeholder="Anything the task asks for, and anything that went wrong or was unclear on the way."></textarea>
+  {{if .Data.Auto}}
+  <div class="field-note">Evidence that passes the check is credited at once; evidence that does not is returned with the reason.</div>
+  <label class="small"><input type="checkbox" name="review" value="1"> If the check refuses evidence you are sure is right, send it to a reviewer instead</label>
+  {{end}}
   <div class="actions"><button class="btn" type="submit">Submit evidence</button></div>
 </form>
 {{end}}

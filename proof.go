@@ -57,14 +57,15 @@ type chainVout struct {
 	Asset           string `json:"asset"`
 	ValueCommitment string `json:"valuecommitment"`
 	Type            string `json:"scriptpubkey_type"`
+	Script          string `json:"scriptpubkey"`
+	Address         string `json:"scriptpubkey_address"`
 }
 type chainVin struct {
-	IsCoinbase bool `json:"is_coinbase"`
-	Issuance   *struct {
-		AssetID      string `json:"asset_id"`
-		IsReissuance bool   `json:"is_reissuance"`
-		AssetAmount  int64  `json:"assetamount"`
-	} `json:"issuance"`
+	Txid       string     `json:"txid"`
+	Vout       int        `json:"vout"`
+	IsCoinbase bool       `json:"is_coinbase"`
+	Prevout    *chainVout `json:"prevout"`
+	Issuance   *issuance  `json:"issuance"`
 }
 type chainTx struct {
 	Txid   string      `json:"txid"`
@@ -137,159 +138,27 @@ func short(s string) string {
 	return s
 }
 
-// evidenceCheck is the automatic verdict on a submission, written into its
-// chain note. It is advisory: the reviewer still approves, but a clean note
-// means the chain itself has vouched for the claim.
-func (a *App) evidenceCheck(slug, txid, notes string, user *User) string {
-	switch slug {
-	case "build-from-source":
-		return a.buildCheck(user.ClaimCode)
-	case "run-node":
-		return a.uptimeCheck(user.ClaimCode, time.Now())
-	}
-	if txid == "" {
-		return "no txid submitted"
-	}
-	tx, note := a.fetchTx(txid)
-	if tx == nil {
-		return note
-	}
-	where := "found in the mempool, not yet confirmed"
-	if tx.Status.Confirmed {
-		where = fmt.Sprintf("confirmed at height %d", tx.Status.BlockHeight)
-	}
-	tag := proofTag(user.ClaimCode)
-	idx, po := proofOutput(tx, tag)
-	if po == nil {
-		return "proof amount ." + tag + " NOT found in any transparent output; " + where
-	}
-	parts := []string{fmt.Sprintf("proof amount found (output %d, asset %s)", idx, short(po.Asset))}
-	policy := a.cfg.PolicyAsset
-	switch slug {
-	case "any-asset-fee":
-		fee := ""
-		for _, o := range tx.Vout {
-			if o.Type == "fee" {
-				fee = o.Asset
-			}
-		}
-		switch {
-		case fee == "":
-			parts = append(parts, "no fee output found")
-		case fee == policy:
-			parts = append(parts, "fee paid in tSEQ: does NOT qualify")
-		default:
-			parts = append(parts, "fee paid in asset "+short(fee)+" (OK)")
-		}
-	case "multi-asset-send":
-		assets := map[string]bool{}
-		for _, o := range tx.Vout {
-			if o.Type != "fee" && o.Type != "op_return" && o.Asset != "" {
-				assets[o.Asset] = true
-			}
-		}
-		if len(assets) >= 2 {
-			parts = append(parts, fmt.Sprintf("%d assets in the outputs (OK)", len(assets)))
-		} else {
-			parts = append(parts, "only one asset in the outputs: does NOT qualify")
-		}
-	case "confidential-tx":
-		blinded := 0
-		for _, o := range tx.Vout {
-			if o.ValueCommitment != "" {
-				blinded++
-			}
-		}
-		if blinded > 0 {
-			parts = append(parts, fmt.Sprintf("%d blinded output(s) (OK)", blinded))
-		} else {
-			parts = append(parts, "no blinded output: does NOT qualify")
-		}
-	case "issue-asset", "reissue-asset":
-		var iss *chainVin
-		for i := range tx.Vin {
-			if tx.Vin[i].Issuance != nil {
-				iss = &tx.Vin[i]
-			}
-		}
-		switch {
-		case iss == nil:
-			parts = append(parts, "no issuance in this transaction: does NOT qualify")
-		case slug == "issue-asset" && iss.Issuance.IsReissuance:
-			parts = append(parts, "this is a reissuance, not a new issuance")
-		case slug == "issue-asset":
-			parts = append(parts, "issues asset "+short(iss.Issuance.AssetID)+" (OK)")
-		case !iss.Issuance.IsReissuance:
-			parts = append(parts, "this is a new issuance, not a reissuance")
-		default:
-			parts = append(parts, "reissues asset "+short(iss.Issuance.AssetID)+"; "+a.ownsIssuance(user.ID, iss.Issuance.AssetID))
-		}
-	case "stake":
-		if po.Asset != policy {
-			parts = append(parts, "proof output is not tSEQ: a stake must be tSEQ")
-		} else if *po.Value < minStake {
-			parts = append(parts, "proof output is under 40,000 tSEQ: does NOT qualify")
-		} else {
-			parts = append(parts, fmt.Sprintf("proof output holds %s tSEQ (OK); reviewer confirms the staking script", formatSEQ(*po.Value/proofAtoms)))
-		}
-	case "anchor-lookup":
-		parts = append(parts, a.anchorCheck(tx, notes))
-	case "bridge-in":
-		if po.Asset == policy {
-			parts = append(parts, "proof output is tSEQ; it must move the bridged asset")
-		} else {
-			parts = append(parts, "moves asset "+short(po.Asset)+"; reviewer confirms it is a Compages asset")
-		}
-	case "bridge-out":
-		parts = append(parts, "reviewer confirms the destination is a Compages redemption address and the release happened")
-	case "delegate-stake":
-		parts = append(parts, "reviewer confirms the delegation record against the pool board")
-	}
-	return strings.Join(parts, "; ") + "; " + where
-}
-
-// ownsIssuance says whether the asset's issuance transaction is one this
-// user submitted for the issue-asset task.
-func (a *App) ownsIssuance(userID int64, assetID string) string {
-	var info struct {
-		IssuanceTxin struct {
-			Txid string `json:"txid"`
-		} `json:"issuance_txin"`
-	}
-	if err := a.fetchJSON("/asset/"+assetID, &info); err != nil || info.IssuanceTxin.Txid == "" {
-		return "issuer unknown; manual review"
-	}
-	var n int64
-	a.db.QueryRow(`SELECT COUNT(*) FROM submissions s JOIN tasks t ON t.id = s.task_id
-		WHERE s.user_id = ? AND t.slug = 'issue-asset' AND s.txid = ? AND s.status != 'rejected'`,
-		userID, strings.ToLower(info.IssuanceTxin.Txid)).Scan(&n)
-	if n > 0 {
-		return "issued by this account (OK)"
-	}
-	return "issued by a transaction this account did NOT submit"
-}
-
 var hashRe = regexp.MustCompile(`[0-9a-fA-F]{64}`)
 
 // anchorCheck compares the Bitcoin block hash the user wrote in the notes
 // with the anchor of the block that holds their transaction.
-func (a *App) anchorCheck(tx *chainTx, notes string) string {
+func (a *App) anchorCheck(tx *chainTx, notes string) (bool, string) {
 	if !tx.Status.Confirmed {
-		return "anchor unknown until the transaction confirms"
+		return false, "anchor unknown until the transaction confirms"
 	}
 	var block struct {
 		Anchor json.RawMessage `json:"bitcoin_anchor"`
 	}
 	if err := a.fetchJSON("/block/"+tx.Status.BlockHash, &block); err != nil {
-		return "block anchor unavailable; manual review"
+		return false, "block anchor unavailable"
 	}
 	anchor := strings.ToLower(string(block.Anchor))
 	for _, h := range hashRe.FindAllString(notes, -1) {
 		if h != tx.Txid && strings.Contains(anchor, strings.ToLower(h)) {
-			return "anchor hash in the notes matches the block's Bitcoin anchor (OK)"
+			return true, "anchor hash in the notes matches the block's Bitcoin anchor (OK)"
 		}
 	}
-	return "no hash in the notes matches the block's Bitcoin anchor"
+	return false, "no hash in the notes matches the block's Bitcoin anchor"
 }
 
 // ---- peers: the public node's view of who is connected ----
@@ -334,20 +203,20 @@ func builtClientName(subver, code string) bool {
 	return strings.HasPrefix(strings.ToLower(subver), "/emissio-"+strings.ToLower(code)+":")
 }
 
-func (a *App) buildCheck(code string) string {
+func (a *App) buildCheck(code string) checkResult {
 	ps, err := a.peers()
 	if err != nil {
-		return "public node unreachable; manual review"
+		return review("public node unreachable; manual review")
 	}
 	for _, p := range ps {
 		if builtClientName(p.Subver, code) {
-			return "seen as peer " + p.Addr + " announcing " + p.Subver + " (OK): a client name only a rebuilt node can carry"
+			return pass("seen as peer %s announcing %s (OK): a client name only a rebuilt node can carry", p.Addr, p.Subver)
 		}
 	}
 	if sv, ok := peerCodes(ps)[strings.ToLower(code)]; ok {
-		return "seen as a peer announcing " + sv + ", but only as a user-agent comment: the client name must be Emissio-" + code + ", which needs a rebuild"
+		return fail("seen as a peer announcing %s, but only as a user-agent comment: the client name must be Emissio-%s, which needs a rebuild", sv, code)
 	}
-	return "no connected peer announces Emissio-" + code + "; the node must be running and connected to the public node when you submit"
+	return fail("no connected peer announces Emissio-%s; the node must be running and connected to the public node when you submit", code)
 }
 
 // recordSightings stores one row per code seen, at this moment.
@@ -377,8 +246,15 @@ func (a *App) startPeerPoller() {
 
 // uptimeCheck judges a week of sightings: the span from first to last, and
 // how many of the ten-minute slots in the last seven days had one.
-func (a *App) uptimeCheck(code string, now time.Time) string {
-	return uptimeVerdict(a.db, strings.ToLower(code), now)
+func (a *App) uptimeCheck(code string, now time.Time) checkResult {
+	if a.cfg.NodeCLI == "" || a.cfg.NodeDatadir == "" {
+		return review("no public node configured; manual review")
+	}
+	note := uptimeVerdict(a.db, strings.ToLower(code), now)
+	if strings.HasSuffix(note, "(OK)") {
+		return pass("%s", note)
+	}
+	return fail("%s", note)
 }
 
 func uptimeVerdict(db *sql.DB, code string, now time.Time) string {

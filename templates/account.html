@@ -75,6 +75,63 @@
   </div>
 </div>
 
+{{with .Data.Dash}}
+<div class="section">
+  <h2>Your testing</h2>
+  <p class="muted">{{.Done}} of {{.Total}} tasks done. Each surface of the testnet, and how far you have taken it:</p>
+  <div class="ledger wide">
+    {{range .Surfaces}}{{if .Total}}
+    <div class="ledger-row">
+      <span class="label"><strong>{{.Name}}</strong><span class="sub">{{.Done}} of {{.Total}} tasks done{{if .Pending}} · {{.Pending}} waiting for review{{end}}</span>
+        <span class="progress" aria-hidden="true"><span class="bar w{{.Bar}}"></span></span></span>
+      <span class="leader"></span>
+      <span class="amount plain">{{.Percent}}%</span>
+    </div>
+    {{end}}{{end}}
+  </div>
+</div>
+
+{{if .Earnings}}
+<div class="section">
+  <h2>What you earned from</h2>
+  <div class="ledger wide">
+    {{range .Earnings}}
+    <div class="ledger-row"><span class="label">{{.Label}}</span><span class="leader"></span><span class="amount{{if lt .Amount 0}} neg{{end}}">{{seq .Amount}} <small>SEQ</small></span></div>
+    {{end}}
+  </div>
+</div>
+{{end}}
+
+{{if .Open}}
+<div class="section">
+  <h2>Open tasks</h2>
+  <div class="ledger wide">
+    {{range .Open}}
+    <div class="ledger-row">
+      <span class="label"><a href="{{base}}/tasks/{{.Task.Slug}}">{{.Task.Title}}</a><span class="sub">{{surfacetitle .Task.Surface}}{{if eq .Status "pending"}} · waiting for review{{else if eq .Status "rejected"}} · rejected, submit again{{end}}</span></span>
+      <span class="leader"></span>
+      <span class="amount">{{seq .Task.Reward}} <small>SEQ</small></span>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}
+
+<div class="section">
+  <h2>Your reports</h2>
+  {{if .Bugs}}{{template "bugtable" .Bugs}}{{else}}<p class="muted">No bug reports yet. Something broken or confusing? <a href="{{base}}/bugs">Report it</a>.</p>{{end}}
+  {{if .Reports}}
+  <h3 style="margin-top:1.2rem">Security reports</h3>
+  <div class="table-scroll"><table class="table">
+    <tr><th>Title</th><th>Sent</th><th>Status</th><th>Award</th></tr>
+    {{range .Reports}}
+    <tr><td>{{.Title}}</td><td>{{date .CreatedAt}}</td><td><span class="pill {{.Status}}">{{.Status}}</span></td><td class="amount">{{if .Award}}{{seq .Award}} SEQ{{end}}</td></tr>
+    {{end}}
+  </table></div>
+  {{end}}
+</div>
+{{end}}
+
 <div class="section">
   <h2>Verified accounts</h2>
   <p class="muted"><strong>At least one verified account is required to receive your payout at launch</strong> and for referral rewards; each verified platform also earns {{seq .Data.VerifBonus}} SEQ. Link accounts that are at least two years old: put your account code (above) in the profile's bio or public description first, then submit the handle; for X, publish a post containing the code and submit the link to it. You can remove the code once verified. A social account can vouch for one Emissio account only.</p>

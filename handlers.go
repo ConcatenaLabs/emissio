@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -171,6 +172,8 @@ type taskData struct {
 	Mine     *Submission
 	Full     bool
 	ProofTag string // empty when not signed in
+	Auto     bool   // the task's check approves passing evidence at once
+	Pay      *paymentView
 }
 
 func (a *App) handleTask(w http.ResponseWriter, r *http.Request) {
@@ -179,7 +182,7 @@ func (a *App) handleTask(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	d := taskData{Task: task, Full: task.Cap > 0 && task.Awarded >= task.Cap}
+	d := taskData{Task: task, Full: task.Cap > 0 && task.Awarded >= task.Cap, Auto: task.CheckKind != "" && task.CheckKind != "none"}
 	// Task bodies name the user's own proof decimals and account code where
 	// they apply, so the instructions can be followed literally.
 	tag, code := "<your proof decimals>", "<your account code>"
@@ -192,6 +195,8 @@ func (a *App) handleTask(w http.ResponseWriter, r *http.Request) {
 		d.ProofTag = proofTag(user.ClaimCode)
 		tag, code = d.ProofTag, user.ClaimCode
 	}
+	user, _, _ := a.currentUser(r)
+	d.Pay = a.paymentViewFor(user, task)
 	body := *task
 	body.Body = strings.NewReplacer("{PROOF}", tag, "{CODE}", code).Replace(task.Body)
 	d.Task = &body
@@ -253,14 +258,32 @@ func (a *App) handleTaskSubmit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	chainNote := a.evidenceCheck(task.Slug, txid, notes, user)
-	_, err = a.db.Exec(`INSERT INTO submissions (user_id, task_id, txid, notes, chain_note, created_at)
-		VALUES (?,?,?,?,?,?)`, user.ID, task.ID, strings.ToLower(txid), notes, chainNote, now())
+	res := a.evidenceCheck(task.CheckKind, txid, notes, user)
+	forReview := r.FormValue("review") == "1"
+	if res.Verdict == vFail && !forReview {
+		a.redirect(w, r, back, "", "Not accepted: "+res.Note+". Fix it and submit again, or, if you are sure the evidence is right, tick the box to send it to a reviewer.")
+		return
+	}
+	ins, err := a.db.Exec(`INSERT INTO submissions (user_id, task_id, txid, notes, chain_note, created_at)
+		VALUES (?,?,?,?,?,?)`, user.ID, task.ID, strings.ToLower(txid), notes, res.Note, now())
 	if err != nil {
 		a.serverError(w, err)
 		return
 	}
-	a.redirect(w, r, back, "Submitted. Rewards are credited once a reviewer approves the evidence.", "")
+	subID, _ := ins.LastInsertId()
+	// A pass is approved at once, unless an admin holds the account.
+	if res.Verdict == vPass && !user.Held {
+		if err := reviewSubmission(a.db, subID, true, "Checked automatically."); err != nil {
+			a.serverError(w, err)
+			return
+		}
+		a.db.Exec("UPDATE submissions SET auto = 1 WHERE id = ?", subID)
+		a.recordFunding(user.ID, txid)
+		a.processReferrals(user.ID)
+		a.redirect(w, r, back, fmt.Sprintf("Checked and credited: %s SEQ is in your ledger.", formatSEQ(task.Reward)), "")
+		return
+	}
+	a.redirect(w, r, back, "Submitted. A reviewer checks this evidence, and the reward is credited once it is approved.", "")
 }
 
 func (a *App) handleCompetitions(w http.ResponseWriter, r *http.Request) {
@@ -432,6 +455,7 @@ type accountData struct {
 	VerifBonus   int64
 	Verified     bool // at least one platform verified: payout-eligible
 	MailOn       bool // this instance confirms email addresses
+	Dash         *dashboard
 }
 
 func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
@@ -484,11 +508,16 @@ func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
 		}
 		vrows = append(vrows, row)
 	}
+	dash, err := loadDashboard(a.db, user.ID)
+	if err != nil {
+		a.serverError(w, err)
+		return
+	}
 	scheme := "http"
 	if a.cfg.SecureCookies || r.Header.Get("X-Forwarded-Proto") == "https" {
 		scheme = "https"
 	}
-	a.render(w, r, "account", "Your account", accountData{
+	a.render(w, r, "account", "Your account", accountData{Dash: dash,
 		Balance: bal, Ledger: led, Submissions: subs,
 		RefLink:  scheme + "://" + r.Host + a.cfg.BasePath + "/r/" + user.ClaimCode,
 		RefCount: refCount, RefBonus: referralBonus, RefThreshold: referralThreshold, RefCap: referralCap,
