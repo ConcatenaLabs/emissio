@@ -296,6 +296,7 @@ All configuration is environment variables (`loadConfig` in `main.go`):
 | `EMISSIO_WALLET` | empty | Name of Emissio's own wallet on that node, which pays the counterparty tasks (empty turns them off) |
 | `EMISSIO_WALLET_ASSETS` | empty | Comma-separated asset ids the wallet may pay in; empty: any it holds |
 | `EMISSIO_WALLET_DAILY_CAP` | `200` | Payments the wallet makes in a day, in all |
+| `EMISSIO_WALLET_FEE_RATE` | `2` | Fee rate of its payments, in reference units per vbyte; the node converts it into the paid asset |
 | `EMISSIO_SECURE` | `0` | Set `1` behind HTTPS so cookies are marked Secure |
 | `EMISSIO_SMTP_HOST`, `EMISSIO_SMTP_PORT` | empty, `587` | SMTP submission service for verification and reset mail; with a sender set, mail is on. Port 587 uses STARTTLS (required before credentials are sent), 465 implicit TLS |
 | `EMISSIO_SMTP_USER`, `EMISSIO_SMTP_PASS` | empty | Its credentials; keep the password in a systemd drop-in, never in the repo |

@@ -215,7 +215,7 @@ func (a *App) pay(address string) (asset string, atoms int64, txid string, err e
 	var lastErr error
 	for _, as := range candidates {
 		out, err := a.walletCall("-named", "sendtoaddress", "address="+address, "amount="+amountText(atoms),
-			"assetlabel="+as, "fee_asset_label="+as)
+			"assetlabel="+as, "fee_asset_label="+as, "fee_rate="+a.cfg.WalletFeeRate)
 		if err != nil {
 			lastErr = err
 			continue

@@ -376,6 +376,12 @@ func seedDB(db *sql.DB) {
 		}
 		log.Printf("seeded %d tasks", len(seedTasks))
 	}
+	// A database from before tasks named their surface and check gets them
+	// for the seeded tasks it holds; copy, rewards and caps stay as they are.
+	for _, t := range seedTasks {
+		db.Exec("UPDATE tasks SET check_kind = ? WHERE slug = ? AND check_kind = ''", t.check, t.slug)
+		db.Exec("UPDATE tasks SET surface = ? WHERE slug = ? AND surface = ''", t.surface, t.slug)
+	}
 	if err := db.QueryRow("SELECT COUNT(*) FROM competitions").Scan(&n); err != nil {
 		log.Fatalf("seed: %v", err)
 	}

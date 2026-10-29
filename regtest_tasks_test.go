@@ -8,8 +8,9 @@ package main
 //
 // Skipped unless EMISSIO_REGTEST_TASKS_CLI names a sequentia-cli wrapper for
 // an elementsregtest node (-con_any_asset_fees=1, -txindex=1) holding the
-// wallets "emissio-tasks" (two issued assets, fee rates set for them),
-// "tester" (some of each asset and the policy asset) and "gen" (to mine), and
+// wallets "emissio-tasks" (two issued assets, fee rates set for them) and
+// "gen" (the policy asset and more of those assets, which funds a fresh
+// tester wallet each run, and mines), and
 // EMISSIO_REGTEST_TASKS_DATADIR names its data directory.
 
 import (
@@ -160,6 +161,7 @@ func TestRegtestCounterparty(t *testing.T) {
 	app.cfg.EsploraURL = shim.URL
 	app.cfg.NodeCLI, app.cfg.NodeDatadir, app.cfg.Wallet = cli, datadir, "emissio-tasks"
 	app.cfg.WalletDailyCap = 100
+	app.cfg.WalletFeeRate = "2"
 	register(t, client, srv.URL, "tester@example.com")
 	app.db.Exec(`INSERT INTO submissions (user_id, task_id, txid, status, created_at)
 		SELECT 1, id, 'x', 'approved', 0 FROM tasks WHERE slug = 'first-transaction'`)
@@ -174,7 +176,29 @@ func TestRegtestCounterparty(t *testing.T) {
 		q, _ := url.ParseQuery(resp.Request.URL.RawQuery)
 		return q.Get("m") + q.Get("e")
 	}
-	tw := "-rpcwallet=tester"
+	// A fresh tester wallet for each run, funded from "gen" with some of
+	// each asset Emissio's wallet pays in and the policy asset for fees.
+	tname := "tester-" + randomHex(4)
+	n.call("-named", "createwallet", "wallet_name="+tname, "descriptors=true")
+	defer n.call("unloadwallet", tname)
+	tw := "-rpcwallet=" + tname
+	var labels map[string]string
+	n.json(&labels, "dumpassetlabels")
+	policyAsset := labels["bitcoin"]
+	var held []struct {
+		Asset string `json:"asset"`
+	}
+	n.json(&held, "-rpcwallet=emissio-tasks", "listunspent", "1")
+	fund := n.call(tw, "getnewaddress")
+	seenAsset := map[string]bool{}
+	for _, h := range held {
+		if !seenAsset[h.Asset] {
+			seenAsset[h.Asset] = true
+			n.call("-rpcwallet=gen", "-named", "sendtoaddress", "address="+fund, "amount=5", "assetlabel="+h.Asset, "fee_asset_label="+policyAsset)
+		}
+	}
+	n.call("-rpcwallet=gen", "-named", "sendtoaddress", "address="+fund, "amount=100", "assetlabel="+policyAsset, "fee_asset_label="+policyAsset)
+	n.mine()
 	transparent := n.call(tw, "getnewaddress")
 	blinded := n.call(tw, "getnewaddress", "", "blech32")
 
@@ -299,10 +323,6 @@ func TestRegtestCounterparty(t *testing.T) {
 			vout = o.N
 		}
 	}
-	var policyAsset string
-	var labels map[string]string
-	n.json(&labels, "dumpassetlabels")
-	policyAsset = labels["bitcoin"]
 	otherFee := returnTx([]map[string]any{{"txid": p.Txid, "vout": vout}}, policyAsset)
 	if m := post("/tasks/emissio-return/submit", url.Values{"txid": {otherFee}}); !strings.Contains(m, "the fee is paid in") {
 		t.Fatalf("fee in another asset: %q", m)
