@@ -1,0 +1,11 @@
+{{define "content"}}
+<div class="eyebrow">Sign in</div>
+<h1>Choose a new password</h1>
+<form class="stack" method="post" action="{{base}}/reset/confirm">
+  <input type="hidden" name="t" value="{{.Data.Token}}">
+  <label for="password">New password</label>
+  <input type="password" id="password" name="password" required minlength="10" autocomplete="new-password">
+  <div class="field-note">At least 10 characters. Every device signed in with the old password is signed out.</div>
+  <div class="actions"><button class="btn" type="submit">Save password</button></div>
+</form>
+{{end}}

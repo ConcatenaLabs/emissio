@@ -336,6 +336,9 @@ func (a *App) handleBugSubmit(w http.ResponseWriter, r *http.Request) {
 		a.redirect(w, r, "/bugs", "", "That form expired. Try again.")
 		return
 	}
+	if !a.gate(w, r, user, "/bugs") {
+		return
+	}
 	surface := r.FormValue("surface")
 	known := false
 	for _, s := range bugSurfaces {

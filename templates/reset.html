@@ -1,0 +1,14 @@
+{{define "content"}}
+<div class="eyebrow">Sign in</div>
+<h1>Reset your password</h1>
+{{if .Data.MailOn}}
+<form class="stack" method="post" action="{{base}}/reset">
+  <label for="email">Email of your account</label>
+  <input type="email" id="email" name="email" required autocomplete="email">
+  <div class="actions"><button class="btn" type="submit">Send a reset link</button></div>
+</form>
+{{else}}
+<p class="muted" style="max-width:34rem">An admin sends you a reset link here. Ask in the Sequentia community channels, from the email address on your account, and the link you receive lets you choose a new password once.</p>
+{{end}}
+<p class="small muted" style="margin-top:1.4rem">Remembered it? <a href="{{base}}/login">Sign in</a>.</p>
+{{end}}

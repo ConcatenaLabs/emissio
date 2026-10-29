@@ -146,6 +146,10 @@ func mustOpenDB(path string) *sql.DB {
 	db.Exec("ALTER TABLE entries ADD COLUMN url_key TEXT NOT NULL DEFAULT ''")
 	db.Exec("ALTER TABLE reports ADD COLUMN check_note TEXT NOT NULL DEFAULT ''")
 	db.Exec("ALTER TABLE reports ADD COLUMN body_hash TEXT NOT NULL DEFAULT ''")
+	db.Exec("ALTER TABLE users ADD COLUMN email_verified_at INTEGER NOT NULL DEFAULT 0")
+	if _, err := db.Exec(tokenSchema); err != nil {
+		panic(err)
+	}
 	if _, err := db.Exec(payoutSchema); err != nil {
 		panic(err)
 	}
@@ -169,19 +173,20 @@ type User struct {
 	ReferredBy       int64
 	RegIP            string
 	CreatedAt        int64
+	EmailVerifiedAt  int64
 }
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
 	err := row.Scan(&u.ID, &u.Email, &u.PassHash, &u.DisplayName, &u.ClaimCode,
-		&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.RegIP, &u.CreatedAt)
+		&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.RegIP, &u.CreatedAt, &u.EmailVerifiedAt)
 	if err != nil {
 		return nil, err
 	}
 	return &u, nil
 }
 
-const userCols = "id, email, pass_hash, display_name, claim_code, is_admin, mainnet_address, address_updated_at, referred_by, reg_ip, created_at"
+const userCols = "id, email, pass_hash, display_name, claim_code, is_admin, mainnet_address, address_updated_at, referred_by, reg_ip, created_at, email_verified_at"
 
 func getUserByEmail(db *sql.DB, email string) (*User, error) {
 	return scanUser(db.QueryRow("SELECT "+userCols+" FROM users WHERE email = ?", email))
@@ -684,7 +689,7 @@ func listUsers(db *sql.DB, limit int) ([]*UserRow, error) {
 	for rows.Next() {
 		var u UserRow
 		if err := rows.Scan(&u.ID, &u.Email, &u.PassHash, &u.DisplayName, &u.ClaimCode,
-			&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.RegIP, &u.CreatedAt, &u.Balance, &u.IPPeers); err != nil {
+			&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.RegIP, &u.CreatedAt, &u.EmailVerifiedAt, &u.Balance, &u.IPPeers); err != nil {
 			return nil, err
 		}
 		out = append(out, &u)
@@ -709,7 +714,7 @@ func allocationRows(db *sql.DB) ([]*UserRow, error) {
 	for rows.Next() {
 		var u UserRow
 		if err := rows.Scan(&u.ID, &u.Email, &u.PassHash, &u.DisplayName, &u.ClaimCode,
-			&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.RegIP, &u.CreatedAt,
+			&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.RegIP, &u.CreatedAt, &u.EmailVerifiedAt,
 			&u.Balance, &u.VerifCount); err != nil {
 			return nil, err
 		}

@@ -40,6 +40,15 @@ type Config struct {
 	TgBotToken    string // BotFather token; enables ID-based Telegram age checks
 	TgBotName     string // bot username shown to users, without @
 
+	// Mail (mail.go): an SMTP submission service. Without a host and a
+	// sender, email verification and reset by email are off.
+	SMTPHost  string
+	SMTPPort  string
+	SMTPUser  string
+	SMTPPass  string
+	MailFrom  string
+	PublicURL string // the public address links in mail point at, e.g. https://sequentiatestnet.com/emissio
+
 	// The payout (payout.go). PayoutURL is the payment service's base URL,
 	// without /v1; empty turns payout runs off. PayoutNetwork is "testnet"
 	// (the rehearsal: tSEQ to each account's testnet wallet key, no balance
@@ -77,6 +86,12 @@ func loadConfig() Config {
 		NodeDatadir:   envOr("EMISSIO_DATADIR", ""),
 		TgBotToken:    envOr("EMISSIO_TG_BOT_TOKEN", ""),
 		TgBotName:     envOr("EMISSIO_TG_BOT_NAME", ""),
+		SMTPHost:      envOr("EMISSIO_SMTP_HOST", ""),
+		SMTPPort:      envOr("EMISSIO_SMTP_PORT", "587"),
+		SMTPUser:      envOr("EMISSIO_SMTP_USER", ""),
+		SMTPPass:      envOr("EMISSIO_SMTP_PASS", ""),
+		MailFrom:      envOr("EMISSIO_MAIL_FROM", ""),
+		PublicURL:     envOr("EMISSIO_PUBLIC_URL", ""),
 		PayoutURL:     envOr("EMISSIO_PAYOUT_URL", ""),
 		PayoutNetwork: envOr("EMISSIO_PAYOUT_NETWORK", "testnet"),
 		PayoutHRPs:    strings.Split(envOr("EMISSIO_PAYOUT_HRPS", "tb"), ","),
@@ -118,6 +133,9 @@ type App struct {
 	// The wallet problem-report intake: per address and per account code.
 	intakeIPLimit   *slidingLimiter
 	intakeCodeLimit *slidingLimiter
+	mailer          Mailer // nil: this instance sends no mail
+	mailLimit       *slidingLimiter
+	mailIPLimit     *slidingLimiter
 }
 
 func NewApp(cfg Config, db *sql.DB) *App {
@@ -127,6 +145,9 @@ func NewApp(cfg Config, db *sql.DB) *App {
 		authLimit:       newRateLimiter(12, time.Minute),
 		intakeIPLimit:   newSlidingLimiter(limitRule{time.Hour, 5}, limitRule{24 * time.Hour, 20}),
 		intakeCodeLimit: newSlidingLimiter(limitRule{24 * time.Hour, 10}),
+		mailer:          newMailer(cfg),
+		mailLimit:       newSlidingLimiter(limitRule{time.Hour, 3}, limitRule{24 * time.Hour, 10}),
+		mailIPLimit:     newSlidingLimiter(limitRule{time.Hour, 10}, limitRule{24 * time.Hour, 40}),
 	}
 	a.tpls = parseTemplates(cfg)
 	return a
@@ -331,7 +352,7 @@ func runCommand(db *sql.DB, args []string) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		if _, err := db.Exec("UPDATE users SET is_admin = 1 WHERE id = ?", id); err != nil {
+		if _, err := db.Exec("UPDATE users SET is_admin = 1, email_verified_at = ? WHERE id = ?", now(), id); err != nil {
 			log.Fatal(err)
 		}
 		fmt.Printf("created admin %s (id %d)\n", email, id)
@@ -419,6 +440,12 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("GET /login", a.handleLoginForm)
 	mux.HandleFunc("POST /login", a.handleLogin)
 	mux.HandleFunc("POST /logout", a.handleLogout)
+	mux.HandleFunc("GET /verify-email", a.handleVerifyEmail)
+	mux.HandleFunc("POST /account/verify-email", a.handleResendVerification)
+	mux.HandleFunc("GET /reset", a.handleResetForm)
+	mux.HandleFunc("POST /reset", a.handleResetRequest)
+	mux.HandleFunc("GET /reset/confirm", a.handleResetConfirmForm)
+	mux.HandleFunc("POST /reset/confirm", a.handleResetConfirm)
 
 	mux.HandleFunc("GET /admin", a.admin(a.handleAdminHome))
 	mux.HandleFunc("GET /admin/submissions", a.admin(a.handleAdminSubmissions))
@@ -440,6 +467,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("POST /admin/verifications/{id}/review", a.admin(a.handleAdminVerifyReview))
 	mux.HandleFunc("GET /admin/users", a.admin(a.handleAdminUsers))
 	mux.HandleFunc("POST /admin/adjust", a.admin(a.handleAdminAdjust))
+	mux.HandleFunc("POST /admin/users/{id}/reset-link", a.admin(a.handleAdminResetLink))
 	mux.HandleFunc("GET /admin/allocations.csv", a.admin(a.handleAdminExport))
 	mux.HandleFunc("GET /admin/payouts", a.admin(a.handleAdminPayouts))
 	mux.HandleFunc("POST /admin/payouts/new", a.admin(a.handleAdminPayoutNew))
