@@ -147,6 +147,13 @@ func mustOpenDB(path string) *sql.DB {
 	db.Exec("ALTER TABLE reports ADD COLUMN check_note TEXT NOT NULL DEFAULT ''")
 	db.Exec("ALTER TABLE reports ADD COLUMN body_hash TEXT NOT NULL DEFAULT ''")
 	db.Exec("ALTER TABLE users ADD COLUMN email_verified_at INTEGER NOT NULL DEFAULT 0")
+	db.Exec("ALTER TABLE users ADD COLUMN held INTEGER NOT NULL DEFAULT 0")
+	db.Exec("ALTER TABLE tasks ADD COLUMN surface TEXT NOT NULL DEFAULT ''")
+	db.Exec("ALTER TABLE tasks ADD COLUMN check_kind TEXT NOT NULL DEFAULT ''")
+	db.Exec("ALTER TABLE submissions ADD COLUMN auto INTEGER NOT NULL DEFAULT 0")
+	if _, err := db.Exec(counterpartySchema + signalSchema); err != nil {
+		panic(err)
+	}
 	if _, err := db.Exec(tokenSchema); err != nil {
 		panic(err)
 	}
@@ -174,19 +181,20 @@ type User struct {
 	RegIP            string
 	CreatedAt        int64
 	EmailVerifiedAt  int64
+	Held             bool // an admin holds the account: nothing it submits is approved automatically
 }
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
 	err := row.Scan(&u.ID, &u.Email, &u.PassHash, &u.DisplayName, &u.ClaimCode,
-		&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.RegIP, &u.CreatedAt, &u.EmailVerifiedAt)
+		&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.RegIP, &u.CreatedAt, &u.EmailVerifiedAt, &u.Held)
 	if err != nil {
 		return nil, err
 	}
 	return &u, nil
 }
 
-const userCols = "id, email, pass_hash, display_name, claim_code, is_admin, mainnet_address, address_updated_at, referred_by, reg_ip, created_at, email_verified_at"
+const userCols = "id, email, pass_hash, display_name, claim_code, is_admin, mainnet_address, address_updated_at, referred_by, reg_ip, created_at, email_verified_at, held"
 
 func getUserByEmail(db *sql.DB, email string) (*User, error) {
 	return scanUser(db.QueryRow("SELECT "+userCols+" FROM users WHERE email = ?", email))
@@ -241,6 +249,8 @@ type Task struct {
 	Slug      string
 	Title     string
 	Category  string
+	Surface   string
+	CheckKind string
 	Body      string
 	Reward    int64
 	Cap       int64
@@ -250,11 +260,11 @@ type Task struct {
 	Awarded   int64 // approved submissions so far
 }
 
-const taskCols = "t.id, t.slug, t.title, t.category, t.body, t.reward, t.cap, t.needs_txid, t.active, t.sort"
+const taskCols = "t.id, t.slug, t.title, t.category, t.surface, t.check_kind, t.body, t.reward, t.cap, t.needs_txid, t.active, t.sort"
 
 func scanTask(row interface{ Scan(...any) error }) (*Task, error) {
 	var t Task
-	err := row.Scan(&t.ID, &t.Slug, &t.Title, &t.Category, &t.Body, &t.Reward,
+	err := row.Scan(&t.ID, &t.Slug, &t.Title, &t.Category, &t.Surface, &t.CheckKind, &t.Body, &t.Reward,
 		&t.Cap, &t.NeedsTxid, &t.Active, &t.Sort, &t.Awarded)
 	if err != nil {
 		return nil, err
@@ -689,7 +699,7 @@ func listUsers(db *sql.DB, limit int) ([]*UserRow, error) {
 	for rows.Next() {
 		var u UserRow
 		if err := rows.Scan(&u.ID, &u.Email, &u.PassHash, &u.DisplayName, &u.ClaimCode,
-			&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.RegIP, &u.CreatedAt, &u.EmailVerifiedAt, &u.Balance, &u.IPPeers); err != nil {
+			&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.RegIP, &u.CreatedAt, &u.EmailVerifiedAt, &u.Held, &u.Balance, &u.IPPeers); err != nil {
 			return nil, err
 		}
 		out = append(out, &u)
@@ -714,7 +724,7 @@ func allocationRows(db *sql.DB) ([]*UserRow, error) {
 	for rows.Next() {
 		var u UserRow
 		if err := rows.Scan(&u.ID, &u.Email, &u.PassHash, &u.DisplayName, &u.ClaimCode,
-			&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.RegIP, &u.CreatedAt, &u.EmailVerifiedAt,
+			&u.IsAdmin, &u.MainnetAddress, &u.AddressUpdatedAt, &u.ReferredBy, &u.RegIP, &u.CreatedAt, &u.EmailVerifiedAt, &u.Held,
 			&u.Balance, &u.VerifCount); err != nil {
 			return nil, err
 		}
