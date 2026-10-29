@@ -568,6 +568,8 @@ func (a *App) openRun(note string) (*PayoutRun, error) {
 		var open int64
 		tx.QueryRow(`SELECT run_id FROM payout_rows WHERE user_id = ? AND state IN ('planned','pending','paid')`, u.ID).Scan(&open)
 		switch {
+		case u.Held:
+			why = "held for review by an admin"
 		case u.VerifCount == 0:
 			why = "no verified platform yet"
 		case open != 0:

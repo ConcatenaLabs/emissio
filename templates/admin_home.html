@@ -1,6 +1,7 @@
 {{define "content"}}
 <div class="eyebrow">Admin</div>
 <h1>Program desk</h1>
+<p style="margin-top:1rem"><a class="btn" href="{{base}}/admin/queue">Review queue</a></p>
 <div class="ledger" style="margin-top:1.4rem">
   <div class="ledger-row"><span class="label">Program pool</span><span class="leader"></span><span class="amount">{{seq .Data.Pool}} <small>SEQ</small></span></div>
   <div class="ledger-row"><span class="label">Issued so far</span><span class="leader"></span><span class="amount">{{seq .Data.Stats.Distributed}} <small>SEQ</small></span></div>
@@ -20,7 +21,11 @@
     <a class="btn ghost" href="{{base}}/admin/verifications">Verifications</a>
     <a class="btn ghost" href="{{base}}/admin/users">Users</a>
     <a class="btn ghost" href="{{base}}/admin/payouts">Payouts</a>
-    <a class="btn ghost" href="{{base}}/admin/allocations.csv">Export allocations CSV</a>
+    <a class="btn ghost" href="{{base}}/admin/allocations.csv">Allocations CSV</a>
+    <a class="btn ghost" href="{{base}}/admin/export/users.csv">Users CSV</a>
+    <a class="btn ghost" href="{{base}}/admin/export/submissions.csv">Submissions CSV</a>
+    <a class="btn ghost" href="{{base}}/admin/export/ledger.csv">Ledger CSV</a>
+    <a class="btn ghost" href="{{base}}/admin/export/bugs.csv">Bug reports CSV</a>
   </p>
 </div>
 {{end}}

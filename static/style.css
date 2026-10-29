@@ -230,3 +230,7 @@ footer.site img.partner { height: 18px; width: auto; vertical-align: middle; opa
 .progress .w80 { width: 80%; }
 .progress .w90 { width: 90%; }
 .progress .w100 { width: 100%; }
+
+/* a one-line admin form */
+.inline-form { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.inline-form input[type=text] { flex: 1; min-width: 10rem; }

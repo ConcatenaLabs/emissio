@@ -218,6 +218,7 @@ func parseTemplates(cfg Config) map[string]*template.Template {
 			return map[string]any{"Task": task, "CSRF": csrf, "Checks": checkKinds, "Surfaces": surfaces}
 		},
 		"surfacename":  surfaceName,
+		"list":         func(v ...string) []string { return v },
 		"surfacetitle": surfaceTitle,
 		"amounttext":   amountText,
 		"short": func(s string) string {
@@ -477,6 +478,11 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("POST /reset/confirm", a.handleResetConfirm)
 
 	mux.HandleFunc("GET /admin", a.admin(a.handleAdminHome))
+	mux.HandleFunc("GET /admin/queue", a.admin(a.handleAdminQueue))
+	mux.HandleFunc("GET /admin/users/{id}", a.admin(a.handleAdminUser))
+	mux.HandleFunc("POST /admin/users/{id}/hold", a.admin(a.handleAdminHold))
+	mux.HandleFunc("POST /admin/submissions/{id}/revoke", a.admin(a.handleAdminRevoke))
+	mux.HandleFunc("GET /admin/export/{name}", a.admin(a.handleAdminCSV))
 	mux.HandleFunc("GET /admin/submissions", a.admin(a.handleAdminSubmissions))
 	mux.HandleFunc("POST /admin/submissions/{id}/review", a.admin(a.handleAdminReview))
 	mux.HandleFunc("GET /admin/tasks", a.admin(a.handleAdminTasks))
