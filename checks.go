@@ -64,6 +64,12 @@ var checkKinds = []struct{ Key, Desc string }{
 	{"confidential-tx", "Proof decimals, and a blinded output"},
 	{"emissio-return", "Returns Emissio's payment: spends it, pays the exact amount back, fee in that asset"},
 	{"emissio-unblind", "Names the amount of Emissio's confidential payment, which only its receiver can unblind"},
+	{"wallet-link", "A message \"Emissio <code>\" signed by a wallet's receive address, which links that wallet to the account"},
+	{"arca-pay-code", "The account's own Emissio receive code received a payment"},
+	{"arca-pay-btc", "BTC reached the Bitcoin ark address of the account's own Emissio receive code"},
+	{"arca-roundtrip", "Emissio paid the account's receive code, and exactly that came back to Emissio's code"},
+	{"arca-invoice", "Emissio paid an invoice of the account's wallet"},
+	{"arca-swap", "The account's own Emissio code received an amount with its proof decimals, in an asset other than tSEQ"},
 	{"bridge-in", "Proof decimals, spending a Compages delivery for the deposit named in the notes"},
 	{"bridge-both", "As bridge-in, from the source chain this account's first bridge did not use"},
 	{"bridge-out", "Proof decimals sent to a Compages redemption address that has released"},
@@ -98,6 +104,10 @@ func (a *App) evidenceCheck(kind, txid, notes string, user *User) checkResult {
 		return a.releaseCheck(notes, user.ClaimCode)
 	case "emissio-unblind":
 		return a.unblindCheck(user, notes)
+	case "wallet-link":
+		return a.walletLinkCheck(user, notes)
+	case "arca-pay-code", "arca-pay-btc", "arca-roundtrip", "arca-invoice", "arca-swap":
+		return a.arcaCheck(kind, user)
 	}
 	if txid == "" {
 		return fail("no txid submitted")

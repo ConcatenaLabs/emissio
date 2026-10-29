@@ -151,7 +151,7 @@ func mustOpenDB(path string) *sql.DB {
 	db.Exec("ALTER TABLE tasks ADD COLUMN surface TEXT NOT NULL DEFAULT ''")
 	db.Exec("ALTER TABLE tasks ADD COLUMN check_kind TEXT NOT NULL DEFAULT ''")
 	db.Exec("ALTER TABLE submissions ADD COLUMN auto INTEGER NOT NULL DEFAULT 0")
-	if _, err := db.Exec(counterpartySchema + signalSchema + deskSchema); err != nil {
+	if _, err := db.Exec(counterpartySchema + signalSchema + deskSchema + walletLinkSchema + arcaSchema); err != nil {
 		panic(err)
 	}
 	if _, err := db.Exec(tokenSchema); err != nil {

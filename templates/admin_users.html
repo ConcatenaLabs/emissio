@@ -13,7 +13,7 @@
     <td>{{.ID}}</td>
     <td><a href="{{base}}/admin/users/{{.ID}}">{{.Email}}</a>{{if .EmailVerifiedAt}} <span class="pill approved">email</span>{{end}}{{if .IsAdmin}} <span class="pill">admin</span>{{end}}{{if .Held}} <span class="pill rejected">held</span>{{end}}{{if .ReferredBy}} <span class="pill">ref:{{.ReferredBy}}</span>{{end}}</td>
     <td class="mono">{{.ClaimCode}}</td>
-    <td class="small">{{if $s.Any}}<span class="pill rejected">{{$s.SharedIPs}} by network · {{$s.SharedDevices}} by browser · {{$s.SharedFunding}} by chain</span>{{else}}<span class="muted">none</span>{{end}}</td>
+    <td class="small">{{if $s.Any}}<span class="pill rejected">{{$s.Words}}</span>{{else}}<span class="muted">none</span>{{end}}</td>
     <td>{{date .CreatedAt}}</td>
     <td class="amount">{{seq .Balance}} SEQ</td>
   </tr>

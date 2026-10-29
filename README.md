@@ -34,7 +34,7 @@ All amounts below are whole SEQ, credited to your ledger. On the testnet you wor
 
 ### Testnet tasks
 
-Each task pays a fixed reward, most have a first-come cap, and you can have one submission per task (you may resubmit after a rejection). A txid can only ever be evidence for one account. Every task belongs to one surface of the public testnet (Sequentia Core, the block explorer, the faucet, Compages, the staking pools, Emissio), which is how the dashboard counts a tester's progress.
+Each task pays a fixed reward, most have a first-come cap, and you can have one submission per task (you may resubmit after a rejection). A txid can only ever be evidence for one account. Every task belongs to one surface of the public testnet (Sequentia Core, the block explorer, the faucet, Compages, the staking pools, the web wallet, Emissio), which is how the dashboard counts a tester's progress.
 
 Each task runs a check on its evidence (`evidenceCheck` in `checks.go`; a task's check kind, which admins pick in the task editor, says which). The check answers one of three ways:
 
@@ -69,6 +69,20 @@ Emissio holds a testnet wallet of its own (`EMISSIO_WALLET`, a wallet of the pub
 
 Emissio pays only accounts that have completed the first-transaction task, at most once a day and three times per task for one account, three times a day for one network address, and `EMISSIO_WALLET_DAILY_CAP` times a day in all. The wallet is always the one named: a name that reads as a reserve, treasury, bridge, faucet or service wallet is refused, so a misconfiguration cannot spend from one of those. The wallet is loaded on the node if a restart dropped it.
 
+### Web wallet tasks
+
+The web wallet's tasks are worded as its default mode speaks: receive codes, Send, Swap, BTC, an invoice.
+
+- **Link your web wallet**: the account signs `Emissio <account code>` in the wallet's Sign tab and pastes the signature with its receive code. The signing key is recovered from the signature (`walletlink.go`) and must be the key of the receive code's address; the wallet is then linked to the account, one account per wallet ever, and its key serves the payout rehearsal when the account gave none. The other web wallet tasks need the link.
+- The rest have Emissio as the counterparty, through a wallet of its own on the testnet's Arca operator: the `arca` command line on a directory of its own (`EMISSIO_ARCA`, `EMISSIO_ARCA_DATADIR`), as the faucet runs its leaf wallet (`arcawallet.go`). Each account gets receive codes of its own from Emissio, `bitcoin:<address>?ark=<a Bitcoin ark address of its own>&sequentia=<a receive request of its own>`, so whatever reaches one is known to come from that account's wallet. A follower syncs the wallet on its own schedule (at least every five minutes), reads each coin the mailbox accepted, and attributes it to the request whose owner key and nonce the coin's record carries; it reads what reached each account's Bitcoin ark address from Bark's history.
+  - **Pay Emissio**: anything reaching the account's code.
+  - **Receive and send back**: Emissio pays the account's receive code a random fraction of a random asset it holds, and never shows the amount; the account sends exactly what arrived to Emissio's code.
+  - **Pay in BTC**: BTC reaching the code's Bitcoin ark address.
+  - **An invoice**: Emissio pays an invoice the account's wallet made (a receive code with an amount carries one), of at most 10,000 sats.
+  - **A swap**: a payment to the account's code ending in its proof decimals, in an asset other than tSEQ.
+
+  Emissio pays only linked accounts, three times per task for one account and three times a day for one network address. Every arca call is serialised: the wallet's store is not safe for two processes at once.
+
 Task instructions carry the user's own values where `{PROOF}` (proof decimals) and `{CODE}` (account code) appear in the seeded text.
 
 The same binding applies outside tasks. A **competition entry** must carry the account code on the work or its page; the app looks for it in the link and in the linked page's text, notes what it found for the judges, and refuses a link another account already entered. A **security report** must start with the account code, inside the encrypted block when encrypted, so a report read long after it was sent still names its account; identical bodies from two accounts are flagged.
@@ -77,6 +91,12 @@ The seeded catalog (`seed.go`; the live instance's admins can adjust rewards, ca
 
 | Task | Surface | Reward | Cap |
 |---|---|---|---|
+| Link your web wallet | Web wallet | 10 | 5,000 |
+| Pay Emissio from your web wallet | Web wallet | 15 | 3,000 |
+| Receive from Emissio and send back what arrived | Web wallet | 25 | 2,000 |
+| Pay Emissio in BTC | Web wallet | 20 | 2,000 |
+| Get paid an invoice by Emissio | Web wallet | 20 | 1,000 |
+| Swap, then pay Emissio in what you got | Web wallet | 25 | 2,000 |
 | Make your first testnet transaction | Sequentia Core | 10 | 5,000 |
 | Find the Bitcoin anchor of your transaction | Block explorer | 10 | 3,000 |
 | Combine two faucet payments in one transaction | Faucet | 15 | 2,000 |
@@ -99,7 +119,7 @@ The seeded catalog (`seed.go`; the live instance's admins can adjust rewards, ca
 | Move your delegation to another pool | Staking pools | 20 | 500 |
 | Unbond your stake | Sequentia Core | 25 | 500 |
 
-Completing every task pays 495 SEQ; total task exposure across all users is 560,000 SEQ. Caps pay the first accounts whose evidence is approved, so the pool stays bounded.
+Completing every task pays 610 SEQ; total task exposure across all users is 815,000 SEQ. Caps pay the first accounts whose evidence is approved, so the pool stays bounded.
 
 ### The dashboard
 
@@ -154,7 +174,7 @@ Balances are paid in one payment from the paying wallet, straight to each accoun
 Each account is named by a public key its wallet holds:
 
 - **The launch payout**, when it is paid this way, names the key of the registered mainnet address. A taproot address (`bc1p…`) is its key. An address starting `bc1q` names only a hash of its key, so with `EMISSIO_PAYOUT_LAUNCH_KEY=1` the account page asks for its public key once (66 characters, `02…` or `03…`) and checks it against the address; off (the default), the page asks for nothing, as an on-chain payment to the address needs no key. A script address (a `bc1q` of 62 characters) cannot be paid this way.
-- **The testnet rehearsal** names the key of the first receive address of the account's Sequentia testnet wallet. The account page asks for it only while an admin has the rehearsal asking for wallets (`/admin/payouts`), and keeps showing it to an account that gave one or was paid; to anyone else the page shows nothing of the rehearsal. The account pastes its wallet's account key, which the web wallet shows under Receive, Show xpub (a `tpub`, with or without its `[fingerprint/84h/1h/0h]` origin, or the descriptor lines): Emissio derives the key of `m/84'/1'/0'/0/0` from it and keeps only that key. An address of the wallet that has already sent a transaction works too: its key is read from that spend through the explorer (`EMISSIO_ESPLORA`). A public key or a taproot address is taken as it is. A rehearsal pays tSEQ and moves nothing in any ledger.
+- **The testnet rehearsal** names the key of the first receive address of the account's Sequentia testnet wallet. The account page asks for it only while an admin has the rehearsal asking for wallets (`/admin/payouts`), and keeps showing it to an account that gave one or was paid; to anyone else the page shows nothing of the rehearsal. An account that linked its web wallet (the link task: a message signed in the wallet's Sign tab) is paid at the linked receive address's key, which the wallet looks for payments under. Otherwise the account pastes its wallet's account key (a `tpub`, with or without its `[fingerprint/84h/1h/0h]` origin, or the descriptor lines): Emissio derives the key of `m/84'/1'/0'/0/0` from it and keeps only that key. An address of the wallet that has already sent a transaction works too: its key is read from that spend through the explorer (`EMISSIO_ESPLORA`). A public key or a taproot address is taken as it is. A rehearsal pays tSEQ and moves nothing in any ledger.
 
 A run takes every account with a positive balance, at least one verified platform and a key, at its balance times `EMISSIO_PAYOUT_ATOMS_PER_SEQ` atoms of `EMISSIO_PAYOUT_ASSET`; every other account is listed as left out with the reason. A wallet key is paid for one account only, and an account is in one open run at a time. On mainnet a collected allocation is a `payout` ledger row that takes it off the balance, once; one that comes back stays owed and goes into the next run.
 
@@ -275,7 +295,7 @@ Tests:
 go test ./...
 ```
 
-`app_test.go` drives the full HTTP surface against a temporary database: registration, submission and review lifecycle, prize and report awards, referral qualification, verifications (with stubbed Reddit/Telegram servers), duplicate-txid rejection, base-path handling, CSRF, and anonymous-access denial. `bugs_test.go` covers the bug page (refusals, the screenshot's privacy, acceptance by severity paying once, duplicate merging) and the wallet intake (every answer of its contract, the limits, attribution by account code). `checks_test.go` covers every check's verdicts against a stand-in explorer and stand-in services (the staking-script parsers against scripts the node itself built, in every form), the release check against a stand-in peer list, the submission form's three outcomes and the dashboard. `regtest_tasks_test.go` runs the counterparty tasks against a real node on a private chain: Emissio's wallet pays, a tester's wallet returns or unblinds, and the checks read the transactions back, the wrong-coin and wrong-fee-asset returns and a wrong amount refused; it is skipped unless `EMISSIO_REGTEST_TASKS_CLI` and `EMISSIO_REGTEST_TASKS_DATADIR` name the node (the test's header says what it must hold). `desk_test.go` covers the registration limits by network and by browser and the signals they leave, the queue across every kind, approving and revoking (once, with a reason the tester sees), reasoned adjustments, holds, account search, and the exports. `mail_test.go` covers confirming the address (the gate, resend limits, only the newest link working), password reset (the same answer for unknown addresses, a link that works once, sessions ended), admin reset links, and the SMTP exchange itself against a stand-in server, credentials only after STARTTLS. `bech32_test.go` covers address validation and formatting helpers. `walletkey_test.go` covers reading a wallet's key from its account key (BIP84's own vector) and from an address that has spent, and that the rehearsal shows only when asked. `payout_test.go` covers payout keys, a rehearsal run against a stand-in payment service (left-out reasons, every refusal of a reference, collected and returned allocations, no balance moved) and the launch's single debit. `regtest_payout_test.go` runs the rehearsal end to end against a real payment service: an Arca operator from arca's `arca_operator_for_browsers` harness, named by `EMISSIO_REGTEST_CONTROL`, with `EMISSIO_REGTEST_ARCA` the `arca` binary; it is skipped without them.
+`app_test.go` drives the full HTTP surface against a temporary database: registration, submission and review lifecycle, prize and report awards, referral qualification, verifications (with stubbed Reddit/Telegram servers), duplicate-txid rejection, base-path handling, CSRF, and anonymous-access denial. `bugs_test.go` covers the bug page (refusals, the screenshot's privacy, acceptance by severity paying once, duplicate merging) and the wallet intake (every answer of its contract, the limits, attribution by account code). `checks_test.go` covers every check's verdicts against a stand-in explorer and stand-in services (the staking-script parsers against scripts the node itself built, in every form), the release check against a stand-in peer list, the submission form's three outcomes and the dashboard. `regtest_tasks_test.go` runs the counterparty tasks against a real node on a private chain: Emissio's wallet pays, a tester's wallet returns or unblinds, and the checks read the transactions back, the wrong-coin and wrong-fee-asset returns and a wrong amount refused; it is skipped unless `EMISSIO_REGTEST_TASKS_CLI` and `EMISSIO_REGTEST_TASKS_DATADIR` name the node (the test's header says what it must hold). `walletlink_test.go` recovers the key from signatures a Sequentia node made, and covers the link task's refusals and the one-account rule. `arcawallet_test.go` drives every web wallet task against a stand-in `arca` (`testdata/fake-arca.py`, answering in the command line's shapes): attribution by a coin's record, a stray coin, the round trip's wrong and right amounts, the Bitcoin ark address, invoice limits, the swap's proof decimals. `desk_test.go` covers the registration limits by network and by browser and the signals they leave, the queue across every kind, approving and revoking (once, with a reason the tester sees), reasoned adjustments, holds, account search, and the exports. `mail_test.go` covers confirming the address (the gate, resend limits, only the newest link working), password reset (the same answer for unknown addresses, a link that works once, sessions ended), admin reset links, and the SMTP exchange itself against a stand-in server, credentials only after STARTTLS. `bech32_test.go` covers address validation and formatting helpers. `walletkey_test.go` covers reading a wallet's key from its account key (BIP84's own vector) and from an address that has spent, and that the rehearsal shows only when asked. `payout_test.go` covers payout keys, a rehearsal run against a stand-in payment service (left-out reasons, every refusal of a reference, collected and returned allocations, no balance moved) and the launch's single debit. `regtest_payout_test.go` runs the rehearsal end to end against a real payment service: an Arca operator from arca's `arca_operator_for_browsers` harness, named by `EMISSIO_REGTEST_CONTROL`, with `EMISSIO_REGTEST_ARCA` the `arca` binary; it is skipped without them.
 
 ### Configuration
 
@@ -293,6 +313,7 @@ All configuration is environment variables (`loadConfig` in `main.go`):
 | `EMISSIO_POOLS` | empty | The pool board's feed, for the delegation checks (empty sends them to review) |
 | `EMISSIO_SUMS` | empty | The download page's checksum list, for the release check |
 | `EMISSIO_FAUCET_ADDRESSES` | the testnet faucet's covenant address | Comma-separated addresses the faucet pays from, for the faucet check |
+| `EMISSIO_ARCA`, `EMISSIO_ARCA_DATADIR` | empty | The `arca` command line and Emissio's wallet directory for the web wallet tasks (empty turns the counterparty ones off). The wallet is made with `arca create` against the testnet's operator and funded by boarding, as the faucet's leaf wallet is; keep it free of channels, so payments to its receive requests arrive as coins it can attribute |
 | `EMISSIO_WALLET` | empty | Name of Emissio's own wallet on that node, which pays the counterparty tasks (empty turns them off) |
 | `EMISSIO_WALLET_ASSETS` | empty | Comma-separated asset ids the wallet may pay in; empty: any it holds |
 | `EMISSIO_WALLET_DAILY_CAP` | `200` | Payments the wallet makes in a day, in all |
@@ -343,6 +364,8 @@ Keep real secrets (such as the bot token) out of the repo and out of unit files 
 | `counterparty.go` | Emissio's own wallet: paying a tester, the return and unblind checks |
 | `dashboard.go` | The tester's dashboard on the account page |
 | `signals.go` | Addresses each account's evidence touched, for the admin's clustering signals |
+| `walletlink.go` | Linking a wallet by a signed message: key recovery, its addresses |
+| `arcawallet.go` | Emissio's arca wallet: receive codes, paying codes and invoices, the follower, the web wallet checks |
 | `desk.go` | The admin desk: the queue, account search and pages, signals, holds, revocations, exports, registration limits |
 | `bugs.go` | Bug reports: the form, screenshots, the wallet intake, the admin review |
 | `mail.go` | Mail: the SMTP sender, confirming the address, password reset, admin reset links |
@@ -353,7 +376,7 @@ Keep real secrets (such as the bot token) out of the repo and out of unit files 
 
 ### Data storage
 
-One SQLite file (WAL mode, foreign keys on, a single connection to serialize writers). Tables: `users`, `sessions`, `tasks`, `submissions`, `competitions`, `entries`, `reports`, `ledger`, `verifications`, and for the payout `payout_keys`, `payout_runs`, `payout_rows`, `payout_settings`, for bug reports `bugs` and `bug_files` (screenshots), `email_tokens` for the hashes of mailed links, `emissio_payments` and `kv` for Emissio's wallet (its payments, its return address), `chain_links` for the addresses each account's evidence touched, `user_ips` and `user_devices` for where each account was seen, and `admin_log` for admin actions. Every reward is a ledger row; a balance is `SUM(amount)` over the user's rows. Ledger kinds: `submission`, `revocation` (a revoked submission's reward, negative), `entry`, `report`, `bug`, `verification`, `referral`, `referral-welcome`, `adjustment`, `payout` (a collected launch allocation, negative), and the reserved `presale`. Partial unique indexes on `(kind, ref_id)` are the double-credit guard.
+One SQLite file (WAL mode, foreign keys on, a single connection to serialize writers). Tables: `users`, `sessions`, `tasks`, `submissions`, `competitions`, `entries`, `reports`, `ledger`, `verifications`, and for the payout `payout_keys`, `payout_runs`, `payout_rows`, `payout_settings`, for bug reports `bugs` and `bug_files` (screenshots), `email_tokens` for the hashes of mailed links, `emissio_payments` and `kv` for Emissio's wallet (its payments, its return address), `chain_links` for the addresses each account's evidence touched, `user_ips` and `user_devices` for where each account was seen, and `admin_log` for admin actions, `wallet_links` for linked wallets, and `arca_codes` and `arca_sends` for the receive codes Emissio's arca wallet made and the payments it sent. Every reward is a ledger row; a balance is `SUM(amount)` over the user's rows. Ledger kinds: `submission`, `revocation` (a revoked submission's reward, negative), `entry`, `report`, `bug`, `verification`, `referral`, `referral-welcome`, `adjustment`, `payout` (a collected launch allocation, negative), and the reserved `presale`. Partial unique indexes on `(kind, ref_id)` are the double-credit guard.
 
 ### Deployment
 

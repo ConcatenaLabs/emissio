@@ -357,7 +357,7 @@ func TestSubmitVerdicts(t *testing.T) {
 	// The dashboard shows the progress, the open tasks, the earnings and the reports.
 	postBug(t, client, srv.URL, csrf, map[string]string{"surface": "faucet", "title": "Claim page hangs", "steps": "claim twice", "actual": "spinner"}, nil)
 	acct := get(t, client, srv.URL+"/account")
-	for _, want := range []string{"1 of 21 tasks done", "<strong>Sequentia Core</strong>", "1 of 12 tasks done", "1 waiting for review",
+	for _, want := range []string{"1 of 27 tasks done", "<strong>Sequentia Core</strong>", "1 of 12 tasks done", "1 waiting for review",
 		"What you earned from", "Open tasks", "Combine two faucet payments", "Claim page hangs", "progress"} {
 		if !strings.Contains(acct, want) {
 			t.Errorf("dashboard lacks %q", want)
@@ -386,7 +386,7 @@ func TestSeedCatalogue(t *testing.T) {
 			t.Errorf("%s: reward %d outside 10..50", s.slug, s.reward)
 		}
 		total += s.reward
-		for _, hidden := range []string{"SeqDEX", "web wallet", "Ambra", "Lightning", "SeqLN", "Pignus", "Levo", "SeqPal", "decentralized", "the Bitcoin sidechain", "—", "SEQ chain"} {
+		for _, hidden := range []string{"SeqDEX", "Ambra", "Lightning", "SeqLN", "Pignus", "Levo", "SeqPal", "decentralized", "the Bitcoin sidechain", "—", "SEQ chain"} {
 			if strings.Contains(s.body+s.title, hidden) {
 				t.Errorf("%s names %q", s.slug, hidden)
 			}

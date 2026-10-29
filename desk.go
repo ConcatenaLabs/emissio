@@ -110,6 +110,26 @@ type signals struct {
 
 func (s signals) Any() bool { return s.SharedIPs+s.SharedDevices+s.SharedFunding > 0 }
 
+// Words says what the account shares, in words, naming only what it shares.
+func (s signals) Words() string {
+	var parts []string
+	add := func(n int64, what string) {
+		switch {
+		case n == 1:
+			parts = append(parts, "a "+what+" with 1 other account")
+		case n > 1:
+			parts = append(parts, fmt.Sprintf("a %s with %d other accounts", what, n))
+		}
+	}
+	add(s.SharedIPs, "network address")
+	add(s.SharedDevices, "browser")
+	add(s.SharedFunding, "chain address")
+	if len(parts) == 0 {
+		return "shares nothing with other accounts"
+	}
+	return "shares " + strings.Join(parts, "; ")
+}
+
 func signalsOf(db *sql.DB, userID int64) signals {
 	var s signals
 	db.QueryRow(`SELECT COUNT(DISTINCT b.user_id) FROM user_ips a JOIN user_ips b ON a.ip = b.ip

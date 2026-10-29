@@ -88,7 +88,7 @@ func TestRehearsalPanelOnlyWhenAsked(t *testing.T) {
 	}
 	app.db.Exec(`INSERT INTO payout_settings (name, value) VALUES ('rehearsal_open', '1')`)
 	page := get(t, client, srv.URL+"/account")
-	if !strings.Contains(page, "Show xpub") {
+	if !strings.Contains(page, "Link your web wallet") {
 		t.Fatal("the rehearsal does not say where the wallet shows its key")
 	}
 	client.PostForm(srv.URL+"/account/rehearsal-key", url.Values{"csrf": {csrf}, "key": {"[73c5da0a/84h/1h/0h]" + vecTpub}})
