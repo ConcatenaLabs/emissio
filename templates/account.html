@@ -63,7 +63,7 @@
     <p class="small muted" data-rehearsal-saved>Your testnet wallet is saved. The rehearsal pays tSEQ straight to it, and the wallet collects it by itself the next time you open it. Nothing in your ledger changes.</p>
     {{else}}
     <p class="small muted">Before launch the payout is rehearsed on the testnet, in tSEQ, paid straight to your Sequentia testnet wallet. Nothing in your ledger changes.</p>
-    <p class="small muted">To take part, open the web wallet, go to <strong>Receive</strong>, press <strong>Show xpub</strong>, then <strong>Copy</strong>, and paste it here. Emissio keeps only what it needs to pay that wallet. An address of your wallet that has already sent a transaction works too.</p>
+    <p class="small muted">To take part, link your web wallet with a signed message (the <a href="{{base}}/tasks/link-web-wallet">Link your web wallet</a> task), and the rehearsal pays it. You can also paste the wallet's account key, or an address of it that has already sent a transaction. Emissio keeps only what it needs to pay that wallet.</p>
     {{end}}
     <form class="stack" method="post" action="{{base}}/account/rehearsal-key">
       <input type="hidden" name="csrf" value="{{$.CSRF}}">
@@ -82,7 +82,7 @@
   <div class="ledger wide">
     {{range .Surfaces}}{{if .Total}}
     <div class="ledger-row">
-      <span class="label"><strong>{{.Name}}</strong><span class="sub">{{.Done}} of {{.Total}} tasks done{{if .Pending}} · {{.Pending}} waiting for review{{end}}</span>
+      <span class="label"><strong>{{.Name}}</strong><span class="sub">{{.Done}} of {{.Total}} {{if eq .Total 1}}task{{else}}tasks{{end}} done{{if .Pending}} · {{.Pending}} waiting for review{{end}}</span>
         <span class="progress" aria-hidden="true"><span class="bar w{{.Bar}}"></span></span></span>
       <span class="leader"></span>
       <span class="amount plain">{{.Percent}}%</span>

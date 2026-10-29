@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="eyebrow">Admin</div>
 <h1>Review queue</h1>
-<p class="small muted">Everything waiting on a person, oldest first. A badge beside an account counts the other accounts that share a network address, a browser or a chain address with it; open the account to see which.</p>
+<p class="small muted">Everything waiting on a person, oldest first. A badge beside an account says what it shares with other accounts (a network address, a browser, a chain address); open the account to see which.</p>
 <p>
   <a class="btn ghost small" href="{{base}}/admin/queue">All</a>
   {{range $k := list "task" "bug" "security" "verification" "entry"}}<a class="btn ghost small" href="{{base}}/admin/queue?kind={{$k}}">{{$k}} · {{index $.Data.Counts $k}}</a> {{end}}
@@ -9,7 +9,7 @@
 {{if not .Data.Items}}<p class="muted">Nothing waiting.</p>{{end}}
 {{range .Data.Items}}
 <details {{if eq .Kind "task"}}open{{end}}>
-  <summary><span class="pill">{{.Kind}}</span> <strong>{{.Title}}</strong> · <a href="{{base}}/admin/users/{{.UserID}}">{{if .Email}}{{.Email}}{{else}}unattributed{{end}}</a>{{if .Held}} <span class="pill rejected">held</span>{{end}}{{if .Signals.Any}} <span class="pill rejected" title="other accounts sharing an address, a browser or a chain address">shares with {{.Signals.SharedIPs}}/{{.Signals.SharedDevices}}/{{.Signals.SharedFunding}}</span>{{end}} · {{datetime .At}}</summary>
+  <summary><span class="pill">{{.Kind}}</span> <strong>{{.Title}}</strong> · <a href="{{base}}/admin/users/{{.UserID}}">{{if .Email}}{{.Email}}{{else}}unattributed{{end}}</a>{{if .Held}} <span class="pill rejected">held</span>{{end}}{{if .Signals.Any}} <span class="pill rejected">{{.Signals.Words}}</span>{{end}} · {{datetime .At}}</summary>
   <div class="inner">
     {{if .Detail}}<p class="small">{{.Detail}}</p>{{end}}
     {{with .Sub}}

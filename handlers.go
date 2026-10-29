@@ -174,6 +174,7 @@ type taskData struct {
 	ProofTag string // empty when not signed in
 	Auto     bool   // the task's check approves passing evidence at once
 	Pay      *paymentView
+	Wallet   *arcaView
 }
 
 func (a *App) handleTask(w http.ResponseWriter, r *http.Request) {
@@ -197,6 +198,7 @@ func (a *App) handleTask(w http.ResponseWriter, r *http.Request) {
 	}
 	user, _, _ := a.currentUser(r)
 	d.Pay = a.paymentViewFor(user, task)
+	d.Wallet = a.arcaViewFor(user, task)
 	body := *task
 	body.Body = strings.NewReplacer("{PROOF}", tag, "{CODE}", code).Replace(task.Body)
 	d.Task = &body

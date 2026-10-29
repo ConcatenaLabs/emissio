@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -52,6 +53,12 @@ type Config struct {
 	WalletAssets   []string // assets it may pay in; empty: any it holds
 	WalletDailyCap int64
 	WalletFeeRate  string // reference units per vbyte, converted to the fee asset by the node
+
+	// Emissio's arca wallet (arcawallet.go): the arca command line and its
+	// directory. Empty: the web wallet tasks that need Emissio as the
+	// counterparty are off.
+	ArcaBin     string
+	ArcaDatadir string
 
 	// Mail (mail.go): an SMTP submission service. Without a host and a
 	// sender, email verification and reset by email are off.
@@ -105,6 +112,8 @@ func loadConfig() Config {
 		FaucetAddrs:   strings.Split(envOr("EMISSIO_FAUCET_ADDRESSES", "tb1phruj5gk2nqrd4atn58rjr7msakm64fxsh5famwwerraz5wu29qnqkk43tk"), ","),
 		Wallet:        envOr("EMISSIO_WALLET", ""),
 		WalletFeeRate: envOr("EMISSIO_WALLET_FEE_RATE", "2"),
+		ArcaBin:       envOr("EMISSIO_ARCA", ""),
+		ArcaDatadir:   envOr("EMISSIO_ARCA_DATADIR", ""),
 		WalletAssets:  strings.Split(envOr("EMISSIO_WALLET_ASSETS", ""), ","),
 		SMTPHost:      envOr("EMISSIO_SMTP_HOST", ""),
 		SMTPPort:      envOr("EMISSIO_SMTP_PORT", "587"),
@@ -158,6 +167,7 @@ type App struct {
 	mailLimit       *slidingLimiter
 	mailIPLimit     *slidingLimiter
 	faucetAddr      map[string]bool
+	arcaMu          sync.Mutex // one arca call at a time
 }
 
 func NewApp(cfg Config, db *sql.DB) *App {
@@ -345,6 +355,7 @@ func main() {
 	app := NewApp(cfg, db)
 	app.startPeerPoller()
 	app.startPayoutFollower()
+	app.startArcaFollower()
 	log.Printf("emissio listening on %s (base path %q, db %s)", cfg.Listen, cfg.BasePath, cfg.DBPath)
 	srv := &http.Server{
 		Addr:              cfg.Listen,
@@ -451,6 +462,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("GET /tasks/{slug}", a.handleTask)
 	mux.HandleFunc("POST /tasks/{slug}/submit", a.handleTaskSubmit)
 	mux.HandleFunc("POST /tasks/{slug}/request", a.handlePaymentRequest)
+	mux.HandleFunc("POST /tasks/{slug}/wallet", a.handleArcaRequest)
 	mux.HandleFunc("GET /competitions", a.handleCompetitions)
 	mux.HandleFunc("GET /competitions/{slug}", a.handleCompetition)
 	mux.HandleFunc("POST /competitions/{slug}/enter", a.handleCompetitionEnter)

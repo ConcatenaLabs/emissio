@@ -231,7 +231,7 @@ func (a *App) spentKey(addr string, prog []byte) (string, error) {
 			}
 		}
 	}
-	return "", errors.New("that address has not sent anything yet, so its key is not public: paste the account key instead (Receive, then Show xpub)")
+	return "", errors.New("that address has not sent anything yet, so its key is not public: link the wallet with a signed message instead (the Link your web wallet task)")
 }
 
 // walletKey reads what a person pasted into the key the rehearsal pays.

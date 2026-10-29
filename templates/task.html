@@ -10,6 +10,42 @@
 
 {{body .Data.Task.Body}}
 
+{{with .Data.Wallet}}
+<div class="section">
+  <h2>With Emissio</h2>
+  {{if not $.User}}
+    <p class="muted"><a href="{{base}}/login">Sign in</a> to take part.</p>
+  {{else if not .Available}}
+    <p class="muted">Emissio's wallet is not taking part on this site right now.</p>
+  {{else if not .Linked}}
+    <p class="muted">First <a href="{{base}}/tasks/link-web-wallet">link your web wallet</a> to this account.</p>
+  {{else}}
+    {{if or (eq .Kind "arca-roundtrip") (eq .Kind "arca-invoice")}}
+      {{if .Sent}}<p class="small">Emissio paid you {{datetime .SentAt}}.{{if eq .Kind "arca-roundtrip"}} Send exactly what arrived to this code:{{end}}</p>{{end}}
+      {{if and (eq .Kind "arca-roundtrip") .Code}}<div class="kv" style="word-break:break-all" data-emissio-code>{{.Code}}</div>{{end}}
+      {{if or (not $.Data.Mine) (eq $.Data.Mine.Status "rejected")}}
+      <form class="stack wide" method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/wallet" style="margin-top:1rem">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <label for="code">{{if eq .Kind "arca-invoice"}}Your receive code with an amount{{else}}Your receive code{{end}}</label>
+        <input class="mono" type="text" id="code" name="code" required>
+        <div class="actions"><button class="btn{{if .Sent}} ghost{{end}}" type="submit">{{if .Sent}}Ask again{{else}}Ask Emissio to pay me{{end}}</button></div>
+      </form>
+      {{end}}
+    {{else}}
+      {{if .Code}}
+        <p class="small">Emissio's receive code for your account:</p>
+        <div class="kv" style="word-break:break-all" data-emissio-code>{{.Code}}</div>
+      {{else}}
+      <form method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/wallet">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <button class="btn" type="submit">Get my receive code</button>
+      </form>
+      {{end}}
+    {{end}}
+  {{end}}
+</div>
+{{end}}
+
 {{with .Data.Pay}}
 <div class="section">
   <h2>Emissio's payment</h2>

@@ -57,6 +57,7 @@ var surfaces = []struct{ Key, Name string }{
 	{"faucet", "Faucet"},
 	{"compages", "Compages bridge"},
 	{"pools", "Staking pools"},
+	{"webwallet", "Web wallet"},
 	{"emissio", "Emissio"},
 }
 
@@ -70,6 +71,77 @@ func surfaceTitle(key string) string {
 }
 
 var seedTasks = []seedTask{
+	{
+		slug: "link-web-wallet", title: "Link your web wallet", category: "Web wallet", surface: "webwallet", check: "wallet-link",
+		reward: 10, cap: 5000, needsTxid: false, sort: 5,
+		body: `Open the web wallet at sequentiatestnet.com/wallet/, make a wallet, and link it to this account with a signed message.
+
+The web wallet holds BTC and every Sequentia asset side by side under one twelve-word phrase. A signature proves the wallet is yours without moving anything.
+
+- In the web wallet, write down the twelve words it shows you, and keep them safe: they are the wallet.
+- Open More, then Sign. Leave the address as it is (it is your receive address), type exactly Emissio {CODE} as the message, and press Sign.
+- Copy the signature, and copy your receive code from Receive.
+- Paste both in the notes below.
+
+The check is automatic: the signature must be by the key of your receive address. A wallet links to one account only. The web wallet tasks below build on this link.`,
+	},
+	{
+		slug: "web-wallet-pay", title: "Pay Emissio from your web wallet", category: "Web wallet", surface: "webwallet", check: "arca-pay-code",
+		reward: 15, cap: 3000, needsTxid: false, sort: 6,
+		body: `Pay a receive code: the way web wallets pay each other in seconds.
+
+- Press the button below: Emissio makes a receive code of its own for your account.
+- In the web wallet, open Send, paste the code as the recipient, pick any asset you hold and any amount, and send.
+- Submit the task once the wallet says it is sent.
+
+The check is automatic: the code is yours alone, so a payment reaching it is known to come from you. Emissio reads its wallet every few minutes.`,
+	},
+	{
+		slug: "web-wallet-roundtrip", title: "Receive from Emissio and send back what arrived", category: "Web wallet", surface: "webwallet", check: "arca-roundtrip",
+		reward: 25, cap: 2000, needsTxid: false, sort: 7,
+		body: `Emissio pays your receive code an amount it does not tell you. Send exactly that back.
+
+- In the web wallet, open Receive and copy your receive code. Paste it below and ask Emissio to pay you.
+- Watch the payment arrive: the Balance and History tabs show which asset and how much.
+- Send exactly that amount of that asset to the receive code Emissio shows below, then submit the task.
+
+The check is automatic: only a wallet that received the payment knows what to send back.`,
+	},
+	{
+		slug: "web-wallet-btc", title: "Pay Emissio in BTC", category: "Web wallet", surface: "webwallet", check: "arca-pay-btc",
+		reward: 20, cap: 2000, needsTxid: false, sort: 8,
+		body: `The web wallet holds native BTC beside every Sequentia asset, and pays it in seconds to another wallet's receive code.
+
+- Get some testnet4 BTC into the web wallet: its Receive code takes BTC too, from any Bitcoin testnet4 faucet.
+- Press the button below for Emissio's receive code for your account.
+- In Send, paste it as the recipient, choose BTC, and send any amount.
+- Submit the task once it is sent.
+
+The check is automatic: the BTC part of the code is your account's alone.`,
+	},
+	{
+		slug: "web-wallet-invoice", title: "Get paid an invoice by Emissio", category: "Web wallet", surface: "webwallet", check: "arca-invoice",
+		reward: 20, cap: 1000, needsTxid: false, sort: 9,
+		body: `A receive code with an amount also carries an invoice, which wallets on the Bitcoin network can pay too. Let Emissio pay yours.
+
+- In the web wallet, open Receive, type an amount in BTC of at most 0.0001 (10,000 sats), and copy the code.
+- Paste it below and ask Emissio to pay. Keep the web wallet open while it pays.
+- Submit the task once Emissio says it has paid.
+
+The check is automatic: Emissio's own record of the payment.`,
+	},
+	{
+		slug: "web-wallet-swap", title: "Swap, then pay Emissio in what you got", category: "Web wallet", surface: "webwallet", check: "arca-swap",
+		reward: 25, cap: 2000, needsTxid: false, sort: 11,
+		body: `Trade one asset for another in the web wallet, then use what you got.
+
+- In the Swap tab, pick what you pay and what you get, enter an amount, and swap.
+- Press the button below for Emissio's receive code for your account.
+- In Send, pay that code an amount of the asset you got that ends in your proof decimals, for example 1.{PROOF}.
+- Submit the task once it is sent.
+
+The check is automatic: the payment must reach your code with your proof decimals, in an asset other than tSEQ.`,
+	},
 	{
 		slug: "first-transaction", title: "Make your first testnet transaction", category: "Getting started", surface: "core", check: "first-transaction",
 		reward: 10, cap: 5000, needsTxid: true, sort: 10,
