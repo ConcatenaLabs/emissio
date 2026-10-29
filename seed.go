@@ -43,9 +43,10 @@ type seedTask struct {
 	sort                        int64
 }
 
-// retiredTasks are seeded tasks of an earlier catalogue that reseed-tasks
-// deactivates: the products they need are not part of the public testnet.
-var retiredTasks = []string{"seqdex-swap", "cross-chain-swap", "lightning-swap"}
+// retiredTasks are seeded tasks that reseed-tasks deactivates: the products
+// they need are not part of the public testnet, or the bug page took the
+// task's place.
+var retiredTasks = []string{"seqdex-swap", "cross-chain-swap", "lightning-swap", "report-bug"}
 
 var seedTasks = []seedTask{
 	{
@@ -202,16 +203,6 @@ Full-node sovereignty is a core Sequentia principle: block producers cannot forc
 - After seven days, submit this task. No txid is needed; in the notes, include the output of getblockchaininfo (blocks and bestblockhash).
 
 The check counts the ten-minute slots of the last week in which your node was seen; a week's span with at least 80% of slots present passes.`,
-	},
-	{
-		slug: "report-bug", title: "Report a bug", category: "Quality",
-		reward: 25, cap: 400, needsTxid: false, sort: 90,
-		body: `Find and report a real bug that is not a security vulnerability: a documentation error that would send a user the wrong way, a wallet or explorer screen that shows the wrong thing, a crash or hang you can reproduce, a command in a guide that no longer works.
-
-- File the bug as a public issue in the repository that owns the code, under github.com/ConcatenaLabs, with steps to reproduce, and put your account code {CODE} in the issue text so the issue is known to be yours.
-- Paste the issue link in the notes below. The issue is read from GitHub and checked for the code.
-
-The task pays once per account, for the first issue of yours that a maintainer confirms. Further confirmed bugs are welcome on GitHub and count toward competitions when one is running. Anything with a security consequence belongs on the security page instead, where it is reviewed privately and paid by severity.`,
 	},
 }
 

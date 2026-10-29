@@ -37,7 +37,6 @@ type Config struct {
 	PolicyAsset   string // asset id of tSEQ on this chain, for the fee and stake checks
 	NodeCLI       string // sequentia-cli path; with NodeDatadir, enables peer-based checks
 	NodeDatadir   string
-	GitHubAPI     string // for the bug-report issue check
 	TgBotToken    string // BotFather token; enables ID-based Telegram age checks
 	TgBotName     string // bot username shown to users, without @
 
@@ -76,7 +75,6 @@ func loadConfig() Config {
 		PolicyAsset:   envOr("EMISSIO_POLICY_ASSET", "c8eccacf0953e1931cd31e434d8319101cc36e6c38b0e2104d8687552fae3e40"),
 		NodeCLI:       envOr("EMISSIO_CLI", ""),
 		NodeDatadir:   envOr("EMISSIO_DATADIR", ""),
-		GitHubAPI:     envOr("EMISSIO_GITHUB_API", "https://api.github.com"),
 		TgBotToken:    envOr("EMISSIO_TG_BOT_TOKEN", ""),
 		TgBotName:     envOr("EMISSIO_TG_BOT_NAME", ""),
 		PayoutURL:     envOr("EMISSIO_PAYOUT_URL", ""),
@@ -117,13 +115,18 @@ type App struct {
 	db        *sql.DB
 	tpls      map[string]*template.Template
 	authLimit *rateLimiter
+	// The wallet problem-report intake: per address and per account code.
+	intakeIPLimit   *slidingLimiter
+	intakeCodeLimit *slidingLimiter
 }
 
 func NewApp(cfg Config, db *sql.DB) *App {
 	a := &App{
-		cfg:       cfg,
-		db:        db,
-		authLimit: newRateLimiter(12, time.Minute),
+		cfg:             cfg,
+		db:              db,
+		authLimit:       newRateLimiter(12, time.Minute),
+		intakeIPLimit:   newSlidingLimiter(limitRule{time.Hour, 5}, limitRule{24 * time.Hour, 20}),
+		intakeCodeLimit: newSlidingLimiter(limitRule{24 * time.Hour, 10}),
 	}
 	a.tpls = parseTemplates(cfg)
 	return a
@@ -167,6 +170,7 @@ func parseTemplates(cfg Config) map[string]*template.Template {
 			task, _ := t.(*Task)
 			return map[string]any{"Task": task, "CSRF": csrf}
 		},
+		"surfacename": surfaceName,
 		"short": func(s string) string {
 			if len(s) <= 16 {
 				return s
@@ -399,6 +403,11 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("POST /competitions/{slug}/enter", a.handleCompetitionEnter)
 	mux.HandleFunc("GET /security", a.handleSecurity)
 	mux.HandleFunc("POST /security/report", a.handleSecurityReport)
+	mux.HandleFunc("GET /bugs", a.handleBugs)
+	mux.HandleFunc("POST /bugs", a.handleBugSubmit)
+	mux.HandleFunc("GET /bugs/{id}/screenshot", a.handleBugFile)
+	mux.HandleFunc("POST /api/problem-reports", a.handleIntake)
+	mux.HandleFunc("OPTIONS /api/problem-reports", a.handleIntakeOptions)
 	mux.HandleFunc("GET /guide", a.handleGuide)
 	mux.HandleFunc("GET /rules", a.handleRules)
 	mux.HandleFunc("GET /account", a.handleAccount)
@@ -424,6 +433,9 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("GET /admin/reports", a.admin(a.handleAdminReports))
 	mux.HandleFunc("GET /admin/reports/{id}", a.admin(a.handleAdminReport))
 	mux.HandleFunc("POST /admin/reports/{id}/review", a.admin(a.handleAdminReportReview))
+	mux.HandleFunc("GET /admin/bugs", a.admin(a.handleAdminBugs))
+	mux.HandleFunc("GET /admin/bugs/{id}", a.admin(a.handleAdminBug))
+	mux.HandleFunc("POST /admin/bugs/{id}/review", a.admin(a.handleAdminBugReview))
 	mux.HandleFunc("GET /admin/verifications", a.admin(a.handleAdminVerifications))
 	mux.HandleFunc("POST /admin/verifications/{id}/review", a.admin(a.handleAdminVerifyReview))
 	mux.HandleFunc("GET /admin/users", a.admin(a.handleAdminUsers))

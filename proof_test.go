@@ -119,7 +119,6 @@ func TestEvidenceCheck(t *testing.T) {
 		{"anchor-lookup", "first", "no idea", "proof amount found (output 0, asset c8eccacf0953…); no hash in the notes matches the block's Bitcoin anchor; confirmed at height 42"},
 		{"bridge-in", "assetfee", "", "proof amount found (output 0, asset 2a515539da5e…); moves asset 2a515539da5e…; reviewer confirms it is a Compages asset; confirmed at height 42"},
 		{"bridge-in", "first", "", "proof amount found (output 0, asset c8eccacf0953…); proof output is tSEQ; it must move the bridged asset; confirmed at height 42"},
-		{"report-bug", "", "", "no link to an issue under github.com/ConcatenaLabs in the notes"},
 	}
 	for _, c := range cases {
 		if got := app.evidenceCheck(c.slug, c.txid, c.notes, user); got != c.want {
@@ -187,7 +186,7 @@ func TestNormalizeURL(t *testing.T) {
 	}
 }
 
-func TestEntryReportIssueChecks(t *testing.T) {
+func TestEntryReportChecks(t *testing.T) {
 	code := "0123456789"
 	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -200,19 +199,12 @@ func TestEntryReportIssueChecks(t *testing.T) {
 		case "/image.png":
 			w.Header().Set("Content-Type", "image/png")
 			w.Write([]byte{0x89, 'P', 'N', 'G'})
-		case "/repos/ConcatenaLabs/emissio/issues/7":
-			w.Write([]byte(`{"title":"Broken link","body":"Steps... my code 0123456789","state":"open","user":{"login":"tester"}}`))
-		case "/repos/ConcatenaLabs/emissio/issues/8":
-			w.Write([]byte(`{"title":"No code","body":"Steps...","state":"open","user":{"login":"tester"}}`))
-		case "/repos/ConcatenaLabs/emissio/issues/9":
-			w.Write([]byte(`{"title":"PR","body":"0123456789","state":"open","user":{"login":"tester"},"pull_request":{}}`))
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	defer site.Close()
 	app, _, _ := newTestServer(t)
-	app.cfg.GitHubAPI = site.URL
 
 	entries := map[string]string{
 		site.URL + "/page-with-code":         "account code found on the linked page (OK)",
@@ -246,16 +238,4 @@ func TestEntryReportIssueChecks(t *testing.T) {
 		t.Errorf("duplicate: %q", got)
 	}
 
-	issues := map[string]string{
-		"see https://github.com/ConcatenaLabs/emissio/issues/7 thanks": "emissio#7 by tester (open): contains the account code (OK); a maintainer confirms the bug",
-		"https://github.com/ConcatenaLabs/emissio/issues/8":            "emissio#8 by tester (open): account code NOT in the issue",
-		"https://github.com/ConcatenaLabs/emissio/issues/9":            "emissio#9 is a pull request, not an issue",
-		"https://github.com/ConcatenaLabs/emissio/issues/10":           "issue emissio#10 NOT FOUND",
-		"no link here": "no link to an issue under github.com/ConcatenaLabs in the notes",
-	}
-	for notes, want := range issues {
-		if got := app.issueCheck(notes, code); got != want {
-			t.Errorf("issueCheck(%q)\n got %q\nwant %q", notes, got, want)
-		}
-	}
 }

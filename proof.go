@@ -146,8 +146,6 @@ func (a *App) evidenceCheck(slug, txid, notes string, user *User) string {
 		return a.buildCheck(user.ClaimCode)
 	case "run-node":
 		return a.uptimeCheck(user.ClaimCode, time.Now())
-	case "report-bug":
-		return a.issueCheck(notes, user.ClaimCode)
 	}
 	if txid == "" {
 		return "no txid submitted"
@@ -419,9 +417,7 @@ func uptimeVerdict(db *sql.DB, code string, now time.Time) string {
 
 var _ = log.Printf
 
-// ---- competition entries, security reports, bug-report issues ----
-
-var githubIssueRe = regexp.MustCompile(`https?://github\.com/ConcatenaLabs/([A-Za-z0-9_.-]+)/issues/([0-9]+)`)
+// ---- competition entries and security reports ----
 
 // normalizeURL makes two spellings of the same link compare equal.
 func normalizeURL(s string) string {
@@ -500,50 +496,4 @@ func (a *App) reportCheck(userID int64, body, claimCode string) string {
 		parts = append(parts, fmt.Sprintf("IDENTICAL to report #%d from another account", dupID))
 	}
 	return strings.Join(parts, "; ")
-}
-
-// issueCheck reads the GitHub issue linked in the notes and looks for the
-// account code in it, so the issue is known to be the submitter's.
-func (a *App) issueCheck(notes, claimCode string) string {
-	m := githubIssueRe.FindStringSubmatch(notes)
-	if m == nil {
-		return "no link to an issue under github.com/ConcatenaLabs in the notes"
-	}
-	req, err := http.NewRequest("GET", strings.TrimRight(a.cfg.GitHubAPI, "/")+"/repos/ConcatenaLabs/"+m[1]+"/issues/"+m[2], nil)
-	if err != nil {
-		return "issue link unreadable"
-	}
-	req.Header.Set("User-Agent", "emissio-verifier/1.0 (sequentiatestnet.com)")
-	req.Header.Set("Accept", "application/vnd.github+json")
-	resp, err := proofClient.Do(req)
-	if err != nil {
-		return "GitHub unreachable; manual review"
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
-		return "issue " + m[1] + "#" + m[2] + " NOT FOUND"
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Sprintf("GitHub returned HTTP %d; manual review", resp.StatusCode)
-	}
-	var issue struct {
-		Title string `json:"title"`
-		Body  string `json:"body"`
-		State string `json:"state"`
-		User  struct {
-			Login string `json:"login"`
-		} `json:"user"`
-		PullRequest *struct{} `json:"pull_request"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&issue); err != nil {
-		return "GitHub response unreadable; manual review"
-	}
-	if issue.PullRequest != nil {
-		return m[1] + "#" + m[2] + " is a pull request, not an issue"
-	}
-	where := m[1] + "#" + m[2] + " by " + issue.User.Login + " (" + issue.State + ")"
-	if strings.Contains(strings.ToLower(issue.Title+"\n"+issue.Body), strings.ToLower(claimCode)) {
-		return where + ": contains the account code (OK); a maintainer confirms the bug"
-	}
-	return where + ": account code NOT in the issue"
 }
