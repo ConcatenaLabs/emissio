@@ -51,6 +51,7 @@ type Config struct {
 	Wallet         string
 	WalletAssets   []string // assets it may pay in; empty: any it holds
 	WalletDailyCap int64
+	WalletFeeRate  string // reference units per vbyte, converted to the fee asset by the node
 
 	// Mail (mail.go): an SMTP submission service. Without a host and a
 	// sender, email verification and reset by email are off.
@@ -103,6 +104,7 @@ func loadConfig() Config {
 		SumsURL:       envOr("EMISSIO_SUMS", ""),
 		FaucetAddrs:   strings.Split(envOr("EMISSIO_FAUCET_ADDRESSES", "tb1phruj5gk2nqrd4atn58rjr7msakm64fxsh5famwwerraz5wu29qnqkk43tk"), ","),
 		Wallet:        envOr("EMISSIO_WALLET", ""),
+		WalletFeeRate: envOr("EMISSIO_WALLET_FEE_RATE", "2"),
 		WalletAssets:  strings.Split(envOr("EMISSIO_WALLET_ASSETS", ""), ","),
 		SMTPHost:      envOr("EMISSIO_SMTP_HOST", ""),
 		SMTPPort:      envOr("EMISSIO_SMTP_PORT", "587"),

@@ -405,3 +405,19 @@ func TestSeedCatalogue(t *testing.T) {
 	}
 	t.Logf("%d tasks, %d SEQ for the full track", len(seedTasks), total)
 }
+
+// TestSeedBackfill: a database from before tasks had a surface and a check
+// gets them for its seeded tasks on start, with its copy and amounts untouched.
+func TestSeedBackfill(t *testing.T) {
+	app, _, _ := newTestServer(t)
+	app.db.Exec("UPDATE tasks SET check_kind = '', surface = '', reward = 77, body = 'old copy' WHERE slug = 'stake'")
+	app.db.Exec("UPDATE tasks SET check_kind = 'none' WHERE slug = 'first-transaction'")
+	seedDB(app.db)
+	tk, _ := taskBySlug(app.db, "stake")
+	if tk.CheckKind != "stake" || tk.Surface != "core" || tk.Reward != 77 || tk.Body != "old copy" {
+		t.Fatalf("backfill: %+v", tk)
+	}
+	if tk, _ := taskBySlug(app.db, "first-transaction"); tk.CheckKind != "none" {
+		t.Fatal("an admin's choice of check was overwritten")
+	}
+}
