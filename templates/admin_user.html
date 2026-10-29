@@ -1,0 +1,73 @@
+{{define "content"}}
+{{$u := .Data.U}}
+<div class="eyebrow">Admin · account #{{$u.ID}}</div>
+<h1>{{$u.Email}}</h1>
+<p class="small muted">Code <code>{{$u.ClaimCode}}</code> · proof decimals <code>.{{prooftag $u.ClaimCode}}</code> · joined {{datetime $u.CreatedAt}} from <span class="mono">{{$u.RegIP}}</span> · email {{if $u.EmailVerifiedAt}}confirmed {{date $u.EmailVerifiedAt}}{{else}}not confirmed{{end}}{{if $u.ReferredBy}} · referred by <a href="{{base}}/admin/users/{{$u.ReferredBy}}">#{{$u.ReferredBy}}</a>{{end}}{{if $u.MainnetAddress}} · payout <span class="mono">{{short $u.MainnetAddress}}</span>{{end}}</p>
+<div class="ledger" style="margin:1rem 0">
+  <div class="ledger-row"><span class="label">Balance</span><span class="leader"></span><span class="amount">{{seq .Data.Balance}} <small>SEQ</small></span></div>
+  <div class="ledger-row"><span class="label">Accounts sharing a network address</span><span class="leader"></span><span class="amount plain">{{.Data.Signals.SharedIPs}}</span></div>
+  <div class="ledger-row"><span class="label">Accounts sharing a browser</span><span class="leader"></span><span class="amount plain">{{.Data.Signals.SharedDevices}}</span></div>
+  <div class="ledger-row"><span class="label">Accounts whose evidence touched the same chain address</span><span class="leader"></span><span class="amount plain">{{.Data.Signals.SharedFunding}}</span></div>
+</div>
+
+<div class="section">
+  {{if $u.Held}}
+  <p><span class="pill rejected">held</span> Nothing this account submits is approved automatically, it earns no referral reward, and payout runs leave it out.</p>
+  <form method="post" action="{{base}}/admin/users/{{$u.ID}}/hold" class="inline-form"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="hold" value="0"><input type="text" name="note" placeholder="note (optional)"><button class="btn small" type="submit">Release</button></form>
+  {{else}}
+  <form method="post" action="{{base}}/admin/users/{{$u.ID}}/hold" class="inline-form"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="hold" value="1"><input type="text" name="note" placeholder="why it is held" required><button class="btn danger small" type="submit">Hold for review</button></form>
+  {{end}}
+  <form method="post" action="{{base}}/admin/users/{{$u.ID}}/reset-link" class="inline-form" style="margin-top:.6rem"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn ghost small" type="submit">Make a password reset link</button></form>
+</div>
+
+{{if .Data.Linked}}
+<div class="section">
+  <h2>Linked accounts</h2>
+  <div class="table-scroll"><table class="table">
+    <tr><th>#</th><th>Account</th><th>Shares</th></tr>
+    {{range .Data.Linked}}<tr><td>{{.ID}}</td><td><a href="{{base}}/admin/users/{{.ID}}">{{.Email}}</a>{{if .Held}} <span class="pill rejected">held</span>{{end}}</td><td class="small mono">{{.Via}}</td></tr>{{end}}
+  </table></div>
+</div>
+{{end}}
+
+<div class="section">
+  <h2>Where it was seen</h2>
+  <p class="small">Network addresses: {{range $i, $ip := .Data.IPs}}{{if $i}}, {{end}}<a class="mono" href="{{base}}/admin/users?q={{$ip}}">{{$ip}}</a>{{else}}<span class="muted">none recorded</span>{{end}} · browsers: {{.Data.Devices}}</p>
+  {{if .Data.Shared}}<p class="small">Chain addresses its evidence touched: {{range $i, $c := .Data.Shared}}{{if $i}}, {{end}}<a class="mono" href="{{base}}/admin/users?q={{$c.Address}}">{{short $c.Address}}</a> ({{$c.Role}}{{if $c.Others}}, {{$c.Others}} other accounts{{end}}){{end}}</p>{{end}}
+</div>
+
+<div class="section">
+  <h2>Submissions</h2>
+  <div class="table-scroll"><table class="table">
+    <tr><th>#</th><th>Task</th><th>Status</th><th>Check</th><th></th></tr>
+    {{range .Data.Subs}}
+    <tr><td>{{.ID}}</td><td>{{.TaskTitle}}{{if .Txid}}<div class="mono small">{{short .Txid}}</div>{{end}}</td><td><span class="pill {{.Status}}">{{.Status}}</span></td><td class="small">{{.ChainNote}}{{if .ReviewNote}}<div class="muted">{{.ReviewNote}}</div>{{end}}</td>
+      <td>{{if eq .Status "approved"}}<form method="post" action="{{base}}/admin/submissions/{{.ID}}/revoke" class="inline-form"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="text" name="note" placeholder="reason" required minlength="8"><button class="btn danger small" type="submit">Revoke</button></form>{{end}}</td></tr>
+    {{end}}
+  </table></div>
+</div>
+
+{{if .Data.Bugs}}<div class="section"><h2>Bug reports</h2>{{template "bugtable" .Data.Bugs}}</div>{{end}}
+
+<div class="section">
+  <h2>Ledger</h2>
+  <div class="ledger wide">
+    {{range .Data.Ledger}}<div class="ledger-row"><span class="label">{{.Note}}<span class="sub">{{date .CreatedAt}} · {{.Kind}}</span></span><span class="leader"></span><span class="amount{{if lt .Amount 0}} neg{{end}}">{{seq .Amount}} <small>SEQ</small></span></div>{{end}}
+  </div>
+  <form class="stack" method="post" action="{{base}}/admin/adjust" style="margin-top:1rem">
+    <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="user" value="{{$u.ID}}">
+    <label>Adjust by (SEQ, positive or negative)</label><input type="number" name="amount" required>
+    <label>Reason (the account sees it)</label><input type="text" name="note" required minlength="8">
+    <div class="actions"><button class="btn" type="submit">Add ledger entry</button></div>
+  </form>
+</div>
+
+{{if .Data.Log}}
+<div class="section">
+  <h2>Admin actions on this account</h2>
+  <div class="table-scroll"><table class="table">
+    {{range .Data.Log}}<tr><td>{{datetime .At}}</td><td>{{.Action}}</td><td>{{.Admin}}</td><td class="small">{{.Note}}</td></tr>{{end}}
+  </table></div>
+</div>
+{{end}}
+{{end}}

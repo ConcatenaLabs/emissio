@@ -72,9 +72,14 @@ func (a *App) tryQualifyReferral(referrerID, refereeID int64) {
 		Scan(&already); err != nil || already > 0 {
 		return
 	}
-	// Both sides must hold a verified social account before a referral pays.
+	// Both sides must hold a verified social account, and neither may be
+	// held by an admin, before a referral pays.
 	for _, id := range []int64{referrerID, refereeID} {
 		if n, err := verifiedCount(a.db, id); err != nil || n == 0 {
+			return
+		}
+		var held bool
+		if a.db.QueryRow("SELECT held FROM users WHERE id = ?", id).Scan(&held); held {
 			return
 		}
 	}

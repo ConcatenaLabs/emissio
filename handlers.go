@@ -258,6 +258,7 @@ func (a *App) handleTaskSubmit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	a.seen(user.ID, clientIP(r), a.device(w, r))
 	res := a.evidenceCheck(task.CheckKind, txid, notes, user)
 	forReview := r.FormValue("review") == "1"
 	if res.Verdict == vFail && !forReview {
@@ -713,11 +714,24 @@ func (a *App) handleRegister(w http.ResponseWriter, r *http.Request) {
 		a.redirect(w, r, "/register", "", "Use a password of at least 10 characters.")
 		return
 	}
+	dev := a.device(w, r)
+	if _, err := getUserByEmail(a.db, email); err == nil {
+		a.redirect(w, r, "/login", "", "An account with that email already exists. Sign in instead.")
+		return
+	}
+	if ok, why := a.registrationAllowed(clientIP(r), dev); !ok {
+		a.redirect(w, r, "/register", "", why)
+		return
+	}
 	id, err := createUser(a.db, email, hashPassword(pass), randomHex(5), clientIP(r))
 	if err != nil {
 		a.redirect(w, r, "/login", "", "An account with that email already exists. Sign in instead.")
 		return
 	}
+	var created int64
+	a.db.QueryRow("SELECT created_at FROM users WHERE id = ?", id).Scan(&created)
+	a.db.Exec("INSERT OR IGNORE INTO user_devices (user_id, device, first_seen, last_seen) VALUES (?,?,?,?)", id, dev, created, created)
+	a.seen(id, clientIP(r), "")
 	a.attachReferrer(r, id)
 	if err := a.createSession(w, id); err != nil {
 		a.serverError(w, err)
@@ -758,6 +772,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		a.serverError(w, err)
 		return
 	}
+	a.seen(user.ID, clientIP(r), a.device(w, r))
 	a.redirect(w, r, "/account", "", "")
 }
 

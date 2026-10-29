@@ -54,7 +54,11 @@ func (a *App) handleAdminReview(w http.ResponseWriter, r *http.Request) {
 				a.processReferrals(userID)
 			}
 		}
-		a.redirect(w, r, "/admin/submissions", fmt.Sprintf("Submission %d %sd.", id, action), "")
+		back := "/admin/submissions"
+		if r.FormValue("back") == "/admin/queue" {
+			back = "/admin/queue"
+		}
+		a.redirect(w, r, back, fmt.Sprintf("Submission %d %sd.", id, action), "")
 	case "recheck":
 		var txid, notes, slug string
 		var userID int64
@@ -380,21 +384,12 @@ func (a *App) handleAdminVerifyReview(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a *App) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := listUsers(a.db, 500)
-	if err != nil {
-		a.serverError(w, err)
-		return
-	}
-	a.render(w, r, "admin_users", "Users", users)
-}
-
 func (a *App) handleAdminAdjust(w http.ResponseWriter, r *http.Request) {
 	userID, _ := strconv.ParseInt(r.FormValue("user"), 10, 64)
 	amount, _ := strconv.ParseInt(r.FormValue("amount"), 10, 64)
 	note := strings.TrimSpace(r.FormValue("note"))
-	if userID <= 0 || amount == 0 || note == "" {
-		a.redirect(w, r, "/admin/users", "", "An adjustment needs a user id, a non-zero amount, and a note.")
+	if userID <= 0 || amount == 0 || len(note) < minAdjustmentNote {
+		a.redirect(w, r, "/admin/users", "", "An adjustment needs a user id, a non-zero amount, and the reason, which the account sees in its ledger.")
 		return
 	}
 	if _, err := getUserByID(a.db, userID); err != nil {
@@ -407,10 +402,11 @@ func (a *App) handleAdminAdjust(w http.ResponseWriter, r *http.Request) {
 		a.serverError(w, err)
 		return
 	}
+	a.logAdmin(r, "adjust", userID, amount, note)
 	if amount > 0 {
 		a.processReferrals(userID)
 	}
-	a.redirect(w, r, "/admin/users", fmt.Sprintf("Adjusted user %d by %s SEQ.", userID, formatSEQ(amount)), "")
+	a.redirect(w, r, fmt.Sprintf("/admin/users/%d", userID), fmt.Sprintf("Adjusted user %d by %s SEQ.", userID, formatSEQ(amount)), "")
 }
 
 func (a *App) handleAdminExport(w http.ResponseWriter, r *http.Request) {

@@ -1,29 +1,32 @@
 {{define "content"}}
 <div class="eyebrow">Admin</div>
 <h1>Users</h1>
+<form method="get" action="{{base}}/admin/users" class="inline-form" style="margin:1rem 0">
+  <input type="text" name="q" value="{{.Data.Q}}" placeholder="email, account code, IP, address, txid or account id" style="min-width:24rem">
+  <button class="btn small" type="submit">Search</button>
+  <a class="btn ghost small" href="{{base}}/admin/export/users.csv">Export users CSV</a>
+</form>
 <div class="table-scroll"><table class="table">
-  <tr><th>#</th><th>Email</th><th>Code</th><th>Mainnet address</th><th>Reg IP</th><th>Joined</th><th>Balance</th><th></th></tr>
-  {{range .Data}}
+  <tr><th>#</th><th>Email</th><th>Code</th><th>Signals</th><th>Joined</th><th>Balance</th></tr>
+  {{range .Data.Users}}{{$s := index $.Data.Sig .ID}}
   <tr>
     <td>{{.ID}}</td>
-    <td>{{.Email}}{{if .EmailVerifiedAt}} <span class="pill approved">email</span>{{end}}{{if .IsAdmin}} <span class="pill">admin</span>{{end}}{{if .ReferredBy}} <span class="pill">ref:{{.ReferredBy}}</span>{{end}}</td>
+    <td><a href="{{base}}/admin/users/{{.ID}}">{{.Email}}</a>{{if .EmailVerifiedAt}} <span class="pill approved">email</span>{{end}}{{if .IsAdmin}} <span class="pill">admin</span>{{end}}{{if .Held}} <span class="pill rejected">held</span>{{end}}{{if .ReferredBy}} <span class="pill">ref:{{.ReferredBy}}</span>{{end}}</td>
     <td class="mono">{{.ClaimCode}}</td>
-    <td class="mono">{{if .MainnetAddress}}{{short .MainnetAddress}}{{end}}</td>
-    <td class="mono">{{.RegIP}}{{if gt .IPPeers 1}} <span class="pill rejected">x{{.IPPeers}}</span>{{end}}</td>
+    <td class="small">{{if $s.Any}}<span class="pill rejected">{{$s.SharedIPs}} by network · {{$s.SharedDevices}} by browser · {{$s.SharedFunding}} by chain</span>{{else}}<span class="muted">none</span>{{end}}</td>
     <td>{{date .CreatedAt}}</td>
     <td class="amount">{{seq .Balance}} SEQ</td>
-    <td><form method="post" action="{{base}}/admin/users/{{.ID}}/reset-link"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn ghost small" type="submit">Reset link</button></form></td>
   </tr>
   {{end}}
 </table></div>
 <div class="section">
   <h2>Manual adjustment</h2>
-  <p class="small muted">Positive or negative. Every adjustment is a ledger entry the user can see, with your note attached.</p>
+  <p class="small muted">Positive or negative. Every adjustment is a ledger entry the account sees, with your reason attached, and is logged under your name.</p>
   <form class="stack" method="post" action="{{base}}/admin/adjust">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>User id</label><input type="number" name="user" required>
     <label>Amount (SEQ)</label><input type="number" name="amount" required>
-    <label>Note</label><input type="text" name="note" required>
+    <label>Reason (the account sees it)</label><input type="text" name="note" required minlength="8">
     <div class="actions"><button class="btn" type="submit">Add ledger entry</button></div>
   </form>
 </div>

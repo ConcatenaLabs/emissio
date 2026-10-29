@@ -19,8 +19,11 @@ go test ./...
 EMISSIO_LISTEN=127.0.0.1:8095 EMISSIO_DB=/path/to/emissio.db ./emissio
 ```
 
-`go test ./...` covers address validation, auth, the submission and review lifecycle, prize and
-report awards, CSRF, and double-credit protection. There is no CI, so run it before every PR.
+`go test ./...` covers address validation, auth, email confirmation and reset, every task check's
+verdicts, the submission and review lifecycle, bug reports and the wallet intake, prize and report
+awards, the admin desk, registration limits, CSRF, and double-credit protection.
+`regtest_tasks_test.go` and `regtest_payout_test.go` need a regtest node and are skipped without
+one; their headers say what they need. There is no CI, so run it before every PR.
 
 Configuration is environment only — see the table in `README.md`. Nothing is read from a config
 file. Deployment uses `deploy/emissio.service` and `deploy/install-on-box.sh`; the server pulls
@@ -67,7 +70,12 @@ that must not regress:
   account is in one open run at a time and a wallet key is paid for one account only, both in
   the schema. No page names the payment service.
 
-Manual ledger adjustments are always visible to the user. Keep it that way.
+Manual ledger adjustments and revocations are always visible to the user, with the admin's reason.
+Keep it that way.
+
+- **A passing check credits at once.** That is what makes the anti-sybil machinery matter: the
+  registration limits, the email gate, the hold (which turns automatic approval off for an
+  account) and the signals on the admin desk are what stand between a farm and the ledger.
 
 ## Naming
 

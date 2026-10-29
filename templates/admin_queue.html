@@ -1,0 +1,52 @@
+{{define "content"}}
+<div class="eyebrow">Admin</div>
+<h1>Review queue</h1>
+<p class="small muted">Everything waiting on a person, oldest first. A badge beside an account counts the other accounts that share a network address, a browser or a chain address with it; open the account to see which.</p>
+<p>
+  <a class="btn ghost small" href="{{base}}/admin/queue">All</a>
+  {{range $k := list "task" "bug" "security" "verification" "entry"}}<a class="btn ghost small" href="{{base}}/admin/queue?kind={{$k}}">{{$k}} · {{index $.Data.Counts $k}}</a> {{end}}
+</p>
+{{if not .Data.Items}}<p class="muted">Nothing waiting.</p>{{end}}
+{{range .Data.Items}}
+<details {{if eq .Kind "task"}}open{{end}}>
+  <summary><span class="pill">{{.Kind}}</span> <strong>{{.Title}}</strong> · <a href="{{base}}/admin/users/{{.UserID}}">{{if .Email}}{{.Email}}{{else}}unattributed{{end}}</a>{{if .Held}} <span class="pill rejected">held</span>{{end}}{{if .Signals.Any}} <span class="pill rejected" title="other accounts sharing an address, a browser or a chain address">shares with {{.Signals.SharedIPs}}/{{.Signals.SharedDevices}}/{{.Signals.SharedFunding}}</span>{{end}} · {{datetime .At}}</summary>
+  <div class="inner">
+    {{if .Detail}}<p class="small">{{.Detail}}</p>{{end}}
+    {{with .Sub}}
+      {{if .Txid}}<p class="mono small">txid: <a href="https://sequentiatestnet.com/explorer/tx/{{.Txid}}" target="_blank" rel="noopener">{{.Txid}}</a></p>{{end}}
+      <p class="small">account code <code>{{.ClaimCode}}</code> · proof decimals <code>.{{prooftag .ClaimCode}}</code> · reward {{seq .TaskReward}} SEQ</p>
+      {{if .Notes}}<p class="small" style="white-space:pre-wrap">{{.Notes}}</p>{{end}}
+      <form method="post" action="{{base}}/admin/submissions/{{.ID}}/review" class="inline-form">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="back" value="/admin/queue">
+        <input type="text" name="note" placeholder="Note to the tester (required when rejecting)">
+        <button class="btn small" name="action" value="approve" type="submit">Approve</button>
+        <button class="btn danger small" name="action" value="reject" type="submit">Reject</button>
+        <button class="btn ghost small" name="action" value="recheck" type="submit">Re-check</button>
+      </form>
+    {{else}}
+      <p><a class="btn ghost small" href="{{base}}{{.Link}}">Open</a></p>
+    {{end}}
+  </div>
+</details>
+{{end}}
+
+<div class="section">
+  <h2>Approved automatically</h2>
+  <p class="small muted">The latest rewards the checks credited without a reviewer. Revoking one takes the reward back with a ledger entry the tester sees, carrying your reason.</p>
+  <div class="table-scroll"><table class="table">
+    <tr><th>#</th><th>Task</th><th>Account</th><th>Check</th><th>Approved</th><th></th></tr>
+    {{range .Data.Recent}}
+    <tr>
+      <td>{{.ID}}</td><td>{{.TaskTitle}}</td><td><a href="{{base}}/admin/users/{{.UserID}}">{{.UserEmail}}</a></td>
+      <td class="small">{{.ChainNote}}</td><td>{{datetime .ReviewedAt}}</td>
+      <td><form method="post" action="{{base}}/admin/submissions/{{.ID}}/revoke" class="inline-form">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="back" value="/admin/queue">
+        <input type="text" name="note" placeholder="reason" required minlength="8"><button class="btn danger small" type="submit">Revoke</button></form></td>
+    </tr>
+    {{else}}
+    <tr><td colspan="6" class="muted">None yet.</td></tr>
+    {{end}}
+  </table></div>
+</div>
+{{end}}
