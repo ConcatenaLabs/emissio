@@ -80,7 +80,7 @@ func TestAdminDesk(t *testing.T) {
 	tester.PostForm(srv.URL+"/security/report", url.Values{"csrf": {tcsrf}, "title": {"RPC leak"}, "severity": {"low"}, "body": {"x"}})
 	tester.PostForm(srv.URL+"/account/verify", url.Values{"csrf": {tcsrf}, "platform": {"telegram"}, "handle": {"someone"}})
 	q := get(t, admin, srv.URL+"/admin/queue")
-	for _, want := range []string{"Build Sequentia Core from source", "Bridge shows NaN", "RPC leak", "tester@x.io", "task · 1", "bug · 1", "security · 1", "verification · 1"} {
+	for _, want := range []string{"Build Sequentia Core from source", "Bridge shows NaN", "RPC leak", "tester@x.io", "task · 1", "bug · 1", "security · 1", "verification · 1", "org%3AConcatenaLabs+label%3Aknown-issue"} {
 		if !strings.Contains(q, want) {
 			t.Errorf("queue lacks %q", want)
 		}

@@ -2,6 +2,7 @@
 <div class="eyebrow">Admin</div>
 <h1>Review queue</h1>
 <p class="small muted">Everything waiting on a person, oldest first. A badge beside an account says what it shares with other accounts (a network address, a browser, a chain address); open the account to see which.</p>
+<p class="small muted">Before accepting a bug or security report, look for it among the <a href="https://github.com/search?q=org%3AConcatenaLabs+label%3Aknown-issue&amp;type=issues" target="_blank" rel="noopener">known issues</a>: an issue already on a ConcatenaLabs tracker, open or closed, is known, so a report of it is a duplicate.</p>
 <p>
   <a class="btn ghost small" href="{{base}}/admin/queue">All</a>
   {{range $k := list "task" "bug" "security" "verification" "entry"}}<a class="btn ghost small" href="{{base}}/admin/queue?kind={{$k}}">{{$k}} · {{index $.Data.Counts $k}}</a> {{end}}

@@ -209,6 +209,8 @@ Anti-farming, mechanically enforced in the database:
 
 `/admin/queue` is one queue for everything waiting on a person, oldest first, filterable by kind: task evidence (approved, rejected or re-checked in place), bug reports, security reports, verifications, and the entries of competitions past their closing date. Each row names its account with its signals and whether it is held. Below the queue are the latest rewards the checks credited without a reviewer, each revocable with a reason.
 
+Every issue the project already knows of is a GitHub issue labelled `known-issue` on the tracker of the ConcatenaLabs repository whose code has it, so one search lists them all: [`org:ConcatenaLabs label:known-issue`](https://github.com/search?q=org%3AConcatenaLabs+label%3Aknown-issue&type=issues). The queue links it; check a bug or security report against it before accepting one, because a report of a known issue is a duplicate.
+
 `/admin/users` searches accounts by email, account code, network address, payout address, a chain address their evidence touched, a txid they submitted or the account id; each account's page shows its balance, signals and linked accounts (and what they share), where it was seen, its submissions (approved ones revocable), bug reports, ledger with an adjustment form, the hold, a password reset link, and the log of admin actions on it.
 
 The task editor (`/admin/tasks`) changes a task's copy, reward, cap, surface, check and active flag, or adds a task, with no deploy. Exports: `/admin/allocations.csv` (the launch allocation: `user_id, email, mainnet_address, balance_seq, verified_platforms`) and `/admin/export/users.csv`, `submissions.csv`, `ledger.csv`, `bugs.csv`; a cell a spreadsheet would run as a formula is written as text.
