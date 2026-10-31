@@ -303,7 +303,7 @@ func (a *App) handlePaymentRequest(w http.ResponseWriter, r *http.Request) {
 		a.redirect(w, r, back, "", "Emissio has made all of today's payments. Try again tomorrow.")
 		return
 	}
-	addr := strings.TrimSpace(r.FormValue("address"))
+	addr := addressOf(r.FormValue("address"))
 	if len(addr) > 120 || !regexp.MustCompile(`^[0-9A-Za-z]+$`).MatchString(addr) {
 		a.redirect(w, r, back, "", "Enter one address of your wallet.")
 		return

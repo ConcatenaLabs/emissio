@@ -633,7 +633,7 @@ func (a *App) handleAddress(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	addr := strings.TrimSpace(r.FormValue("address"))
+	addr := addressOf(r.FormValue("address"))
 	if addr == "" {
 		if _, err := a.db.Exec("UPDATE users SET mainnet_address = '', address_updated_at = ? WHERE id = ?", now(), user.ID); err != nil {
 			a.serverError(w, err)
