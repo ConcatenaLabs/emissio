@@ -141,19 +141,18 @@ func decodeRequest(req string) (*requestDetails, error) {
 	return &d, nil
 }
 
-// codeParts splits a receive code into its address, ark and sequentia parts.
+// codeParts splits a receive code into its address, ark, sequentia and
+// lightning parts (receivecode.go). A bare receive request is its sequentia
+// part, and anything else its address.
 func codeParts(code string) (addr, ark, req, invoice string) {
 	code = strings.TrimSpace(code)
-	rest, ok := strings.CutPrefix(code, "bitcoin:")
-	if !ok {
-		if strings.HasPrefix(code, "arca:") {
-			return "", "", code, ""
-		}
-		return code, "", "", ""
+	if c, ok := readReceiveCode(code); ok {
+		return c.Address, c.Ark, c.Sequentia, c.Lightning
 	}
-	addr, query, _ := strings.Cut(rest, "?")
-	q, _ := url.ParseQuery(query)
-	return addr, q.Get("ark"), q.Get("sequentia"), q.Get("lightning")
+	if strings.HasPrefix(code, "arca:") || strings.HasPrefix(strings.ToLower(code), "sqr1") {
+		return "", "", code, ""
+	}
+	return code, "", "", ""
 }
 
 // newCode makes an account's receive code for one purpose: a fresh receive
@@ -491,6 +490,16 @@ func arcaPurpose(kind string) string {
 // Emissio holds, and makes the code the account returns it to.
 func (a *App) payCode(w http.ResponseWriter, r *http.Request, user *User, back, purpose string) {
 	_, _, req, _ := codeParts(r.FormValue("code"))
+	if req == "" {
+		a.redirect(w, r, back, "", "Paste the receive code your web wallet shows under Receive.")
+		return
+	}
+	op, genesis := a.arcaChain()
+	req, err := expandRequest(req, op, genesis)
+	if err != nil {
+		a.redirect(w, r, back, "", "That receive code cannot be paid here: "+err.Error()+".")
+		return
+	}
 	d, err := decodeRequest(req)
 	if err != nil {
 		a.redirect(w, r, back, "", "Paste the receive code your web wallet shows under Receive.")
@@ -597,13 +606,21 @@ func (a *App) arcaAddress() string {
 
 // arcaOperator is the operator key the wallet pinned.
 func (a *App) arcaOperator() string {
+	op, _ := a.arcaChain()
+	return op
+}
+
+// arcaChain is the operator key and the chain's genesis hash of Emissio's
+// wallet, or empty strings when the wallet does not answer.
+func (a *App) arcaChain() (operator, genesis string) {
 	var info struct {
 		Operator string `json:"operator"`
+		Genesis  string `json:"genesis_hash"`
 	}
 	if a.arca(time.Minute, &info, "info") != nil {
-		return ""
+		return "", ""
 	}
-	return info.Operator
+	return info.Operator, info.Genesis
 }
 
 // arcaPick chooses a random asset Emissio holds enough of, and a random

@@ -154,17 +154,8 @@ func base58checkEncode(version byte, payload []byte) string {
 func linkMessage(code string) string { return "Emissio " + code }
 
 // receiveAddress takes the address from what the tester pasted: an
-// address, or a receive code (bitcoin:<address>?...).
-func receiveAddress(s string) string {
-	s = strings.TrimSpace(s)
-	if rest, ok := strings.CutPrefix(strings.ToLower(s), "bitcoin:"); ok {
-		s = s[len(s)-len(rest):]
-		if i := strings.IndexByte(s, '?'); i >= 0 {
-			s = s[:i]
-		}
-	}
-	return s
-}
+// address, or a receive code (receivecode.go).
+func receiveAddress(s string) string { return addressOf(s) }
 
 // linkCheck verifies a linking signature and says which wallet it links.
 func linkCheck(code, addrIn, sig string) (tb1, pubHex string, err error) {

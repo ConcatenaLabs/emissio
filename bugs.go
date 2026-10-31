@@ -58,6 +58,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ledger_bug ON ledger(kind, ref_id) WHERE kind 
 
 // bugSurfaces are what the form offers: the public testnet's surfaces.
 var bugSurfaces = []struct{ Key, Name string }{
+	{"web-wallet", "Web wallet"},
 	{"explorer", "Block explorer"},
 	{"faucet", "Faucet"},
 	{"compages", "Compages bridge"},
