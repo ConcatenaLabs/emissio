@@ -322,7 +322,7 @@ All configuration is environment variables (`loadConfig` in `main.go`):
 | `EMISSIO_WALLET_FEE_RATE` | `2` | Fee rate of its payments, in reference units per vbyte; the node converts it into the paid asset |
 | `EMISSIO_SECURE` | `0` | Set `1` behind HTTPS so cookies are marked Secure |
 | `EMISSIO_SMTP_HOST`, `EMISSIO_SMTP_PORT` | empty, `587` | SMTP submission service for verification and reset mail; with a sender set, mail is on. Port 587 uses STARTTLS (required before credentials are sent), 465 implicit TLS |
-| `EMISSIO_SMTP_USER`, `EMISSIO_SMTP_PASS` | empty | Its credentials; keep the password in a systemd drop-in, never in the repo |
+| `EMISSIO_SMTP_USER`, `EMISSIO_SMTP_PASS` | empty | Its credentials; keep the password in `/etc/emissio/emissio.env` (mode 600), never in the repo or a unit file |
 | `EMISSIO_MAIL_FROM` | empty | Sender, e.g. `Sequentia Emissio <emissio@sequentiatestnet.com>` |
 | `EMISSIO_PUBLIC_URL` | derived from the request | Public base address used in mailed links, e.g. `https://sequentiatestnet.com/emissio` |
 | `EMISSIO_TG_BOT_TOKEN` | empty | Telegram bot token (placeholder: `123456:ABC-...`); enables automatic Telegram ownership + ID-based age checks |
@@ -343,9 +343,9 @@ All configuration is environment variables (`loadConfig` in `main.go`):
 
 ### Sending mail
 
-Mail goes out through an SMTP submission service: any transactional provider (Amazon SES, Postmark, Brevo, Mailgun and the like) works. For mail from `sequentiatestnet.com` to be delivered rather than filed as spam, the domain's DNS needs the provider's records: its SPF include merged into the existing SPF record (one `v=spf1` record per domain, so `v=spf1 include:spf.efwd.registrar-servers.com include:<provider> ~all`), the DKIM records the provider issues for the domain, and a DMARC record (`_dmarc` TXT, `v=DMARC1; p=none` to start). On the host, the SMTP password lives in a systemd drop-in readable by root alone, next to `EMISSIO_SMTP_HOST`, `EMISSIO_SMTP_USER`, `EMISSIO_MAIL_FROM` and `EMISSIO_PUBLIC_URL`, and the host must reach the provider on port 587. One account gets at most three mails an hour, one network address causes at most ten, and a link works once: a day for confirming the address, an hour for a reset (a day for a link an admin makes).
+Mail goes out through an SMTP submission service: any transactional provider (Amazon SES, Postmark, Brevo, Mailgun and the like) works. For mail from `sequentiatestnet.com` to be delivered rather than filed as spam, the domain's DNS needs the provider's records: its SPF include merged into the existing SPF record (one `v=spf1` record per domain, so `v=spf1 include:spf.efwd.registrar-servers.com include:<provider> ~all`), the DKIM records the provider issues for the domain, and a DMARC record (`_dmarc` TXT, `v=DMARC1; p=none` to start). On the host, the SMTP password lives in `/etc/emissio/emissio.env` (mode 600), which the unit reads with `EnvironmentFile=`; `EMISSIO_SMTP_HOST`, `EMISSIO_SMTP_USER`, `EMISSIO_MAIL_FROM` and `EMISSIO_PUBLIC_URL` can sit beside it, and the host must reach the provider on port 587. One account gets at most three mails an hour, one network address causes at most ten, and a link works once: a day for confirming the address, an hour for a reset (a day for a link an admin makes).
 
-Keep real secrets (such as the bot token) out of the repo and out of unit files under version control; on a systemd host, use a drop-in (`systemctl edit emissio`).
+Keep real secrets (such as the bot token) out of the repo and out of every unit file and drop-in: systemd shows an `Environment=` value to every user on the machine (`systemctl show`), whatever the file's mode. On a systemd host they go in `/etc/emissio/emissio.env`, mode 600, which the unit reads.
 
 ### Repo layout
 
@@ -383,7 +383,7 @@ One SQLite file (WAL mode, foreign keys on, a single connection to serialize wri
 
 ### Deployment
 
-The live instance runs as a systemd service behind Caddy on the sequentiatestnet.com host. `deploy/emissio.service` is the unit (binary + `/var/lib/emissio/emissio.db`, `EMISSIO_BASEPATH=/emissio`, local electrs as the esplora endpoint), and `deploy/install-on-box.sh` is the one-shot installer that builds, installs the unit, and adds the Caddy route. It assumes Go at `/root/toolchains/go/bin` and the box's canonical Caddy site block; on any other host, follow the steps in the header of `deploy/emissio.service` by hand. The route it adds:
+The live instance runs as a systemd service behind Caddy on the sequentiatestnet.com host. `deploy/emissio.service` is the unit: it runs `/opt/emissio/emissio` as the `emissio` system user, which owns `/var/lib/emissio` (the database, mode 600) and can write nothing else, with `EMISSIO_BASEPATH=/emissio`, local electrs as the esplora endpoint and the secrets from `/etc/emissio/emissio.env`. `deploy/install-on-box.sh` builds, makes the user, installs the binary and the unit, restarts the service and adds the Caddy route; run it again to deploy a new revision. Anything the service reads on the host (a `sequentia-cli` for `EMISSIO_CLI`, a node configuration for `EMISSIO_DATADIR`, an arca data directory) must be readable by that user, so none of it can sit under `/root`. It assumes Go at `/root/toolchains/go/bin` and the box's canonical Caddy site block; on any other host, follow the steps in the header of `deploy/emissio.service` by hand. The route it adds:
 
 ```
 redir /emissio /emissio/ permanent
