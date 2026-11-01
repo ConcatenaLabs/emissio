@@ -1,12 +1,22 @@
 # Sequentia Emissio systemd unit.
 #
-# Install on the box:
+# Install on the box: bash deploy/install-on-box.sh, which builds the binary,
+# installs it at /opt/emissio/emissio, makes the `emissio` system user that
+# runs it, gives that user /var/lib/emissio, and installs this unit. By hand:
 #   git clone https://github.com/ConcatenaLabs/emissio /root/sequentia/emissio
 #   cd /root/sequentia/emissio && go build .
-#   mkdir -p /var/lib/emissio
+#   useradd --system --user-group --home-dir /var/lib/emissio --shell /usr/sbin/nologin emissio
+#   install -D -m 755 emissio /opt/emissio/emissio
+#   install -d -o emissio -g emissio -m 700 /var/lib/emissio
+#   install -d -m 755 /etc/emissio && install -m 600 /dev/null /etc/emissio/emissio.env
 #   cp deploy/emissio.service /etc/systemd/system/
 #   systemctl daemon-reload && systemctl enable --now emissio
-#   echo 'a-strong-password' | ./emissio createadmin you@example.com   (uses EMISSIO_DB below)
+#   printf '%s\n' 'a-strong-password' | runuser -u emissio -- env EMISSIO_DB=/var/lib/emissio/emissio.db /opt/emissio/emissio createadmin you@example.com
+#
+# Secrets (the SMTP password, the bot tokens, the Reddit secret) go in
+# /etc/emissio/emissio.env, mode 600, one VAR=value a line. Never put one in
+# an Environment= line of this unit or a drop-in: systemd shows those to
+# every user on the machine (systemctl show), whatever the file's mode.
 #
 # Caddy route (inside the sequentiatestnet.com site block):
 #   handle_path /emissio/* {
@@ -24,13 +34,22 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-WorkingDirectory=/root/sequentia/emissio
-ExecStart=/root/sequentia/emissio/emissio
+User=emissio
+Group=emissio
+WorkingDirectory=/var/lib/emissio
+ExecStart=/opt/emissio/emissio
 Environment=EMISSIO_LISTEN=127.0.0.1:8095
 Environment=EMISSIO_DB=/var/lib/emissio/emissio.db
 Environment=EMISSIO_BASEPATH=/emissio
 Environment=EMISSIO_ESPLORA=http://127.0.0.1:3003
 Environment=EMISSIO_SECURE=1
+EnvironmentFile=-/etc/emissio/emissio.env
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/emissio
 Restart=on-failure
 RestartSec=3
 

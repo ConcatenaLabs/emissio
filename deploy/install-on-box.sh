@@ -8,11 +8,23 @@ cd /root/sequentia/emissio
 echo "== build =="
 PATH=/root/toolchains/go/bin:$PATH go build .
 
+echo "== user and files =="
+# Emissio runs as its own system user, which owns its data and nothing else.
+id emissio >/dev/null 2>&1 || useradd --system --user-group --home-dir /var/lib/emissio --shell /usr/sbin/nologin emissio
+install -d -m 755 /opt/emissio
+install -m 755 emissio /opt/emissio/emissio.new && mv -f /opt/emissio/emissio.new /opt/emissio/emissio
+install -d -o emissio -g emissio -m 700 /var/lib/emissio
+chown -R emissio:emissio /var/lib/emissio
+find /var/lib/emissio -maxdepth 1 -type f -exec chmod 600 {} +
+install -d -m 755 /etc/emissio
+[ -e /etc/emissio/emissio.env ] || install -m 600 /dev/null /etc/emissio/emissio.env
+chmod 600 /etc/emissio/emissio.env
+
 echo "== systemd =="
-mkdir -p /var/lib/emissio
 cp deploy/emissio.service /etc/systemd/system/emissio.service
 systemctl daemon-reload
-systemctl enable --now emissio
+systemctl enable emissio
+systemctl restart emissio
 sleep 2
 systemctl --no-pager --lines=3 status emissio | head -6
 
@@ -52,6 +64,6 @@ curl -s -o /dev/null -w "public: %{http_code}\n" https://sequentiatestnet.com/em
 echo "== admin account =="
 echo "Create the admin from your own machine so the password never lives on this server:"
 echo "  openssl rand -hex 12   (keep it in a local password store)"
-echo "  printf '%s\n' 'that-password' | ssh root@<box> 'cd /root/sequentia/emissio && EMISSIO_DB=/var/lib/emissio/emissio.db ./emissio createadmin you@example.com'"
+echo "  printf '%s\n' 'that-password' | ssh root@<box> 'runuser -u emissio -- env EMISSIO_DB=/var/lib/emissio/emissio.db /opt/emissio/emissio createadmin you@example.com'"
 
 echo "== done: https://sequentiatestnet.com/emissio/ =="
