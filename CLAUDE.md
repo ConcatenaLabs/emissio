@@ -23,7 +23,8 @@ EMISSIO_LISTEN=127.0.0.1:8095 EMISSIO_DB=/path/to/emissio.db ./emissio
 verdicts, the submission and review lifecycle, bug reports and the wallet intake, prize and report
 awards, the admin desk, registration limits, CSRF, and double-credit protection.
 `regtest_tasks_test.go` and `regtest_payout_test.go` need a regtest node and are skipped without
-one; their headers say what they need. There is no CI, so run it before every PR.
+one; their headers say what they need. CI (`.github/workflows/tests.yml`) runs `go vet` and
+`go test ./...` on every pull request and on `main`.
 
 Configuration is environment only — see the table in `README.md`. Nothing is read from a config
 file. Deployment uses `deploy/emissio.service` and `deploy/install-on-box.sh`; the server pulls

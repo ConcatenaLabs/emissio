@@ -1,0 +1,25 @@
+# `go vet` and `go test ./...` on every pull request and on main, on Go 1.25.0, the Go the
+# testnet server builds Emissio with.
+#
+# Not run here, by design (CLAUDE.md, "Build and test"):
+# - SKIPPED (needs a regtest node or an Arca operator): regtest_tasks_test.go and
+#   regtest_payout_test.go skip themselves without their EMISSIO_REGTEST_* variables.
+name: tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  go:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+      - run: go build .
+      - run: go vet ./...
+      - run: go test ./...
