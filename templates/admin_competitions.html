@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="eyebrow">Admin</div>
 <h1>Competitions</h1>
-<div class="ledger wide" style="margin-top:1.2rem">
+<div class="ledger wide u-margin-top-1-2rem">
   {{range .Data}}
   <div class="ledger-row">
     <span class="label"><a href="{{base}}/admin/competitions/{{.Slug}}">{{.Title}}</a>
@@ -17,8 +17,8 @@
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>Slug</label><input class="mono" type="text" name="slug" required>
     <label>Title</label><input type="text" name="title" required>
-    <label>Body</label><textarea name="body" style="min-height:10rem"></textarea>
-    <div style="display:flex;gap:1rem;flex-wrap:wrap">
+    <label>Body</label><textarea class="u-min-height-10rem" name="body"></textarea>
+    <div class="u-display-flex-gap-1rem-flex-wrap-wrap">
       <div><label>Prizes (SEQ, comma separated)</label><input class="mono" type="text" name="prizes" placeholder="2000,750,250" required></div>
       <div><label>Days open</label><input type="number" name="days" value="28"></div>
     </div>

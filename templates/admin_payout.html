@@ -2,7 +2,7 @@
 <div class="eyebrow">Admin · Payouts</div>
 <h1>Payout run #{{.Data.Run.ID}}{{if .Data.Rehearsal}} <span class="pill">testnet rehearsal</span>{{end}}</h1>
 <p data-payout-summary>{{.Data.Summary}}</p>
-<div class="ledger" style="margin-top:1rem">
+<div class="ledger u-margin-top-1rem">
   <div class="ledger-row"><span class="label">Accounts paid</span><span class="leader"></span><span class="amount plain">{{.Data.Run.Accounts}}</span></div>
   <div class="ledger-row"><span class="label">Total</span><span class="leader"></span><span class="amount">{{atoms .Data.Run.TotalAtoms}} <small>{{.Data.Unit}}</small></span></div>
   {{if eq .Data.Run.State "planned"}}
@@ -31,7 +31,7 @@
   <p class="small muted">1. Pay the list from the paying wallet. The wallet shows the exact fee before it pays, and gives a payment reference.</p>
   <p><a class="btn ghost" href="{{base}}/admin/payouts/{{.Data.Run.ID}}/list.txt">Download the payment list</a></p>
   <p class="small muted">2. Record the payment's reference. It is recorded only if the payment pays exactly this list: every account, each amount, nobody else.</p>
-  <form class="stack" method="post" action="{{base}}/admin/payouts/{{.Data.Run.ID}}/reference" style="max-width:40rem">
+  <form class="stack u-max-width-40rem" method="post" action="{{base}}/admin/payouts/{{.Data.Run.ID}}/reference">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <input class="mono" type="text" name="reference" placeholder="payment reference (64 characters)" required>
     <div class="actions"><button class="btn" type="submit">Record the payment</button></div>

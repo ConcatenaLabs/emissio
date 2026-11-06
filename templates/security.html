@@ -19,7 +19,7 @@
       <span class="amount">up to {{seq .Data.Max}} <small>SEQ</small></span>
     </div>
   </div>
-  <p class="small muted" style="margin-top:.8rem">Amounts are the reference award for a clear, reproducible report in that tier. The review team sets the final award. The first reporter of an issue is the one rewarded; later reports of the same issue are marked duplicates.</p>
+  <p class="small muted u-margin-top-8rem">Amounts are the reference award for a clear, reproducible report in that tier. The review team sets the final award. The first reporter of an issue is the one rewarded; later reports of the same issue are marked duplicates.</p>
 </div>
 
 <div class="section">
@@ -54,9 +54,9 @@
   <p class="muted">Reports are private to you and the review team, but the text is stored on the project's server. For a finding you would rather the server never holds in the clear, encrypt the report to the team's key and paste the encrypted block into the form. Only the review team, on machines that never expose the private key, can read it.</p>
   <div class="ledger wide">
     <div class="ledger-row"><span class="label">Public key</span><span class="leader"></span><span class="amount plain"><a href="{{base}}/static/security-pgp.asc">security-pgp.asc</a></span></div>
-    <div class="ledger-row"><span class="label">Fingerprint</span><span class="leader"></span><span class="amount plain" style="font-family:var(--mono);font-size:.86rem">{{pgpfpr}}</span></div>
+    <div class="ledger-row"><span class="label">Fingerprint</span><span class="leader"></span><span class="amount plain u-font-family-mono-font-size-86rem">{{pgpfpr}}</span></div>
   </div>
-  <pre class="small" style="margin-top:.8rem">curl -O https://sequentiatestnet.com/emissio/static/security-pgp.asc
+  <pre class="small u-margin-top-8rem">curl -O https://sequentiatestnet.com/emissio/static/security-pgp.asc
 gpg --import security-pgp.asc
 gpg --armor --encrypt -r "Sequentia security reports" report.txt
 # paste the contents of report.txt.asc into the report field</pre>
@@ -80,13 +80,13 @@ gpg --armor --encrypt -r "Sequentia security reports" report.txt
       <option value="critical">Critical</option>
     </select>
     <label for="body">Report</label>
-    <textarea id="body" name="body" required style="min-height:12rem" placeholder="First line: your account code {{if .User}}{{.User.ClaimCode}}{{end}}. Then what is affected, steps to reproduce, impact, and your proposed fix if you have one. An encrypted report is a PGP message block pasted here as is, with the code inside it."></textarea>
+    <textarea class="u-min-height-12rem" id="body" name="body" required placeholder="First line: your account code {{if .User}}{{.User.ClaimCode}}{{end}}. Then what is affected, steps to reproduce, impact, and your proposed fix if you have one. An encrypted report is a PGP message block pasted here as is, with the code inside it."></textarea>
     <div class="actions"><button class="btn" type="submit">Send report privately</button></div>
   </form>
   {{end}}
 
   {{if .Data.Mine}}
-  <h3 style="margin-top:2rem">Your reports</h3>
+  <h3 class="u-margin-top-2rem">Your reports</h3>
   <div class="table-scroll"><table class="table">
     <tr><th>Title</th><th>Sent</th><th>Status</th><th>Award</th></tr>
     {{range .Data.Mine}}

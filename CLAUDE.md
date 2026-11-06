@@ -78,6 +78,12 @@ Keep it that way.
   registration limits, the email gate, the hold (which turns automatic approval off for an
   account) and the signals on the admin desk are what stand between a farm and the ledger.
 
+## Vendored files
+
+`static/shared/` is `seqdex-web`'s connector layer, vendored with a header line naming the source
+commit. Never edit it here: change it in `seqdex-web`, vendor the files again from the new commit,
+and update the hashes in `vendor_test.go`, which fails on any other difference.
+
 ## Naming
 
 The network is **Sequentia**. The token is named **Sequence**, ticker SEQ (tSEQ on testnet).

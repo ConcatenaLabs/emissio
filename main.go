@@ -64,6 +64,8 @@ type Config struct {
 	WalletURL    string
 	LnaddrURL    string
 	LnaddrDomain string
+	// The wallets the link task offers to connect (connect.go), in order.
+	Connectors []string
 
 	// Mail (mail.go): an SMTP submission service. Without a host and a
 	// sender, email verification and reset by email are off.
@@ -122,6 +124,7 @@ func loadConfig() Config {
 		WalletURL:     envOr("EMISSIO_WALLET_URL", "https://sequentiatestnet.com/wallet/"),
 		LnaddrURL:     strings.TrimRight(envOr("EMISSIO_LNADDR", ""), "/"),
 		LnaddrDomain:  strings.ToLower(envOr("EMISSIO_LNADDR_DOMAIN", "sequentiatestnet.com")),
+		Connectors:    parseConnectors(envOr("EMISSIO_CONNECTORS", "webwallet")),
 		WalletAssets:  strings.Split(envOr("EMISSIO_WALLET_ASSETS", ""), ","),
 		SMTPHost:      envOr("EMISSIO_SMTP_HOST", ""),
 		SMTPPort:      envOr("EMISSIO_SMTP_PORT", "587"),
@@ -202,6 +205,7 @@ func NewApp(cfg Config, db *sql.DB) *App {
 func parseTemplates(cfg Config) map[string]*template.Template {
 	funcs := template.FuncMap{
 		"base":        func() string { return cfg.BasePath },
+		"connectors":  func() string { return strings.Join(cfg.Connectors, ",") },
 		"seq":         formatSEQ,
 		"usd":         formatUSD,
 		"launchprice": func() string { return strconv.FormatFloat(launchPriceUSD, 'f', -1, 64) },
@@ -560,8 +564,7 @@ func (a *App) securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "same-origin")
-		w.Header().Set("Content-Security-Policy",
-			"default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; form-action 'self'")
+		w.Header().Set("Content-Security-Policy", contentSecurityPolicy(a.cfg.Connectors))
 		next.ServeHTTP(w, r)
 	})
 }

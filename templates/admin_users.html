@@ -1,8 +1,8 @@
 {{define "content"}}
 <div class="eyebrow">Admin</div>
 <h1>Users</h1>
-<form method="get" action="{{base}}/admin/users" class="inline-form" style="margin:1rem 0">
-  <input type="text" name="q" value="{{.Data.Q}}" placeholder="email, account code, IP, address, txid or account id" style="min-width:24rem">
+<form method="get" action="{{base}}/admin/users" class="inline-form u-margin-1rem-0">
+  <input class="u-min-width-24rem" type="text" name="q" value="{{.Data.Q}}" placeholder="email, account code, IP, address, txid or account id">
   <button class="btn small" type="submit">Search</button>
   <a class="btn ghost small" href="{{base}}/admin/export/users.csv">Export users CSV</a>
 </form>

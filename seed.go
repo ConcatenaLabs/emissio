@@ -79,9 +79,8 @@ var seedTasks = []seedTask{
 The web wallet holds BTC and every Sequentia asset side by side under one twelve-word phrase. A signature proves the wallet is yours without moving anything.
 
 - In the web wallet, write down the twelve words it shows you, and keep them safe: they are the wallet.
-- Open More, then Sign. Leave the address as it is (it is your receive address), type exactly Emissio {CODE} as the message, and press Sign.
-- Copy the signature, and copy your receive code from Receive.
-- Paste both in the notes below.
+- Keep the web wallet open in another tab of this browser, press Connect your web wallet below, and approve in the wallet. That is all.
+- Or by hand: in the web wallet, open More, then Sign. Leave the address as it is (it is your receive address), type exactly Emissio {CODE} as the message, and press Sign. Copy the signature, copy your receive code from Receive, and paste both in the notes below.
 
 The check is automatic: the signature must be by the key of your receive address. A wallet links to one account only. The web wallet tasks below build on this link.`,
 	},
@@ -131,7 +130,7 @@ The check is automatic: the BTC part of the code is your account's alone.`,
 The check is automatic: Emissio's own record of the payment.`,
 	},
 	{
-		slug: "web-wallet-swap", title: "Trade, then pay Emissio in what you got", category: "Web wallet", surface: "webwallet", check: "arca-swap",
+		slug: "web-wallet-swap", title: "Swap, then pay Emissio in what you got", category: "Web wallet", surface: "webwallet", check: "arca-swap",
 		reward: 25, cap: 2000, needsTxid: false, sort: 11,
 		body: `Trade one asset for another in the web wallet, then use what you got.
 

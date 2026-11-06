@@ -3,28 +3,28 @@
 <h1>Your issue ledger</h1>
 
 {{if and .Data.MailOn (not .User.EmailVerifiedAt)}}
-<div class="flash err" style="margin:1rem 0 0">
+<div class="flash err u-margin-1rem-0-0">
   Confirm your email address to start earning: open the link we sent to {{.User.Email}}.
-  <form method="post" action="{{base}}/account/verify-email" style="display:inline">
+  <form class="u-display-inline" method="post" action="{{base}}/account/verify-email">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <button class="btn ghost small" type="submit">Send the link again</button>
   </form>
 </div>
 {{end}}
-<div class="hero-grid" style="margin-top:1.4rem">
+<div class="hero-grid u-margin-top-1-4rem">
   <div>
     <div class="balance-figure">{{seq .Data.Balance}} <small>SEQ</small></div>
     <p class="muted small">Reference value at launch price: {{usd .Data.Balance}} USD. Paid at mainnet launch to the address below.</p>
     {{if .Data.Verified}}
     <p class="small"><span class="pill approved">verified</span> <span class="muted">Your account qualifies for the launch payout.</span></p>
     {{else}}
-    <div class="flash err" style="margin:0.8rem 0 0">Not yet payable: verify at least one social account below. You can keep earning either way, but the launch payout requires a verified account.</div>
+    <div class="flash err u-margin-0-8rem-0-0">Not yet payable: verify at least one social account below. You can keep earning either way, but the launch payout requires a verified account.</div>
     {{end}}
-    <h3 style="margin-top:1.6rem">Account code</h3>
+    <h3 class="u-margin-top-1-6rem">Account code</h3>
     <div class="kv gold">{{.User.ClaimCode}}</div>
-    <p class="small muted" style="margin-top:.4rem">Your proof decimals: <strong class="mono">.{{prooftag .User.ClaimCode}}</strong>. Every transaction you submit as evidence must have a transparent output whose amount ends in exactly these eight decimals, for example 1.{{prooftag .User.ClaimCode}} tSEQ. That is how a transaction is known to be yours.</p>
+    <p class="small muted u-margin-top-4rem">Your proof decimals: <strong class="mono">.{{prooftag .User.ClaimCode}}</strong>. Every transaction you submit as evidence must have a transparent output whose amount ends in exactly these eight decimals, for example 1.{{prooftag .User.ClaimCode}} tSEQ. That is how a transaction is known to be yours.</p>
     <p class="small muted">Your public account code. It doubles as your referral code, and a task may occasionally ask you to embed it in on-chain data (for example an OP_RETURN) to prove a transaction is yours. It is not a secret.</p>
-    <h3 style="margin-top:1.6rem">Refer a friend</h3>
+    <h3 class="u-margin-top-1-6rem">Refer a friend</h3>
     <div class="kv">{{.Data.RefLink}}</div>
     <p class="small muted">When someone joins through this link and you have each earned at least {{seq .Data.RefThreshold}} SEQ from tasks, competitions or security reports, you both receive {{seq .Data.RefBonus}} SEQ automatically. Paid for up to {{.Data.RefCap}} referrals; {{seq .Data.RefCount}} qualified so far.</p>
   </div>
@@ -32,7 +32,7 @@
     <div class="eyebrow">Mainnet payout address</div>
     {{if .User.MainnetAddress}}
       <div class="kv">{{.User.MainnetAddress}}</div>
-      <p class="small muted" style="margin-top:.5rem">Saved {{date .User.AddressUpdatedAt}}. Make sure you hold the seed phrase for this address; the <a href="{{base}}/guide">guide</a> explains how to check.</p>
+      <p class="small muted u-margin-top-5rem">Saved {{date .User.AddressUpdatedAt}}. Make sure you hold the seed phrase for this address; the <a href="{{base}}/guide">guide</a> explains how to check.</p>
     {{else}}
       <p class="small muted">No address yet. Your balance is safe either way, but payout at launch needs an address. The <a href="{{base}}/guide">guide</a> shows how to generate one safely in a few minutes.</p>
     {{end}}
@@ -43,9 +43,9 @@
       <div class="actions"><button class="btn" type="submit">Save address</button></div>
     </form>
     {{- with .Data.Payout}}
-    {{- if .Line}}<div class="flash ok" style="margin:1rem 0 0" data-payout-line>{{.Line}}</div>{{end}}
+    {{- if .Line}}<div class="flash ok u-margin-1rem-0-0" data-payout-line>{{.Line}}</div>{{end}}
     {{- if .NeedsKey}}
-    <div class="eyebrow" style="margin-top:1.4rem">Public key of this address</div>
+    <div class="eyebrow u-margin-top-1-4rem">Public key of this address</div>
     {{if .LaunchKey}}
       <p class="small muted">On file: a launch payout into your wallet is paid to the key of this address.</p>
     {{else}}
@@ -58,7 +58,7 @@
     </form>
     {{- end}}
     {{- if .Rehearsing}}
-    <div class="eyebrow" style="margin-top:1.4rem">Testnet rehearsal</div>
+    <div class="eyebrow u-margin-top-1-4rem">Testnet rehearsal</div>
     {{if .RehKey}}
     <p class="small muted" data-rehearsal-saved>Your testnet wallet is saved. The rehearsal pays tSEQ straight to it, and the wallet collects it by itself the next time you open it. Nothing in your ledger changes.</p>
     {{else}}
@@ -121,7 +121,7 @@
   <h2>Your reports</h2>
   {{if .Bugs}}{{template "bugtable" .Bugs}}{{else}}<p class="muted">No bug reports yet. Something broken or confusing? <a href="{{base}}/bugs">Report it</a>.</p>{{end}}
   {{if .Reports}}
-  <h3 style="margin-top:1.2rem">Security reports</h3>
+  <h3 class="u-margin-top-1-2rem">Security reports</h3>
   <div class="table-scroll"><table class="table">
     <tr><th>Title</th><th>Sent</th><th>Status</th><th>Award</th></tr>
     {{range .Reports}}
@@ -137,7 +137,7 @@
   <p class="muted"><strong>At least one verified account is required to receive your payout at launch</strong> and for referral rewards; each verified platform also earns {{seq .Data.VerifBonus}} SEQ. Link accounts that are at least two years old: put your account code (above) in the profile's bio or public description first, then submit the handle; for X, publish a post containing the code and submit the link to it. You can remove the code once verified. A social account can vouch for one Emissio account only.</p>
   {{range .Data.Verifs}}
   <details {{if not .Mine}}{{else}}open{{end}}>
-    <summary><strong>{{.Name}}</strong>{{if .Mine}} · {{handlefmt .Platform .Mine.Handle}} · <span class="pill {{if eq .Mine.Status "verified"}}approved{{else}}{{.Mine.Status}}{{end}}">{{.Mine.Status}}</span>{{else}} · not linked · <span class="amount" style="font-family:var(--mono);color:var(--gold)">{{seq $.Data.VerifBonus}} SEQ</span>{{end}}</summary>
+    <summary><strong>{{.Name}}</strong>{{if .Mine}} · {{handlefmt .Platform .Mine.Handle}} · <span class="pill {{if eq .Mine.Status "verified"}}approved{{else}}{{.Mine.Status}}{{end}}">{{.Mine.Status}}</span>{{else}} · not linked · <span class="amount u-font-family-mono-color-gold">{{seq $.Data.VerifBonus}} SEQ</span>{{end}}</summary>
     <div class="inner">
       <p class="small muted">{{.Hint}}</p>
       {{if .Mine}}
@@ -150,10 +150,10 @@
         {{end}}
       {{end}}
       {{if or (not .Mine) (and .Mine (eq .Mine.Status "rejected"))}}
-      <form method="post" action="{{base}}/account/verify" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap">
+      <form class="u-display-flex-gap-6rem-align-items-flex-end-flex" method="post" action="{{base}}/account/verify">
         <input type="hidden" name="csrf" value="{{$.CSRF}}">
         <input type="hidden" name="platform" value="{{.Platform}}">
-        <div style="flex:1;min-width:12rem">
+        <div class="u-flex-1-min-width-12rem">
           {{if eq .Platform "x"}}
           <label>Link to your post</label>
           <input class="mono" type="text" name="post" placeholder="https://x.com/handle/status/1234567890">

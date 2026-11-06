@@ -46,7 +46,7 @@
     <a href="https://sequentia.io">sequentia.io</a>
     <a href="{{base}}/rules">Program rules</a>
     {{if .User}}
-    <form method="post" action="{{base}}/logout" style="margin-left:auto">
+    <form class="u-margin-left-auto" method="post" action="{{base}}/logout">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <button class="btn ghost small" type="submit">Sign out</button>
     </form>
