@@ -27,9 +27,19 @@ func TestFrontPage(t *testing.T) {
 			t.Errorf("signed out: shows %q", banned)
 		}
 	}
-	// The web wallet's tasks come before every other task.
-	if strings.Index(page, "Make your first testnet transaction") < strings.Index(page, "Get paid at your payment name") {
-		t.Error("a non-web-wallet task is listed before the web wallet's")
+	// The web wallet's tasks are listed; every other task is summed up by place, linked to the
+	// task page's section for it.
+	if strings.Contains(page, "Make your first testnet transaction") {
+		t.Error("the front page lists a task that is not the web wallet's")
+	}
+	for _, want := range []string{`href="/tasks#s-core"`, "Sequentia Core", "See all 20", `href="/tasks#s-pools"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("signed out: no %q", want)
+		}
+	}
+	tasks := get(t, client, srv.URL+"/tasks")
+	if i, j := strings.Index(tasks, `id="s-webwallet"`), strings.Index(tasks, `id="s-core"`); i < 0 || j < i || !strings.Contains(tasks, "Make your first testnet transaction") {
+		t.Error("the task page does not group the tasks by place, the web wallet's first")
 	}
 
 	register(t, client, srv.URL, "front@x.io")
@@ -46,7 +56,7 @@ func TestFrontPage(t *testing.T) {
 	app.db.Exec("INSERT INTO submissions (user_id, task_id, status, created_at) VALUES (1, ?, 'approved', 0)", id)
 	app.db.Exec("INSERT INTO ledger (user_id, amount, kind, ref_id, created_at) VALUES (1, 10, 'submission', 1, 0)")
 	page = get(t, client, srv.URL+"/")
-	if !strings.Contains(page, `<span class="figure">10</span> SEQ earned`) || !strings.Contains(page, "1 of ") || !strings.Contains(page, "Next: <a href=\"/tasks/web-wallet-pay\">") || !strings.Contains(page, `<span class="sub ok">Done</span>`) {
+	if !strings.Contains(page, `<span class="figure">10</span> SEQ earned`) || !strings.Contains(page, "1 of ") || !strings.Contains(page, "Next: <a href=\"/tasks/web-wallet-pay\">") || !strings.Contains(page, "tasks, 0 done") || !strings.Contains(page, `<span class="tile-state ok">Done</span>`) {
 		t.Fatalf("signed in after a task:\n%s", page)
 	}
 }

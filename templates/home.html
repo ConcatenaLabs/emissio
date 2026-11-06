@@ -47,30 +47,32 @@
 
 {{$me := $d.Me}}
 <div class="section">
-  <h2>Web wallet tasks</h2>
-  <p class="muted">Start here. Each task pays once per account, and most are checked the moment you submit.</p>
-  <div class="ledger">
+  <div class="section-head">
+    <h2>Web wallet tasks</h2>
+    <p class="muted small">Start here. Each pays once per account, and most are checked the moment you submit.</p>
+  </div>
+  <div class="tiles">
     {{range $d.WebTasks}}{{$st := ""}}{{if $me}}{{$st = index $me.Status .ID}}{{end}}
-    <div class="ledger-row{{if eq $st "approved"}} done{{end}}">
-      <span class="label"><a href="{{base}}/tasks/{{.Slug}}">{{.Title}}</a>{{if eq $st "approved"}}<span class="sub ok">Done</span>{{else if eq $st "pending"}}<span class="sub">Waiting for review</span>{{end}}</span>
-      <span class="leader"></span>
-      <span class="amount">{{seq .Reward}} <small>SEQ</small></span>
-    </div>
+    <a class="tile{{if eq $st "approved"}} done{{end}}" href="{{base}}/tasks/{{.Slug}}">
+      <span class="tile-title">{{.Title}}</span>
+      <span class="tile-foot"><span class="tile-reward">{{seq .Reward}} SEQ</span>{{if eq $st "approved"}}<span class="tile-state ok">Done</span>{{else if eq $st "pending"}}<span class="tile-state">Waiting for review</span>{{end}}</span>
+    </a>
     {{end}}
   </div>
 </div>
 
-{{if $d.Tasks}}
+{{if $d.Groups}}
 <div class="section">
-  <h2>More tasks</h2>
-  <p class="muted">On Sequentia Core, the block explorer, the faucet, the Compages bridge and the staking pools.</p>
-  <div class="ledger">
-    {{range $d.Tasks}}{{$st := ""}}{{if $me}}{{$st = index $me.Status .ID}}{{end}}
-    <div class="ledger-row{{if eq $st "approved"}} done{{end}}">
-      <span class="label"><a href="{{base}}/tasks/{{.Slug}}">{{.Title}}</a><span class="sub{{if eq $st "approved"}} ok{{end}}">{{surfacetitle .Surface}}{{if eq $st "approved"}}, done{{else if eq $st "pending"}}, waiting for review{{end}}</span></span>
-      <span class="leader"></span>
-      <span class="amount">{{seq .Reward}} <small>SEQ</small></span>
-    </div>
+  <div class="section-head">
+    <h2>More tasks</h2>
+    <p class="muted small"><a href="{{base}}/tasks">See all {{$d.More}}</a></p>
+  </div>
+  <div class="tiles groups">
+    {{range $d.Groups}}
+    <a class="tile" href="{{base}}/tasks#s-{{.Key}}">
+      <span class="tile-title">{{.Name}}</span>
+      <span class="tile-foot"><span class="muted">{{.Count}} {{if eq .Count 1}}task{{else}}tasks{{end}}{{if $me}}, {{.Done}} done{{end}}</span><span class="tile-reward">{{seq .Reward}} SEQ</span></span>
+    </a>
     {{end}}
   </div>
 </div>
@@ -78,28 +80,24 @@
 
 <div class="section">
   <h2>More ways to earn</h2>
-  <div class="cols four">
-    <a class="panel link" href="{{base}}/bugs">
-      <h3>Bug reports</h3>
-      <p class="small">{{seq $d.BugMin}} to {{seq $d.BugMax}} SEQ for each bug we reproduce, by how much it gets in the way.</p>
+  <div class="tiles four">
+    <a class="tile" href="{{base}}/bugs">
+      <span class="tile-title">Bug reports</span>
+      <span class="small muted">{{seq $d.BugMin}} to {{seq $d.BugMax}} SEQ for each bug we reproduce.</span>
     </a>
-    <a class="panel link" href="{{base}}/security">
-      <h3>Vulnerability reports</h3>
-      <p class="small">From {{seq $d.TierMin}} SEQ, and up to {{seq $d.TierMax}} SEQ for an exceptional finding. Reported privately.</p>
+    <a class="tile" href="{{base}}/security">
+      <span class="tile-title">Vulnerability reports</span>
+      <span class="small muted">From {{seq $d.TierMin}} SEQ, up to {{seq $d.TierMax}} SEQ for an exceptional finding.</span>
     </a>
-    <a class="panel link" href="{{base}}/competitions">
-      <h3>Competitions</h3>
-      <p class="small">{{with $d.Comps}}{{with index . 0}}{{.Title}}: {{range $i, $p := prizes .Prizes}}{{if $i}} / {{end}}{{seq $p}}{{end}} SEQ.{{end}}{{else}}Judged contests with prize ladders, announced here.{{end}}</p>
+    <a class="tile" href="{{base}}/competitions">
+      <span class="tile-title">Competitions</span>
+      <span class="small muted">{{with $d.Comps}}{{with index . 0}}{{.Title}}: {{range $i, $p := prizes .Prizes}}{{if $i}} / {{end}}{{seq $p}}{{end}} SEQ.{{end}}{{else}}Judged contests with prize ladders.{{end}}</span>
     </a>
-    <a class="panel link" href="{{if $me}}{{base}}/account{{else}}{{base}}/rules{{end}}">
-      <h3>Referrals</h3>
-      <p class="small">{{seq $d.RefBonus}} SEQ each for you and a friend you bring, once you have each earned {{seq $d.RefMin}} SEQ.</p>
+    <a class="tile" href="{{if $me}}{{base}}/account{{else}}{{base}}/rules{{end}}">
+      <span class="tile-title">Referrals</span>
+      <span class="small muted">{{seq $d.RefBonus}} SEQ each for you and a friend you bring, once you have each earned {{seq $d.RefMin}} SEQ.</span>
     </a>
   </div>
-</div>
-
-<div class="section">
-  <h2>Getting paid at launch</h2>
-  <p class="muted">Your balance is paid at launch to the mainnet address on your account. The payout needs one verified social account: a Telegram, X or Reddit account at least two years old, which also earns {{seq $d.Verif}} SEQ. No documents. The <a href="{{base}}/guide">address guide</a> shows how to make an address safely, and the <a href="{{base}}/rules">program rules</a> cover the rest.</p>
+  <p class="muted small payout-line">Balances are paid at launch to the mainnet address on your account, which needs one verified social account (Telegram, X or Reddit, at least two years old; {{seq $d.Verif}} SEQ each). No documents. See the <a href="{{base}}/guide">address guide</a> and the <a href="{{base}}/rules">program rules</a>.</p>
 </div>
 {{end}}

@@ -285,13 +285,41 @@ a.panel.link:hover h3 { color: var(--gold); }
 .connect-wallet p { margin: .4rem 0; }
 .connect-wallet .btn { margin: .4rem 0; }
 .mono { font-family: var(--mono); }
-.cols.four { grid-template-columns: repeat(4, 1fr); }
-@media (max-width: 900px) { .cols.four { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 520px) { .cols.four { grid-template-columns: 1fr; } }
 .connect-wallet .choices { display: flex; gap: .5rem; flex-wrap: wrap; margin: .4rem 0; }
 .connect-wallet .choices[hidden], .connect-wallet .pair[hidden] { display: none; }
 .connect-wallet .pair { display: flex; flex-direction: column; gap: .5rem; align-items: flex-start; margin: .6rem 0; }
 .connect-wallet .pair img { background: #fff; padding: .4rem; border-radius: 8px; }
+
+/* tiles: tasks and ways to earn, across the page */
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: .4rem 1.2rem; flex-wrap: wrap; margin: 0 0 .9rem; }
+.section-head h2 { margin: 0; }
+.section-head p { margin: 0; }
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: .7rem; }
+.tiles.groups { grid-template-columns: repeat(3, 1fr); }
+.tile {
+  display: flex; flex-direction: column; justify-content: space-between; gap: .6rem;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+  padding: .85rem 1rem; text-decoration: none; color: var(--text); min-height: 5.6rem;
+}
+.tile:hover { border-color: var(--gold-deep); color: var(--text); }
+.tile:hover .tile-title { color: var(--gold); }
+.tile-title { font-weight: 600; line-height: 1.3; color: #fff; }
+.tile-foot { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; font-size: .85rem; }
+.tile-reward { font-family: var(--mono); color: var(--gold); white-space: nowrap; }
+.tile-state { font-size: .8rem; color: var(--muted); }
+.tile-state.ok { color: var(--ok); }
+.tile.done .tile-title, .tile.done .tile-reward { color: var(--muted); }
+.payout-line { margin-top: 1.2rem; max-width: none; }
+.front + .start + .section, .start + .section { margin-top: 2.4rem; }
+@media (max-width: 900px) {
+  .tiles, .tiles.groups { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 520px) {
+  .tiles { gap: .5rem; }
+  .tile { min-height: 0; padding: .7rem .8rem; }
+  .tile-foot { flex-wrap: wrap; gap: .1rem .5rem; }
+  .tiles.four .tile .small { font-size: .8rem; }
+}
 
 /* layout adjustments used by the templates (the content security policy allows no inline style) */
 .u-display-flex-gap-1rem-flex-wrap-wrap { display:flex !important; gap:1rem !important; flex-wrap:wrap !important; }

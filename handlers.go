@@ -121,8 +121,9 @@ func (a *App) admin(next http.HandlerFunc) http.HandlerFunc {
 
 type homeData struct {
 	WalletURL string
-	WebTasks  []*Task // the web wallet's tasks, where testers start
-	Tasks     []*Task // every other task
+	WebTasks  []*Task     // the web wallet's tasks, where testers start
+	Groups    []taskGroup // every other task, by the place it is done
+	More      int         // how many tasks the groups hold
 	Comps     []*Competition
 	TierMin   int64
 	TierMax   int64
@@ -132,6 +133,39 @@ type homeData struct {
 	RefMin    int64
 	Verif     int64
 	Me        *homeProgress // nil when signed out
+}
+
+// taskGroup is the tasks of one surface, as the front page sums them up.
+type taskGroup struct {
+	Key, Name   string
+	Count, Done int
+	Reward      int64
+}
+
+// taskGroups sums up tasks by surface, in the surfaces' order. done says
+// whether the signed-in tester has completed a task (nil: signed out).
+func taskGroups(tasks []*Task, done func(*Task) bool) []taskGroup {
+	var out []taskGroup
+	for _, sf := range append(surfaces[:len(surfaces):len(surfaces)], struct{ Key, Name string }{"", "Other tasks"}) {
+		g := taskGroup{Key: sf.Key, Name: sf.Name}
+		for _, t := range tasks {
+			if surfaceKey(t) != sf.Key {
+				continue
+			}
+			g.Count++
+			g.Reward += t.Reward
+			if done != nil && done(t) {
+				g.Done++
+			}
+		}
+		if g.Count > 0 {
+			if g.Key == "" {
+				g.Key = "other"
+			}
+			out = append(out, g)
+		}
+	}
+	return out
 }
 
 // homeProgress is a signed-in tester's place on the front page: what they
@@ -179,13 +213,15 @@ func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
 	d := homeData{WalletURL: a.cfg.WalletURL, Comps: comps, TierMin: securityTiers[0].Reward, TierMax: securityMax,
 		BugMin: bugTiers[0].Reward, BugMax: bugTiers[len(bugTiers)-1].Reward,
 		RefBonus: referralBonus, RefMin: referralThreshold, Verif: verificationBonus}
+	var others []*Task
 	for _, t := range tasks {
 		if t.Surface == "webwallet" {
 			d.WebTasks = append(d.WebTasks, t)
 		} else {
-			d.Tasks = append(d.Tasks, t)
+			others = append(others, t)
 		}
 	}
+	d.More = len(others)
 	u, _, err := a.currentUser(r)
 	if err != nil {
 		a.serverError(w, err)
@@ -215,6 +251,11 @@ func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
 		me.Verified = n > 0
 		d.Me = me
 	}
+	var done func(*Task) bool
+	if d.Me != nil {
+		done = func(t *Task) bool { return d.Me.Status[t.ID] == "approved" }
+	}
+	d.Groups = taskGroups(others, done)
 	a.render(w, r, "home", "Sequentia Emissio", d)
 }
 
@@ -224,7 +265,50 @@ func (a *App) handleTasks(w http.ResponseWriter, r *http.Request) {
 		a.serverError(w, err)
 		return
 	}
-	a.render(w, r, "tasks", "Tasks", webWalletFirst(tasks))
+	a.render(w, r, "tasks", "Tasks", taskGroupsFull(webWalletFirst(tasks)))
+}
+
+// fullGroup is one surface's tasks, for the task page.
+type fullGroup struct {
+	Key, Name string
+	Tasks     []*Task
+}
+
+// surfaceKey is a task's surface, or "" when it is none of the known ones.
+func surfaceKey(t *Task) string {
+	for _, sf := range surfaces {
+		if sf.Key == t.Surface {
+			return sf.Key
+		}
+	}
+	return ""
+}
+
+// taskGroupsFull lists the tasks by surface, the web wallet's first.
+func taskGroupsFull(tasks []*Task) []fullGroup {
+	order := []string{"webwallet"}
+	for _, sf := range surfaces {
+		if sf.Key != "webwallet" {
+			order = append(order, sf.Key)
+		}
+	}
+	order = append(order, "")
+	var out []fullGroup
+	for _, k := range order {
+		g := fullGroup{Key: k, Name: surfaceTitle(k)}
+		if k == "" {
+			g.Key, g.Name = "other", "Other tasks"
+		}
+		for _, t := range tasks {
+			if surfaceKey(t) == k {
+				g.Tasks = append(g.Tasks, t)
+			}
+		}
+		if len(g.Tasks) > 0 {
+			out = append(out, g)
+		}
+	}
+	return out
 }
 
 type taskData struct {
