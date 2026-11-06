@@ -1,99 +1,103 @@
 {{define "content"}}
-<div class="hero">
-  <div class="hero-grid">
-    <div>
-      <div class="eyebrow">The community issue register</div>
-      <h1>Work on the testnet now. Receive Sequence tokens at launch.</h1>
-      <p class="lede">Emissio records what you contribute to the Sequentia testnet: completed tasks, competition wins, and accepted security reports. Every approved contribution is entered in your ledger as <strong>Sequence tokens (SEQ)</strong>, paid to your own mainnet address when Sequentia launches.</p>
-      {{if not .User}}
-      <p style="margin-top:1.4rem">
-        <a class="btn" href="{{base}}/register">Create your account</a>
-        &nbsp; <a class="btn ghost" href="{{base}}/tasks">Browse the tasks</a>
-      </p>
-      {{else}}
-      <p style="margin-top:1.4rem">
-        <a class="btn" href="{{base}}/tasks">Browse the tasks</a>
-        &nbsp; <a class="btn ghost" href="{{base}}/account">Your ledger</a>
-      </p>
-      {{end}}
-    </div>
-    <div class="register-card">
-      <div class="eyebrow">Program register</div>
-      <div class="ledger">
-        <div class="ledger-row"><span class="label">Program pool</span><span class="leader"></span><span class="amount">{{seq .Data.Pool}} <small>SEQ</small></span></div>
-        <div class="ledger-row"><span class="label">Launch price</span><span class="leader"></span><span class="amount plain">{{launchprice}} <small>USD / SEQ</small></span></div>
-        <div class="ledger-row"><span class="label">Top security award</span><span class="leader"></span><span class="amount">up to {{seq .Data.TierMax}} <small>SEQ</small></span></div>
-        <div class="ledger-row"><span class="label">Issued so far</span><span class="leader"></span><span class="amount">{{seq .Data.Stats.Distributed}} <small>SEQ</small></span></div>
-        <div class="ledger-row"><span class="label">Participants</span><span class="leader"></span><span class="amount plain">{{seq .Data.Stats.Users}}</span></div>
-      </div>
-      <p class="small muted" style="margin-top:.8rem">The pool is the amount reserved for this program. Amounts are credited once your evidence is checked.</p>
-    </div>
-  </div>
+{{$d := .Data}}
+<div class="front">
+  <h1>Try the Sequentia testnet. Earn Sequence tokens for what you do.</h1>
+  <p class="lede">Sequentia is a Bitcoin sidechain for asset tokenization and disintermediated exchanges. Its testnet is open to everyone, and you can start right now in the web wallet.</p>
 </div>
 
-<div class="section">
-  <h2>How it works</h2>
-  <div class="cols">
-    <div class="panel">
-      <h3>1. Contribute</h3>
-      <p class="small">Complete tasks on the Sequentia testnet, report the bugs you meet, enter competitions, or report vulnerabilities. Most tasks produce on-chain evidence: a transaction id.</p>
-    </div>
-    <div class="panel">
-      <h3>2. Submit evidence</h3>
-      <p class="small">Submit the txid from your account. Most evidence is checked against the testnet on the spot and credited at once; the rest goes to a reviewer. Each transaction counts for one account only.</p>
-    </div>
-    <div class="panel">
-      <h3>3. Verify and receive</h3>
-      <p class="small">Verify at least one social account (required for payout) and add a mainnet address (the <a href="{{base}}/guide">guide</a> shows how to generate one safely). At mainnet launch your full balance is paid to that address.</p>
-    </div>
-  </div>
-</div>
+<ol class="start">
+  <li class="step first">
+    <span class="step-no" aria-hidden="true">1</span>
+    <h2>Start testing</h2>
+    <p class="step-note">No account needed.</p>
+    <ul class="plain">
+      <li>Open the web wallet and make a wallet. Write down its twelve words: they are the wallet.</li>
+      <li>Under Receive, the faucet card gives you test coins: BTC, tSEQ and test assets.</li>
+      <li>Send them, trade them, stake them. Something looks wrong? <a href="{{base}}/bugs">Tell us</a>.</li>
+    </ul>
+    <p class="step-action"><a class="btn" href="{{$d.WalletURL}}">Open the web wallet</a></p>
+  </li>
+  {{with $d.Me}}
+  <li class="step">
+    <span class="step-no" aria-hidden="true">2</span>
+    <h2>Your progress</h2>
+    <p class="earned"><span class="figure">{{seq .Balance}}</span> SEQ earned</p>
+    <p class="small muted">{{.Done}} of {{.Total}} tasks done</p>
+    {{if .Next}}
+    <p class="next">Next: <a href="{{base}}/tasks/{{.Next.Task.Slug}}">{{.Next.Task.Title}}</a>, <span class="gold">{{seq .Next.Task.Reward}} SEQ</span>{{if eq .Next.Status "rejected"}}<span class="small muted"> (submit it again)</span>{{end}}</p>
+    <p class="step-action"><a class="btn" href="{{base}}/tasks/{{.Next.Task.Slug}}">Open the task</a> <a class="btn ghost" href="{{base}}/account">Your account</a></p>
+    {{else}}
+    <p class="next">Every task is done or waiting for review. Bug reports and competitions still pay.</p>
+    <p class="step-action"><a class="btn ghost" href="{{base}}/account">Your account</a></p>
+    {{end}}
+    {{if or (not .Verified) (not .HasAddress)}}
+    <p class="small muted">To be paid at launch, {{if not .Verified}}verify one social account{{if not .HasAddress}} and {{end}}{{end}}{{if not .HasAddress}}add your mainnet address{{end}} on <a href="{{base}}/account">your account page</a>.</p>
+    {{end}}
+  </li>
+  {{else}}
+  <li class="step">
+    <span class="step-no" aria-hidden="true">2</span>
+    <h2>Join Emissio and earn for what you do</h2>
+    <p>Every task you complete, bug you find and competition you win is credited to your Emissio account in Sequence tokens (SEQ), paid to your own address when Sequentia launches.</p>
+    <p class="small muted">Launch reference price: {{launchprice}} USD per SEQ.</p>
+    <p class="step-action"><a class="btn" href="{{base}}/register">Create your account</a> <a class="btn ghost" href="{{base}}/login">Sign in</a></p>
+  </li>
+  {{end}}
+</ol>
 
+{{$me := $d.Me}}
 <div class="section">
-  <h2>Testnet tasks</h2>
-  <p class="muted">Each task pays once per account. Popular tasks have a limited number of rewards, first come, first served. Completing the whole track earns {{seq .Data.TaskTotal}} SEQ.</p>
-  <div class="ledger">
-    {{range .Data.Tasks}}
-    <div class="ledger-row">
-      <span class="label"><a href="{{base}}/tasks/{{.Slug}}">{{.Title}}</a><span class="sub">{{.Category}}{{if .Cap}} · {{seq .Awarded}} of {{seq .Cap}} claimed{{end}}</span></span>
-      <span class="leader"></span>
-      <span class="amount">{{seq .Reward}} <small>SEQ</small></span>
-    </div>
+  <div class="section-head">
+    <h2>Web wallet tasks</h2>
+    <p class="muted small">Start here. Each pays once per account, and most are checked the moment you submit.</p>
+  </div>
+  <div class="tiles">
+    {{range $d.WebTasks}}{{$st := ""}}{{if $me}}{{$st = index $me.Status .ID}}{{end}}
+    <a class="tile{{if eq $st "approved"}} done{{end}}" href="{{base}}/tasks/{{.Slug}}">
+      <span class="tile-title">{{.Title}}</span>
+      <span class="tile-foot"><span class="tile-reward">{{seq .Reward}} SEQ</span>{{if eq $st "approved"}}<span class="tile-state ok">Done</span>{{else if eq $st "pending"}}<span class="tile-state">Waiting for review</span>{{end}}</span>
+    </a>
     {{end}}
   </div>
 </div>
 
+{{if $d.Groups}}
 <div class="section">
-  <h2>Competitions</h2>
-  <p class="muted">Design, writing, tooling: judged competitions with prize ladders. New ones are announced here.</p>
-  <div class="ledger">
-    {{range .Data.Comps}}
-    <div class="ledger-row">
-      <span class="label"><a href="{{base}}/competitions/{{.Slug}}">{{.Title}}</a><span class="sub">{{if eq .Status "open"}}closes {{date .ClosesAt}}{{else}}{{.Status}}{{end}} · {{.Entries}} entries</span></span>
-      <span class="leader"></span>
-      <span class="amount">{{range $i, $p := prizes .Prizes}}{{if $i}} / {{end}}{{seq $p}}{{end}} <small>SEQ</small></span>
-    </div>
+  <div class="section-head">
+    <h2>More tasks</h2>
+    <p class="muted small"><a href="{{base}}/tasks">See all {{$d.More}}</a></p>
+  </div>
+  <div class="tiles groups">
+    {{range $d.Groups}}
+    <a class="tile" href="{{base}}/tasks#s-{{.Key}}">
+      <span class="tile-title">{{.Name}}</span>
+      <span class="tile-foot"><span class="muted">{{.Count}} {{if eq .Count 1}}task{{else}}tasks{{end}}{{if $me}}, {{.Done}} done{{end}}</span><span class="tile-reward">{{seq .Reward}} SEQ</span></span>
+    </a>
     {{end}}
   </div>
 </div>
+{{end}}
 
 <div class="section">
-  <h2>Security rewards</h2>
-  <p class="muted">Found a bug or a vulnerability in the node, the wallets, or the infrastructure? Report it privately. Accepted reports pay from {{seq .Data.TierMin}} SEQ by severity, and an exceptional finding, one that is truly novel and threatens the network as a whole, can be awarded up to {{seq .Data.TierMax}} SEQ. <a href="{{base}}/security">Severity tiers and rules</a>.</p>
-</div>
-
-<div class="section">
-  <h2>Referrals</h2>
-  <p class="muted">Bring someone in with the referral link on your account page. Once you have each earned at least 50 SEQ from tasks, competitions or security reports, you both receive 10 SEQ, automatically. Paid for up to 20 referrals per account.</p>
-</div>
-
-<div class="section">
-  <h2>Verify your accounts</h2>
-  <p class="muted"><strong>Verification is required: the launch payout goes only to accounts with at least one verified social account.</strong> Link a Telegram, X or Reddit account that is at least two years old, 15 SEQ per platform. No documents, no KYC: you prove control of an aged public handle: a post containing your account code on X, a token from our app on r/sequentia, or your code in a Telegram bio. Each social account can vouch for one Emissio account only.</p>
-</div>
-
-<div class="section">
-  <h2>Pre-sale windows</h2>
-  <p class="muted">From time to time, Emissio may open short pre-sale windows in which account holders can buy Sequence tokens below the {{launchprice}} USD launch price. Windows are small, brief, and announced in advance to registered accounts. Nothing to do now: having an account is what makes you eligible to be notified.</p>
+  <h2>More ways to earn</h2>
+  <div class="tiles four">
+    <a class="tile" href="{{base}}/bugs">
+      <span class="tile-title">Bug reports</span>
+      <span class="small muted">{{seq $d.BugMin}} to {{seq $d.BugMax}} SEQ for each bug we reproduce.</span>
+    </a>
+    <a class="tile" href="{{base}}/security">
+      <span class="tile-title">Vulnerability reports</span>
+      <span class="small muted">From {{seq $d.TierMin}} SEQ, up to {{seq $d.TierMax}} SEQ for an exceptional finding.</span>
+    </a>
+    <a class="tile" href="{{base}}/competitions">
+      <span class="tile-title">Competitions</span>
+      <span class="small muted">{{with $d.Comps}}{{with index . 0}}{{.Title}}: {{range $i, $p := prizes .Prizes}}{{if $i}} / {{end}}{{seq $p}}{{end}} SEQ.{{end}}{{else}}Judged contests with prize ladders.{{end}}</span>
+    </a>
+    <a class="tile" href="{{if $me}}{{base}}/account{{else}}{{base}}/rules{{end}}">
+      <span class="tile-title">Referrals</span>
+      <span class="small muted">{{seq $d.RefBonus}} SEQ each for you and a friend you bring, once you have each earned {{seq $d.RefMin}} SEQ.</span>
+    </a>
+  </div>
+  <p class="muted small payout-line">Balances are paid at launch to the mainnet address on your account, which needs one verified social account (Telegram, X or Reddit, at least two years old; {{seq $d.Verif}} SEQ each). No documents. See the <a href="{{base}}/guide">address guide</a> and the <a href="{{base}}/rules">program rules</a>.</p>
 </div>
 {{end}}

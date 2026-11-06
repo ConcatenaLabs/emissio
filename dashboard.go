@@ -32,6 +32,7 @@ type dashboard struct {
 	Reports  []*Report
 	Done     int
 	Total    int
+	Status   map[int64]string // task id: its latest submission's status, "approved" once any is
 }
 
 var kindLabels = map[string]string{
@@ -45,6 +46,7 @@ func loadDashboard(db *sql.DB, userID int64) (*dashboard, error) {
 	if err != nil {
 		return nil, err
 	}
+	tasks = webWalletFirst(tasks)
 	status := map[int64]string{}
 	rows, err := db.Query(`SELECT task_id, status FROM submissions WHERE user_id = ? ORDER BY id`, userID)
 	if err != nil {
@@ -59,7 +61,7 @@ func loadDashboard(db *sql.DB, userID int64) (*dashboard, error) {
 		}
 	}
 	rows.Close()
-	d := &dashboard{}
+	d := &dashboard{Status: status}
 	idx := map[string]int{}
 	for _, s := range surfaces {
 		idx[s.Key] = len(d.Surfaces)

@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/hex"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -138,5 +140,81 @@ func TestArcaTasks(t *testing.T) {
 	app.db.QueryRow("SELECT SUM(amount) FROM ledger WHERE user_id = 1").Scan(&bal)
 	if bal != 15+25+20+20+25 {
 		t.Fatalf("balance %d", bal)
+	}
+}
+
+// The payment name: Emissio asks the name service for the wallet's code,
+// pays it, and the tester sends back exactly what arrived.
+func TestPaymentNameTask(t *testing.T) {
+	app, srv, client := newTestServer(t)
+	dir := t.TempDir()
+	bin, _ := filepath.Abs("testdata/fake-arca.py")
+	app.cfg.ArcaBin, app.cfg.ArcaDatadir = bin, dir
+	det, _ := json.Marshal(map[string]any{"kind": "request", "operator": strings.Repeat("aa", 32), "owner": strings.Repeat("0c", 32), "owner_nonce": strings.Repeat("0d", 32), "until": 9999999999})
+	code := "BITCOIN:TB1QTESTER?SEQUENTIA=" + url.QueryEscape("arca:"+hex.EncodeToString(det))
+	names := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/lnaddr/alice":
+			json.NewEncoder(w).Encode(map[string]any{"code": code, "fresh": true})
+		case "/lnaddr/sleepy":
+			json.NewEncoder(w).Encode(map[string]any{"code": "BITCOIN:TB1QTESTER", "fresh": false})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]any{"status": "ERROR", "reason": "No wallet goes by that name."})
+		}
+	}))
+	defer names.Close()
+	register(t, client, srv.URL, "name@x.io")
+	csrf := csrfOf(t, client, srv.URL+"/account")
+	ask := func(name string) string {
+		return from(t, client, "10.9.9.8", srv.URL+"/tasks/web-wallet-name/wallet", url.Values{"csrf": {csrf}, "code": {name}})
+	}
+	submit := func() string {
+		return from(t, client, "10.9.9.8", srv.URL+"/tasks/web-wallet-name/submit", url.Values{"csrf": {csrf}})
+	}
+	app.db.Exec("INSERT INTO wallet_links (user_id, address, pubkey, created_at) VALUES (1, 'tb1qlinked', '02ab', 0)")
+	if m := ask("alice"); !strings.Contains(m, "not taking part") {
+		t.Fatalf("no name service: %q", m)
+	}
+	app.cfg.LnaddrURL, app.cfg.LnaddrDomain = names.URL, "sequentiatestnet.com"
+	for name, want := range map[string]string{
+		"bob":                         "No wallet goes by that name.",
+		"sleepy":                      "not open",
+		"a":                           "3 to 32 characters",
+		"alice@elsewhere.org":         "ending in @sequentiatestnet.com",
+		"Alice@Sequentiatestnet.com ": "Emissio has paid you at alice@sequentiatestnet.com",
+	} {
+		if m := ask(name); !strings.Contains(m, want) {
+			t.Fatalf("%q: %q, want %q", name, m, want)
+		}
+	}
+	if m := submit(); !strings.Contains(m, "nothing has reached Emissio's code yet") {
+		t.Fatalf("early submit: %q", m)
+	}
+	var asset string
+	var atoms int64
+	app.db.QueryRow("SELECT asset, atoms FROM arca_sends WHERE purpose = 'name'").Scan(&asset, &atoms)
+	if atoms == 0 {
+		t.Fatal("no payment recorded")
+	}
+	if page := get(t, client, srv.URL+"/tasks/web-wallet-name"); strings.Contains(page, amountText(atoms)) || !strings.Contains(page, "Send exactly what arrived") {
+		t.Fatal("the page shows the amount, or no code to return it to")
+	}
+	back := app.codeOf(1, "name")
+	write := func(leaf, value string) {
+		b, _ := json.Marshal([]map[string]string{{"leaf_id": leaf, "asset": asset, "value": value}})
+		os.WriteFile(filepath.Join(dir, "mailbox.json"), b, 0o600)
+		b, _ = json.Marshal("00ff" + back.Owner + back.OwnerNonce + "11")
+		os.WriteFile(filepath.Join(dir, "rec-"+leaf+".json"), b, 0o600)
+		app.followArca()
+	}
+	write("n1", "1")
+	if m := submit(); !strings.Contains(m, "not what Emissio sent you") {
+		t.Fatalf("wrong amount: %q", m)
+	}
+	app.db.Exec("UPDATE arca_codes SET paid_at = 0 WHERE id = ?", back.ID)
+	write("n2", strings.TrimLeft(strings.Replace(amountText(atoms), ".", "", 1), "0"))
+	if m := submit(); !strings.Contains(m, "Checked and credited") {
+		t.Fatalf("right amount: %q", m)
 	}
 }

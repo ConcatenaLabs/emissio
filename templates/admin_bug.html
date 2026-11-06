@@ -6,16 +6,16 @@
 {{if $b.SameBody}}<p class="small"><span class="pill rejected">identical</span> The same text as <a href="{{base}}/admin/bugs/{{$b.SameBody}}">report #{{$b.SameBody}}</a>.</p>{{end}}
 {{if $b.Dups}}<p class="small">Merged into this report: {{range $i, $d := $b.Dups}}{{if $i}}, {{end}}<a href="{{base}}/admin/bugs/{{$d}}">#{{$d}}</a>{{end}}</p>{{end}}
 
-<div class="panel" style="margin:1.2rem 0">
+<div class="panel u-margin-1-2rem-0">
   <h3>{{if eq $b.Source "wallet"}}What happened{{else}}Steps to reproduce{{end}}</h3>
-  <p class="small" style="white-space:pre-wrap;max-width:none">{{$b.Steps}}</p>
-  {{if $b.Expected}}<h3>Expected</h3><p class="small" style="white-space:pre-wrap;max-width:none">{{$b.Expected}}</p>{{end}}
-  {{if $b.Actual}}<h3>Actual</h3><p class="small" style="white-space:pre-wrap;max-width:none">{{$b.Actual}}</p>{{end}}
-  {{if $b.HasFile}}<h3>Screenshot</h3><p><a href="{{base}}/bugs/{{$b.ID}}/screenshot"><img src="{{base}}/bugs/{{$b.ID}}/screenshot" alt="screenshot" style="max-width:100%;border:1px solid var(--line);border-radius:8px"></a></p>{{end}}
+  <p class="small u-white-space-pre-wrap-max-width-none">{{$b.Steps}}</p>
+  {{if $b.Expected}}<h3>Expected</h3><p class="small u-white-space-pre-wrap-max-width-none">{{$b.Expected}}</p>{{end}}
+  {{if $b.Actual}}<h3>Actual</h3><p class="small u-white-space-pre-wrap-max-width-none">{{$b.Actual}}</p>{{end}}
+  {{if $b.HasFile}}<h3>Screenshot</h3><p><a href="{{base}}/bugs/{{$b.ID}}/screenshot"><img class="u-max-width-100-border-1px-solid-line-border-radiu" src="{{base}}/bugs/{{$b.ID}}/screenshot" alt="screenshot"></a></p>{{end}}
 </div>
 
 {{with .Data.Meta}}
-<div class="ledger wide" style="margin-bottom:1.2rem">
+<div class="ledger wide u-margin-bottom-1-2rem">
   <div class="ledger-row"><span class="label">Wallet</span><span class="leader"></span><span class="amount plain">{{.Wallet}} {{.Version}}{{if .Mode}} · {{.Mode}} mode{{end}}</span></div>
   {{if .AccountCode}}<div class="ledger-row"><span class="label">Account code given (no such account)</span><span class="leader"></span><span class="amount plain mono">{{.AccountCode}}</span></div>{{end}}
   {{range $k, $v := .Context}}<div class="ledger-row"><span class="label">{{$k}}</span><span class="leader"></span><span class="amount plain small">{{$v}}</span></div>{{end}}
@@ -54,6 +54,6 @@
   </form>
 </div>
 {{else}}
-<p>Outcome: <span class="pill {{$b.Status}}">{{$b.Status}}</span>{{if $b.Severity}} · {{$b.Severity}}{{end}}{{if $b.Award}} · <span class="amount" style="font-family:var(--mono);color:var(--gold)">{{seq $b.Award}} SEQ</span>{{end}}{{if $b.DupOf}} · same bug as <a href="{{base}}/admin/bugs/{{$b.DupOf}}">#{{$b.DupOf}}</a>{{end}}{{if $b.ReviewNote}} · {{$b.ReviewNote}}{{end}}</p>
+<p>Outcome: <span class="pill {{$b.Status}}">{{$b.Status}}</span>{{if $b.Severity}} · {{$b.Severity}}{{end}}{{if $b.Award}} · <span class="amount u-font-family-mono-color-gold">{{seq $b.Award}} SEQ</span>{{end}}{{if $b.DupOf}} · same bug as <a href="{{base}}/admin/bugs/{{$b.DupOf}}">#{{$b.DupOf}}</a>{{end}}{{if $b.ReviewNote}} · {{$b.ReviewNote}}{{end}}</p>
 {{end}}
 {{end}}

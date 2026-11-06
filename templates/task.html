@@ -1,7 +1,7 @@
 {{define "content"}}
-<div class="eyebrow">{{surfacetitle .Data.Task.Surface}} · {{.Data.Task.Category}}</div>
+<div class="eyebrow">{{surfacetitle .Data.Task.Surface}}{{if ne (surfacetitle .Data.Task.Surface) .Data.Task.Category}} · {{.Data.Task.Category}}{{end}}</div>
 <h1>{{.Data.Task.Title}}</h1>
-<div class="ledger" style="margin:1.2rem 0">
+<div class="ledger u-margin-1-2rem-0">
   <div class="ledger-row"><span class="label">Reward</span><span class="leader"></span><span class="amount">{{seq .Data.Task.Reward}} <small>SEQ</small></span></div>
   {{if .Data.Task.Cap}}
   <div class="ledger-row"><span class="label">Rewards claimed</span><span class="leader"></span><span class="amount plain">{{seq .Data.Task.Awarded}} of {{seq .Data.Task.Cap}}</span></div>
@@ -20,21 +20,21 @@
   {{else if not .Linked}}
     <p class="muted">First <a href="{{base}}/tasks/link-web-wallet">link your web wallet</a> to this account.</p>
   {{else}}
-    {{if or (eq .Kind "arca-roundtrip") (eq .Kind "arca-invoice")}}
-      {{if .Sent}}<p class="small">Emissio paid you {{datetime .SentAt}}.{{if eq .Kind "arca-roundtrip"}} Send exactly what arrived to this code:{{end}}</p>{{end}}
-      {{if and (eq .Kind "arca-roundtrip") .Code}}<div class="kv" style="word-break:break-all" data-emissio-code>{{.Code}}</div>{{end}}
+    {{if or (eq .Kind "arca-roundtrip") (eq .Kind "arca-invoice") (eq .Kind "arca-name")}}
+      {{if .Sent}}<p class="small">Emissio paid you {{datetime .SentAt}}.{{if ne .Kind "arca-invoice"}} Send exactly what arrived to this code:{{end}}</p>{{end}}
+      {{if and (ne .Kind "arca-invoice") .Code}}<div class="kv u-word-break-break-all" data-emissio-code>{{.Code}}</div>{{end}}
       {{if or (not $.Data.Mine) (eq $.Data.Mine.Status "rejected")}}
-      <form class="stack wide" method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/wallet" style="margin-top:1rem">
+      <form class="stack wide u-margin-top-1rem" method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/wallet">
         <input type="hidden" name="csrf" value="{{$.CSRF}}">
-        <label for="code">{{if eq .Kind "arca-invoice"}}Your receive code with an amount{{else}}Your receive code{{end}}</label>
-        <input class="mono" type="text" id="code" name="code" required>
+        <label for="code">{{if eq .Kind "arca-invoice"}}Your receive code with an amount{{else if eq .Kind "arca-name"}}Your payment name{{else}}Your receive code{{end}}</label>
+        <input class="mono" type="text" id="code" name="code" required{{if eq .Kind "arca-name"}} placeholder="yourname@sequentiatestnet.com" autocapitalize="none"{{end}}>
         <div class="actions"><button class="btn{{if .Sent}} ghost{{end}}" type="submit">{{if .Sent}}Ask again{{else}}Ask Emissio to pay me{{end}}</button></div>
       </form>
       {{end}}
     {{else}}
       {{if .Code}}
         <p class="small">Emissio's receive code for your account:</p>
-        <div class="kv" style="word-break:break-all" data-emissio-code>{{.Code}}</div>
+        <div class="kv u-word-break-break-all" data-emissio-code>{{.Code}}</div>
       {{else}}
       <form method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/wallet">
         <input type="hidden" name="csrf" value="{{$.CSRF}}">
@@ -63,9 +63,9 @@
       <div class="ledger-row"><span class="label">Sent</span><span class="leader"></span><span class="amount plain">{{datetime .CreatedAt}}</span></div>
     </div>
     {{end}}
-    {{if .ReturnAddress}}<p class="small muted" style="margin-top:.8rem">Emissio's address, to return the payment to: <span class="mono">{{.ReturnAddress}}</span></p>{{end}}
+    {{if .ReturnAddress}}<p class="small muted u-margin-top-8rem">Emissio's address, to return the payment to: <span class="mono">{{.ReturnAddress}}</span></p>{{end}}
     {{if or (not $.Data.Mine) (eq $.Data.Mine.Status "rejected")}}
-    <form class="stack wide" method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/request" style="margin-top:1rem">
+    <form class="stack wide u-margin-top-1rem" method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/request">
       <input type="hidden" name="csrf" value="{{$.CSRF}}">
       <label for="address">{{if .Confidential}}A confidential address of your wallet (tsqb...){{else}}A transparent address of your wallet (tb1...){{end}}</label>
       <input class="mono" type="text" id="address" name="address" required>
@@ -85,6 +85,7 @@
     {{if eq .Data.Mine.Status "rejected"}}
       <p><span class="pill rejected">rejected</span> {{if .Data.Mine.ReviewNote}}<span class="muted">{{.Data.Mine.ReviewNote}}</span>{{end}}</p>
       <p class="muted small">You can submit again with corrected evidence.</p>
+      {{if eq .Data.Task.CheckKind "wallet-link"}}{{template "connectwallet" .}}{{end}}
       {{template "taskform" .}}
     {{else}}
       <p><span class="pill {{.Data.Mine.Status}}">{{.Data.Mine.Status}}</span>
@@ -96,8 +97,21 @@
   {{else if .Data.Full}}
     <p class="muted">All {{seq .Data.Task.Cap}} rewards for this task have been claimed. The task stays open for practice, but no further rewards are paid.</p>
   {{else}}
+    {{if eq .Data.Task.CheckKind "wallet-link"}}{{template "connectwallet" .}}{{end}}
     {{template "taskform" .}}
   {{end}}
+</div>
+{{if and .User (eq .Data.Task.CheckKind "wallet-link")}}<script type="module" src="{{base}}/static/connect-wallet.js"></script>{{end}}
+{{end}}
+
+{{define "connectwallet"}}
+<div class="connect-wallet" data-connect-wallet data-message="Emissio {{.User.ClaimCode}}" data-connectors="{{connectors}}" hidden>
+  <p>With the web wallet open in another tab of this browser, link it in one step: the wallet asks you to sign the message <span class="mono">Emissio {{.User.ClaimCode}}</span>, which moves no coins.</p>
+  <button class="btn" type="button" data-connect>{{if eq connectors "webwallet"}}Connect your web wallet{{else}}Connect your wallet{{end}}</button>
+  <div class="choices" data-choices hidden></div>
+  <div class="pair" data-pair hidden></div>
+  <p class="small muted" data-line role="status"></p>
+  <p class="small muted">Or sign it by hand, as the steps above say, and paste the signature and your receive code below.</p>
 </div>
 {{end}}
 

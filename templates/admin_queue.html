@@ -16,7 +16,7 @@
     {{with .Sub}}
       {{if .Txid}}<p class="mono small">txid: <a href="https://sequentiatestnet.com/explorer/tx/{{.Txid}}" target="_blank" rel="noopener">{{.Txid}}</a></p>{{end}}
       <p class="small">account code <code>{{.ClaimCode}}</code> · proof decimals <code>.{{prooftag .ClaimCode}}</code> · reward {{seq .TaskReward}} SEQ</p>
-      {{if .Notes}}<p class="small" style="white-space:pre-wrap">{{.Notes}}</p>{{end}}
+      {{if .Notes}}<p class="small u-white-space-pre-wrap">{{.Notes}}</p>{{end}}
       <form method="post" action="{{base}}/admin/submissions/{{.ID}}/review" class="inline-form">
         <input type="hidden" name="csrf" value="{{$.CSRF}}">
         <input type="hidden" name="back" value="/admin/queue">

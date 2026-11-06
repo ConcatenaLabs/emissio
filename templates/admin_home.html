@@ -1,8 +1,8 @@
 {{define "content"}}
 <div class="eyebrow">Admin</div>
 <h1>Program desk</h1>
-<p style="margin-top:1rem"><a class="btn" href="{{base}}/admin/queue">Review queue</a></p>
-<div class="ledger" style="margin-top:1.4rem">
+<p class="u-margin-top-1rem"><a class="btn" href="{{base}}/admin/queue">Review queue</a></p>
+<div class="ledger u-margin-top-1-4rem">
   <div class="ledger-row"><span class="label">Program pool</span><span class="leader"></span><span class="amount">{{seq .Data.Pool}} <small>SEQ</small></span></div>
   <div class="ledger-row"><span class="label">Issued so far</span><span class="leader"></span><span class="amount">{{seq .Data.Stats.Distributed}} <small>SEQ</small></span></div>
   <div class="ledger-row"><span class="label">Users</span><span class="leader"></span><span class="amount plain">{{seq .Data.Stats.Users}}</span></div>

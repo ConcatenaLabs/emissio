@@ -20,7 +20,7 @@ Protocol documentation lives in [`Sequentia/doc/sequentia/`](https://github.com/
 
 ## What it does
 
-Accounts, the task catalog with automatic checks of the evidence, a tester dashboard, bug reports (from a form, or sent from inside a wallet), competitions, private security reports, social-account verification (Telegram, X, Reddit), referrals, mainnet payout-address registration, and the admin review desk.
+A front page for a visitor who has never heard of Sequentia, accounts, the task catalog with automatic checks of the evidence, a tester dashboard, bug reports (from a form, or sent from inside a wallet), competitions, private security reports, social-account verification (Telegram, X, Reddit), referrals, mainnet payout-address registration, and the admin review desk.
 
 One thing it deliberately does not do, which a user or an operator needs to know: there is no pre-sale purchase flow. The rules page describes pre-sale windows and the ledger reserves a `presale` kind, but no sale mechanics exist here.
 
@@ -73,13 +73,14 @@ Emissio pays only accounts that have completed the first-transaction task, at mo
 
 The web wallet's tasks are worded as its default mode speaks: receive codes, Send, Swap, BTC, an invoice.
 
-- **Link your web wallet**: the account signs `Emissio <account code>` in the wallet's Sign tab and pastes the signature with its receive code. The signing key is recovered from the signature (`walletlink.go`) and must be the key of the receive code's address; the wallet is then linked to the account, one account per wallet ever, and its key serves the payout rehearsal when the account gave none. The other web wallet tasks need the link.
+- **Link your web wallet**: the account signs `Emissio <account code>` with the wallet and Emissio checks the signature. In one step, **Connect your web wallet** on the task page asks the web wallet open in another tab of the same browser to sign it (the provider protocol's `signMessage`, approved in the wallet's own dialog) and submits the address and signature; by hand, the account signs in the wallet's Sign tab and pastes the signature with its receive code. Either way the server trusts only the signature. The signing key is recovered from the signature (`walletlink.go`) and must be the key of the receive code's address; the wallet is then linked to the account, one account per wallet ever, and its key serves the payout rehearsal when the account gave none. The other web wallet tasks need the link.
 - The rest have Emissio as the counterparty, through a wallet of its own on the testnet's Arca operator: the `arca` command line on a directory of its own (`EMISSIO_ARCA`, `EMISSIO_ARCA_DATADIR`), as the faucet runs its leaf wallet (`arcawallet.go`). Each account gets receive codes of its own from Emissio, `bitcoin:<address>?ark=<a Bitcoin ark address of its own>&sequentia=<a receive request of its own>`, so whatever reaches one is known to come from that account's wallet. A code an account pastes is read by `receivecode.go`, the same reader the faucet and Compages carry: in either case, its bech32 parts lower-cased, and a short Sequentia request (`SQR1…`, as the web wallet writes it) expanded with Emissio's own operator key and genesis hash, so a code for another operator or chain is refused. Every address field (a payment's address, the payout address, the wallet link) takes a receive code too and reads its address. A follower syncs the wallet on its own schedule (at least every five minutes), reads each coin the mailbox accepted, and attributes it to the request whose owner key and nonce the coin's record carries; it reads what reached each account's Bitcoin ark address from Bark's history.
   - **Pay Emissio**: anything reaching the account's code.
   - **Receive and send back**: Emissio pays the account's receive code a random fraction of a random asset it holds, and never shows the amount; the account sends exactly what arrived to Emissio's code.
   - **Pay in BTC**: BTC reaching the code's Bitcoin ark address.
   - **An invoice**: Emissio pays an invoice the account's wallet made (a receive code with an amount carries one), of at most 10,000 sats.
   - **A swap**: a payment to the account's code ending in its proof decimals, in an asset other than tSEQ.
+  - **A payment name**: the account gives the payment name its web wallet chose (`name@sequentiatestnet.com`). Emissio asks the name service (`EMISSIO_LNADDR`, the LSP's `/lnaddr`) for that name's receive code, which the service has only while the wallet is open (`fresh`), and pays it as in the round trip; the account sends exactly what arrived to Emissio's code. Only the wallet holding the name knows the amount, so a name another person holds earns nothing.
 
   Emissio pays only linked accounts, three times per task for one account and three times a day for one network address. Every arca call is serialised: the wallet's store is not safe for two processes at once.
 
@@ -97,6 +98,7 @@ The seeded catalog (`seed.go`; the live instance's admins can adjust rewards, ca
 | Pay Emissio in BTC | Web wallet | 20 | 2,000 |
 | Get paid an invoice by Emissio | Web wallet | 20 | 1,000 |
 | Swap, then pay Emissio in what you got | Web wallet | 25 | 2,000 |
+| Get paid at your payment name | Web wallet | 20 | 1,000 |
 | Make your first testnet transaction | Sequentia Core | 10 | 5,000 |
 | Find the Bitcoin anchor of your transaction | Block explorer | 10 | 3,000 |
 | Combine two faucet payments in one transaction | Faucet | 15 | 2,000 |
@@ -114,12 +116,20 @@ The seeded catalog (`seed.go`; the live instance's admins can adjust rewards, ca
 | Install the release and check its checksum | Sequentia Core | 15 | 2,000 |
 | Build Sequentia Core from source | Sequentia Core | 30 | 500 |
 | Run a full node for a week | Sequentia Core | 50 | 1,000 |
-| Stake tSEQ | Sequentia Core | 40 | 500 |
+| Stake tSEQ | Web wallet | 40 | 500 |
 | Delegate your stake to a staking pool | Staking pools | 30 | 500 |
 | Move your delegation to another pool | Staking pools | 20 | 500 |
 | Unbond your stake | Sequentia Core | 25 | 500 |
 
-Completing every task pays 610 SEQ; total task exposure across all users is 815,000 SEQ. Caps pay the first accounts whose evidence is approved, so the pool stays bounded.
+Completing every task pays 630 SEQ; total task exposure across all users is 835,000 SEQ. Caps pay the first accounts whose evidence is approved, so the pool stays bounded.
+
+### The front page
+
+The front page is written for someone arriving from an announcement who has never heard of Sequentia. It says in one line what Sequentia is, then gives two steps side by side. The first, start testing, needs no account: open the web wallet (`EMISSIO_WALLET_URL`), make a wallet, and take test coins from its faucet card. The second invites the visitor to join and earn, and says what earning means: Sequence tokens (SEQ) credited for tasks, bug reports, competitions, vulnerability reports and referrals, paid at mainnet launch. Signed in, the second step shows the tester's balance, how many tasks are done, and the next open task. The web wallet's tasks come first, as tiles; every other task is summed up by the place it is done (its count, its total reward and, signed in, how many are done), linking to that place's section of the task page, which groups the tasks the same way. The dashboard's open tasks put the web wallet's first too. The page shows no counts of accounts or of tokens credited.
+
+### Connecting a wallet
+
+The link task's **Connect** button goes through the same connector layer as SeqDEX: `static/shared/connectors.js` and `static/shared/provider.js`, with the libraries they load, vendored from [`seqdex-web`](https://github.com/ConcatenaLabs/seqdex-web) unchanged under a header line naming the commit. `vendor_test.go` fails when a vendored file is edited here or differs from that commit upstream; to change one, change it in `seqdex-web` and vendor it again. The page tells `provider.js` which connectors to offer (`EMISSIO_CONNECTORS`), and whichever wallet answers only signs the link message.
 
 ### The dashboard
 
@@ -315,6 +325,10 @@ All configuration is environment variables (`loadConfig` in `main.go`):
 | `EMISSIO_POOLS` | empty | The pool board's feed, for the delegation checks (empty sends them to review) |
 | `EMISSIO_SUMS` | empty | The download page's checksum list, for the release check |
 | `EMISSIO_FAUCET_ADDRESSES` | the testnet faucet's covenant address | Comma-separated addresses the faucet pays from, for the faucet check |
+| `EMISSIO_WALLET_URL` | `https://sequentiatestnet.com/wallet/` | The web wallet the front page sends testers to |
+| `EMISSIO_CONNECTORS` | `webwallet` | The wallets the link task offers to connect, in order, comma-separated: `webwallet` (the web wallet in another tab of this origin), `extension` (the browser extension), `phone` (a wallet on a phone, paired by a code), `local` (Sequentia Core through the `sequentia-connect` daemon). The page's content security policy lets it reach the pairing relays and the daemon's loopback port only while `phone` and `local` are offered |
+| `EMISSIO_LNADDR` | empty | The payment-name service the payment-name task resolves names at, the LSP's base URL (for example `https://sequentiatestnet.com/lsp`); empty turns that task off |
+| `EMISSIO_LNADDR_DOMAIN` | `sequentiatestnet.com` | The domain of the payment names Emissio pays |
 | `EMISSIO_ARCA`, `EMISSIO_ARCA_DATADIR` | empty | The `arca` command line and Emissio's wallet directory for the web wallet tasks (empty turns the counterparty ones off). The wallet is made with `arca create` against the testnet's operator and funded by boarding, as the faucet's leaf wallet is; keep it free of channels, so payments to its receive requests arrive as coins it can attribute |
 | `EMISSIO_WALLET` | empty | Name of Emissio's own wallet on that node, which pays the counterparty tasks (empty turns them off) |
 | `EMISSIO_WALLET_ASSETS` | empty | Comma-separated asset ids the wallet may pay in; empty: any it holds |

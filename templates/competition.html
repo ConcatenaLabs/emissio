@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="eyebrow">Competition · <span class="pill {{.Data.Comp.Status}}">{{.Data.Comp.Status}}</span></div>
 <h1>{{.Data.Comp.Title}}</h1>
-<div class="ledger" style="margin:1.2rem 0">
+<div class="ledger u-margin-1-2rem-0">
   {{range $i, $p := prizes .Data.Comp.Prizes}}
   <div class="ledger-row"><span class="label">Place {{add $i 1}}</span><span class="leader"></span><span class="amount">{{seq $p}} <small>SEQ</small></span></div>
   {{end}}
