@@ -120,21 +120,49 @@ func (a *App) admin(next http.HandlerFunc) http.HandlerFunc {
 // ---------- public pages ----------
 
 type homeData struct {
-	Stats     Stats
-	Pool      int64
-	Tasks     []*Task
+	WalletURL string
+	WebTasks  []*Task // the web wallet's tasks, where testers start
+	Tasks     []*Task // every other task
 	Comps     []*Competition
 	TierMin   int64
 	TierMax   int64
-	TaskTotal int64
+	BugMin    int64
+	BugMax    int64
+	RefBonus  int64
+	RefMin    int64
+	Verif     int64
+	Me        *homeProgress // nil when signed out
+}
+
+// homeProgress is a signed-in tester's place on the front page: what they
+// have earned and done, and the task to do next.
+type homeProgress struct {
+	Balance     int64
+	Done, Total int
+	Next        *openTask
+	Verified    bool
+	HasAddress  bool
+	Status      map[int64]string // task id: "approved", "pending" or "rejected"
+}
+
+// webWalletFirst orders tasks with the web wallet's first, keeping each
+// group's own order: the web wallet is where testers start.
+func webWalletFirst(tasks []*Task) []*Task {
+	out := make([]*Task, 0, len(tasks))
+	for _, t := range tasks {
+		if t.Surface == "webwallet" {
+			out = append(out, t)
+		}
+	}
+	for _, t := range tasks {
+		if t.Surface != "webwallet" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
-	stats, err := loadStats(a.db)
-	if err != nil {
-		a.serverError(w, err)
-		return
-	}
 	tasks, err := listTasks(a.db, false)
 	if err != nil {
 		a.serverError(w, err)
@@ -145,17 +173,49 @@ func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
 		a.serverError(w, err)
 		return
 	}
-	var taskTotal int64
-	for _, t := range tasks {
-		taskTotal += t.Reward
-	}
 	if len(comps) > 3 {
 		comps = comps[:3]
 	}
-	a.render(w, r, "home", "Sequentia Emissio", homeData{
-		Stats: stats, Pool: programPool, Tasks: tasks, Comps: comps,
-		TierMin: securityTiers[0].Reward, TierMax: securityMax, TaskTotal: taskTotal,
-	})
+	d := homeData{WalletURL: a.cfg.WalletURL, Comps: comps, TierMin: securityTiers[0].Reward, TierMax: securityMax,
+		BugMin: bugTiers[0].Reward, BugMax: bugTiers[len(bugTiers)-1].Reward,
+		RefBonus: referralBonus, RefMin: referralThreshold, Verif: verificationBonus}
+	for _, t := range tasks {
+		if t.Surface == "webwallet" {
+			d.WebTasks = append(d.WebTasks, t)
+		} else {
+			d.Tasks = append(d.Tasks, t)
+		}
+	}
+	u, _, err := a.currentUser(r)
+	if err != nil {
+		a.serverError(w, err)
+		return
+	}
+	if u != nil {
+		dash, err := loadDashboard(a.db, u.ID)
+		if err != nil {
+			a.serverError(w, err)
+			return
+		}
+		bal, err := balanceOf(a.db, u.ID)
+		if err != nil {
+			a.serverError(w, err)
+			return
+		}
+		me := &homeProgress{Balance: bal, Done: dash.Done, Total: dash.Total, HasAddress: u.MainnetAddress != "", Status: dash.Status}
+		// The next task is the first open one not already waiting for review.
+		for i := range dash.Open {
+			if dash.Open[i].Status != "pending" {
+				me.Next = &dash.Open[i]
+				break
+			}
+		}
+		var n int
+		a.db.QueryRow("SELECT COUNT(*) FROM verifications WHERE user_id = ? AND status = 'verified'", u.ID).Scan(&n)
+		me.Verified = n > 0
+		d.Me = me
+	}
+	a.render(w, r, "home", "Sequentia Emissio", d)
 }
 
 func (a *App) handleTasks(w http.ResponseWriter, r *http.Request) {
@@ -164,7 +224,7 @@ func (a *App) handleTasks(w http.ResponseWriter, r *http.Request) {
 		a.serverError(w, err)
 		return
 	}
-	a.render(w, r, "tasks", "Tasks", tasks)
+	a.render(w, r, "tasks", "Tasks", webWalletFirst(tasks))
 }
 
 type taskData struct {

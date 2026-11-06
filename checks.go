@@ -70,6 +70,7 @@ var checkKinds = []struct{ Key, Desc string }{
 	{"arca-roundtrip", "Emissio paid the account's receive code, and exactly that came back to Emissio's code"},
 	{"arca-invoice", "Emissio paid an invoice of the account's wallet"},
 	{"arca-swap", "The account's own Emissio code received an amount with its proof decimals, in an asset other than tSEQ"},
+	{"arca-name", "Emissio paid the wallet holding a payment name the account gave, and exactly that came back to Emissio's code"},
 	{"bridge-in", "Proof decimals, spending a Compages delivery for the deposit named in the notes"},
 	{"bridge-both", "As bridge-in, from the source chain this account's first bridge did not use"},
 	{"bridge-out", "Proof decimals sent to a Compages redemption address that has released"},
@@ -106,7 +107,7 @@ func (a *App) evidenceCheck(kind, txid, notes string, user *User) checkResult {
 		return a.unblindCheck(user, notes)
 	case "wallet-link":
 		return a.walletLinkCheck(user, notes)
-	case "arca-pay-code", "arca-pay-btc", "arca-roundtrip", "arca-invoice", "arca-swap":
+	case "arca-pay-code", "arca-pay-btc", "arca-roundtrip", "arca-invoice", "arca-swap", "arca-name":
 		return a.arcaCheck(kind, user)
 	}
 	if txid == "" {

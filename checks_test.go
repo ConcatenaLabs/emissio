@@ -357,7 +357,7 @@ func TestSubmitVerdicts(t *testing.T) {
 	// The dashboard shows the progress, the open tasks, the earnings and the reports.
 	postBug(t, client, srv.URL, csrf, map[string]string{"surface": "faucet", "title": "Claim page hangs", "steps": "claim twice", "actual": "spinner"}, nil)
 	acct := get(t, client, srv.URL+"/account")
-	for _, want := range []string{"1 of 27 tasks done", "<strong>Sequentia Core</strong>", "1 of 12 tasks done", "1 waiting for review",
+	for _, want := range []string{"1 of 28 tasks done", "<strong>Sequentia Core</strong>", "1 of 11 tasks done", "1 waiting for review",
 		"What you earned from", "Open tasks", "Combine two faucet payments", "Claim page hangs", "progress"} {
 		if !strings.Contains(acct, want) {
 			t.Errorf("dashboard lacks %q", want)
@@ -414,7 +414,7 @@ func TestSeedBackfill(t *testing.T) {
 	app.db.Exec("UPDATE tasks SET check_kind = 'none' WHERE slug = 'first-transaction'")
 	seedDB(app.db)
 	tk, _ := taskBySlug(app.db, "stake")
-	if tk.CheckKind != "stake" || tk.Surface != "core" || tk.Reward != 77 || tk.Body != "old copy" {
+	if tk.CheckKind != "stake" || tk.Surface != "webwallet" || tk.Reward != 77 || tk.Body != "old copy" {
 		t.Fatalf("backfill: %+v", tk)
 	}
 	if tk, _ := taskBySlug(app.db, "first-transaction"); tk.CheckKind != "none" {

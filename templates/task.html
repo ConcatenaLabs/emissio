@@ -20,14 +20,14 @@
   {{else if not .Linked}}
     <p class="muted">First <a href="{{base}}/tasks/link-web-wallet">link your web wallet</a> to this account.</p>
   {{else}}
-    {{if or (eq .Kind "arca-roundtrip") (eq .Kind "arca-invoice")}}
-      {{if .Sent}}<p class="small">Emissio paid you {{datetime .SentAt}}.{{if eq .Kind "arca-roundtrip"}} Send exactly what arrived to this code:{{end}}</p>{{end}}
-      {{if and (eq .Kind "arca-roundtrip") .Code}}<div class="kv" style="word-break:break-all" data-emissio-code>{{.Code}}</div>{{end}}
+    {{if or (eq .Kind "arca-roundtrip") (eq .Kind "arca-invoice") (eq .Kind "arca-name")}}
+      {{if .Sent}}<p class="small">Emissio paid you {{datetime .SentAt}}.{{if ne .Kind "arca-invoice"}} Send exactly what arrived to this code:{{end}}</p>{{end}}
+      {{if and (ne .Kind "arca-invoice") .Code}}<div class="kv" style="word-break:break-all" data-emissio-code>{{.Code}}</div>{{end}}
       {{if or (not $.Data.Mine) (eq $.Data.Mine.Status "rejected")}}
       <form class="stack wide" method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/wallet" style="margin-top:1rem">
         <input type="hidden" name="csrf" value="{{$.CSRF}}">
-        <label for="code">{{if eq .Kind "arca-invoice"}}Your receive code with an amount{{else}}Your receive code{{end}}</label>
-        <input class="mono" type="text" id="code" name="code" required>
+        <label for="code">{{if eq .Kind "arca-invoice"}}Your receive code with an amount{{else if eq .Kind "arca-name"}}Your payment name{{else}}Your receive code{{end}}</label>
+        <input class="mono" type="text" id="code" name="code" required{{if eq .Kind "arca-name"}} placeholder="yourname@sequentiatestnet.com" autocapitalize="none"{{end}}>
         <div class="actions"><button class="btn{{if .Sent}} ghost{{end}}" type="submit">{{if .Sent}}Ask again{{else}}Ask Emissio to pay me{{end}}</button></div>
       </form>
       {{end}}

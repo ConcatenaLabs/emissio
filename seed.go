@@ -131,16 +131,28 @@ The check is automatic: the BTC part of the code is your account's alone.`,
 The check is automatic: Emissio's own record of the payment.`,
 	},
 	{
-		slug: "web-wallet-swap", title: "Swap, then pay Emissio in what you got", category: "Web wallet", surface: "webwallet", check: "arca-swap",
+		slug: "web-wallet-swap", title: "Trade, then pay Emissio in what you got", category: "Web wallet", surface: "webwallet", check: "arca-swap",
 		reward: 25, cap: 2000, needsTxid: false, sort: 11,
 		body: `Trade one asset for another in the web wallet, then use what you got.
 
-- In the Swap tab, pick what you pay and what you get, enter an amount, and swap.
+- Open Swap, choose what you pay and what you receive, enter an amount, then press Review and Trade.
 - Press the button below for Emissio's receive code for your account.
 - In Send, pay that code an amount of the asset you got that ends in your proof decimals, for example 1.{PROOF}.
 - Submit the task once it is sent.
 
 The check is automatic: the payment must reach your code with your proof decimals, in an asset other than tSEQ.`,
+	},
+	{
+		slug: "web-wallet-name", title: "Get paid at your payment name", category: "Web wallet", surface: "webwallet", check: "arca-name",
+		reward: 20, cap: 1000, needsTxid: false, sort: 12,
+		body: `A payment name lets other wallets pay you at name@sequentiatestnet.com, in any amount they choose. Choose one, let Emissio pay you at it, and send back exactly what arrived.
+
+- In the web wallet, open Receive, press Choose a name under Your payment name, and save a name.
+- Keep the web wallet open: a name is paid while its wallet is open. Type the name below and ask Emissio to pay you. Emissio does not say how much.
+- Watch the payment arrive: Balance and History show which asset and how much.
+- Send exactly that amount of that asset to the receive code Emissio shows below, then submit the task.
+
+The check is automatic: only the wallet that holds the name knows what Emissio sent.`,
 	},
 	{
 		slug: "first-transaction", title: "Make your first testnet transaction", category: "Getting started", surface: "core", check: "first-transaction",
@@ -356,15 +368,15 @@ Full-node sovereignty is a core Sequentia principle: block producers cannot forc
 The check is automatic: it counts the ten-minute slots of the last week in which your node was seen; a week's span with at least 80% of slots present passes.`,
 	},
 	{
-		slug: "stake", title: "Stake tSEQ", category: "Staking", surface: "core", check: "stake",
+		slug: "stake", title: "Stake tSEQ", category: "Staking", surface: "webwallet", check: "stake",
 		reward: 40, cap: 500, needsTxid: true, sort: 85,
 		body: `Lock a stake and register as a potential block producer.
 
 Only the Sequence token can stake, and the minimum is 40,000 tSEQ, which one faucet claim covers. A staking output keeps its weight for as long as it is unspent; the lock only gates withdrawal.
 
-- In Sequentia Core, open the Staking tab and create a staking output of 40000.{PROOF} tSEQ (at least 40,000, ending in your proof decimals) with the shortest lock the chain allows. From a node, registerstake does the same: pass it your staker public key (getnewaddress, then getaddressinfo) and the amount.
-- Keep the node running; the Staking tab shows your weight.
-- Once it has confirmed, submit the txid of the staking output.
+- In the web wallet, open More, then Stake. Enter 40000.{PROOF} under Stake tSEQ (at least 40,000, ending in your proof decimals), press Review stake, and confirm. Keep the page open until it is sent.
+- Or in Sequentia Core, open the Staking tab and create a staking output of 40000.{PROOF} tSEQ with the shortest lock the chain allows. From a node, registerstake does the same: pass it your staker public key (getnewaddress, then getaddressinfo) and the amount.
+- Once it has confirmed, submit the txid of the staking output: the web wallet's History shows it, and so does Sequentia Core's transaction list.
 
 The check is automatic: a staking output of at least 40,000 tSEQ carrying your proof decimals. The next tasks build on this stake.`,
 	},
@@ -376,7 +388,7 @@ The check is automatic: a staking output of at least 40,000 tSEQ carrying your p
 A delegation is a separate record on the chain that points your staking output's key at a pool's signer. The coins never leave your wallet, the pool can never spend them, and you can re-point or withdraw the delegation at any time.
 
 - Pick a pool on the board at sequentiatestnet.com/pools/. Read what it has committed to paying out.
-- In Sequentia Core's Staking tab, delegate the stake from the previous task to that pool; from a node, delegatestake does the same. If you delegate a new amount instead, make it end in your proof decimals, for example 100.{PROOF}.
+- Delegate the stake from the previous task to that pool: in the web wallet, Stake lists the pools, so choose it and press Delegate; in Sequentia Core, its Staking tab; from a node, delegatestake. If you delegate a new amount instead, make it end in your proof decimals, for example 100.{PROOF}.
 - Once it has confirmed, submit the txid of the delegation record. Check the board afterwards: your weight should appear under the pool.
 
 The check is automatic: the record must name your stake's key (or the key of a new stake carrying your proof decimals in the same transaction) as its controller, and a pool on the board as its signer.`,
@@ -399,7 +411,7 @@ The check is automatic: the transaction must spend your delegation record and cr
 
 A stake leaves in two steps: first it moves into an unbonding output of the same key, where it stops counting as weight, and only after the parent chain has moved on far enough can the coins be spent freely. Try it.
 
-- Once your stake's lock has passed, withdraw it from the Staking tab in Sequentia Core; from a node, withdrawstake does the same. If the wallet refuses or the lock has not passed, note the exact message: unclear errors here are worth a bug report.
+- Once your stake's lock has passed, unbond it: in the web wallet, press Unbond beside it under Stake; in Sequentia Core, withdraw it from the Staking tab; from a node, withdrawstake does the same. If the wallet refuses or the lock has not passed, note the exact message: unclear errors here are worth a bug report.
 - Once the unbonding transaction has confirmed, submit its txid.
 
 The check is automatic: the transaction must spend the staking output of your stake task into an unbonding output of the same key.`,

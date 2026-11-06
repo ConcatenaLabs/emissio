@@ -12,7 +12,9 @@ package main
 //   - Emissio pays an account's receive code an amount it does not show,
 //     and the account sends back exactly what arrived, which only a wallet
 //     that received it can know;
-//   - Emissio pays an invoice the account's wallet made.
+//   - Emissio pays an invoice the account's wallet made;
+//   - Emissio pays the wallet at its payment name, through the name service
+//     (EMISSIO_LNADDR), and the account sends back what arrived.
 //
 // Every arca call is serialised: the wallet's store is not safe for two
 // processes at once, and its Bitcoin side takes an exclusive lock. A
@@ -26,6 +28,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -448,7 +451,7 @@ func (a *App) handleArcaRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a.redirect(w, r, back, "Your receive code from Emissio is below.", "")
-	case "arca-roundtrip", "arca-invoice":
+	case "arca-roundtrip", "arca-invoice", "arca-name":
 		var mine, ipToday int64
 		a.db.QueryRow("SELECT COUNT(*) FROM arca_sends WHERE user_id = ? AND purpose = ?", user.ID, purpose).Scan(&mine)
 		a.db.QueryRow("SELECT COUNT(*) FROM arca_sends WHERE ip = ? AND created_at > ?", clientIP(r), now()-86400).Scan(&ipToday)
@@ -460,9 +463,12 @@ func (a *App) handleArcaRequest(w http.ResponseWriter, r *http.Request) {
 			a.redirect(w, r, back, "", "Emissio has paid enough accounts from your network today. Try again tomorrow.")
 			return
 		}
-		if task.CheckKind == "arca-roundtrip" {
-			a.payCode(w, r, user, back, purpose)
-		} else {
+		switch task.CheckKind {
+		case "arca-roundtrip":
+			a.payCode(w, r, user, back, purpose, r.FormValue("code"), "Emissio has paid your receive code. Send back exactly what arrived, to Emissio's code below.")
+		case "arca-name":
+			a.payName(w, r, user, back, purpose)
+		default:
 			a.payInvoice(w, r, user, back, purpose)
 		}
 	}
@@ -470,7 +476,7 @@ func (a *App) handleArcaRequest(w http.ResponseWriter, r *http.Request) {
 
 func isArcaTask(kind string) bool {
 	switch kind {
-	case "arca-pay-code", "arca-pay-btc", "arca-roundtrip", "arca-invoice", "arca-swap":
+	case "arca-pay-code", "arca-pay-btc", "arca-roundtrip", "arca-invoice", "arca-swap", "arca-name":
 		return true
 	}
 	return false
@@ -486,10 +492,10 @@ func arcaPurpose(kind string) string {
 	return strings.TrimPrefix(kind, "arca-")
 }
 
-// payCode pays the account's receive code a random amount of an asset
-// Emissio holds, and makes the code the account returns it to.
-func (a *App) payCode(w http.ResponseWriter, r *http.Request, user *User, back, purpose string) {
-	_, _, req, _ := codeParts(r.FormValue("code"))
+// payCode pays a receive code of the account's wallet a random amount of an
+// asset Emissio holds, and makes the code the account returns it to.
+func (a *App) payCode(w http.ResponseWriter, r *http.Request, user *User, back, purpose, code, done string) {
+	_, _, req, _ := codeParts(code)
 	if req == "" {
 		a.redirect(w, r, back, "", "Paste the receive code your web wallet shows under Receive.")
 		return
@@ -534,7 +540,73 @@ func (a *App) payCode(w http.ResponseWriter, r *http.Request, user *User, back, 
 	if _, err := a.newCode(user.ID, purpose, "", 0); err != nil {
 		log.Printf("arca: return code for user %d: %v", user.ID, err)
 	}
-	a.redirect(w, r, back, "Emissio has paid your receive code. Send back exactly what arrived, to Emissio's code below.", "")
+	a.redirect(w, r, back, done, "")
+}
+
+// nameRe is what a payment name may be (the web wallet's lnaddr.js).
+var nameRe = regexp.MustCompile(`^[a-z0-9_-]{3,32}$`)
+
+// payName pays the account's wallet at its payment name: the name service
+// gives the receive code the wallet makes while it is open, and Emissio pays
+// it as it pays a pasted code. Only the wallet holding the name sees what
+// arrived, which is what the account sends back.
+func (a *App) payName(w http.ResponseWriter, r *http.Request, user *User, back, purpose string) {
+	if a.cfg.LnaddrURL == "" {
+		a.redirect(w, r, back, "", "Payment names are not taking part on this site right now.")
+		return
+	}
+	name := strings.ToLower(strings.TrimSpace(r.FormValue("code")))
+	if i := strings.LastIndex(name, "@"); i >= 0 {
+		if dom := name[i+1:]; a.cfg.LnaddrDomain != "" && dom != a.cfg.LnaddrDomain {
+			a.redirect(w, r, back, "", "Emissio pays names ending in @"+a.cfg.LnaddrDomain+".")
+			return
+		}
+		name = name[:i]
+	}
+	if !nameRe.MatchString(name) {
+		a.redirect(w, r, back, "", "A name has 3 to 32 characters: lowercase letters, digits, - and _.")
+		return
+	}
+	code, err := a.resolveName(name)
+	if err != nil {
+		a.redirect(w, r, back, "", err.Error())
+		return
+	}
+	a.payCode(w, r, user, back, purpose, code, "Emissio has paid you at "+name+"@"+a.cfg.LnaddrDomain+". Send back exactly what arrived, to Emissio's code below.")
+}
+
+// resolveName asks the name service for the receive code of the wallet
+// holding a name. A wallet that is not open gives none Emissio can pay.
+func (a *App) resolveName(name string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, a.cfg.LnaddrURL+"/lnaddr/"+name, nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Printf("lnaddr: %s: %v", name, err)
+		return "", errors.New("The payment name service did not answer. Try again later.")
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Code   string `json:"code"`
+		Fresh  bool   `json:"fresh"`
+		Reason string `json:"reason"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&out); err != nil {
+		return "", errors.New("The payment name service did not answer. Try again later.")
+	}
+	switch {
+	case resp.StatusCode == http.StatusNotFound || (resp.StatusCode != http.StatusOK && out.Reason != ""):
+		if out.Reason == "" {
+			out.Reason = "No wallet goes by that name."
+		}
+		return "", errors.New(out.Reason)
+	case resp.StatusCode != http.StatusOK:
+		return "", errors.New("The payment name service did not answer. Try again later.")
+	case !out.Fresh || out.Code == "":
+		return "", errors.New("Your web wallet is not open: open it, keep it open, and ask again.")
+	}
+	return out.Code, nil
 }
 
 // payInvoice pays an invoice the account's wallet made, up to a small amount.
@@ -663,7 +735,7 @@ func (a *App) arcaCheck(kind string, user *User) checkResult {
 			return pass("Emissio paid this account's invoice (OK)")
 		}
 		return fail("Emissio's payment of your invoice is %s, not paid: keep your wallet open and submit again", state)
-	case "arca-roundtrip":
+	case "arca-roundtrip", "arca-name":
 		var asset string
 		var atoms int64
 		if a.db.QueryRow("SELECT asset, atoms FROM arca_sends WHERE user_id = ? AND purpose = ? ORDER BY id DESC LIMIT 1", user.ID, purpose).Scan(&asset, &atoms) != nil {

@@ -59,6 +59,11 @@ type Config struct {
 	// counterparty are off.
 	ArcaBin     string
 	ArcaDatadir string
+	// The web wallet the front page sends testers to, and the payment-name
+	// service (the LSP's /lnaddr) the payment-name task resolves names at.
+	WalletURL    string
+	LnaddrURL    string
+	LnaddrDomain string
 
 	// Mail (mail.go): an SMTP submission service. Without a host and a
 	// sender, email verification and reset by email are off.
@@ -114,6 +119,9 @@ func loadConfig() Config {
 		WalletFeeRate: envOr("EMISSIO_WALLET_FEE_RATE", "2"),
 		ArcaBin:       envOr("EMISSIO_ARCA", ""),
 		ArcaDatadir:   envOr("EMISSIO_ARCA_DATADIR", ""),
+		WalletURL:     envOr("EMISSIO_WALLET_URL", "https://sequentiatestnet.com/wallet/"),
+		LnaddrURL:     strings.TrimRight(envOr("EMISSIO_LNADDR", ""), "/"),
+		LnaddrDomain:  strings.ToLower(envOr("EMISSIO_LNADDR_DOMAIN", "sequentiatestnet.com")),
 		WalletAssets:  strings.Split(envOr("EMISSIO_WALLET_ASSETS", ""), ","),
 		SMTPHost:      envOr("EMISSIO_SMTP_HOST", ""),
 		SMTPPort:      envOr("EMISSIO_SMTP_PORT", "587"),
