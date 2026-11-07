@@ -730,7 +730,7 @@ func (a *App) arcaCheck(kind string, user *User) checkResult {
 		a.db.QueryRow("SELECT state FROM arca_sends WHERE user_id = ? AND purpose = ? ORDER BY id DESC LIMIT 1", user.ID, purpose).Scan(&state)
 		switch state {
 		case "":
-			return fail("Emissio has not paid an invoice of yours yet: paste one on the task page first")
+			return fail("Emissio has not paid an invoice of yours yet: paste one above")
 		case "paid":
 			return pass("Emissio paid this account's invoice (OK)")
 		}
@@ -739,12 +739,12 @@ func (a *App) arcaCheck(kind string, user *User) checkResult {
 		var asset string
 		var atoms int64
 		if a.db.QueryRow("SELECT asset, atoms FROM arca_sends WHERE user_id = ? AND purpose = ? ORDER BY id DESC LIMIT 1", user.ID, purpose).Scan(&asset, &atoms) != nil {
-			return fail("Emissio has not paid your receive code yet: paste it on the task page first")
+			return fail("Emissio has not paid your receive code yet: paste it above and ask Emissio to pay you")
 		}
 		c := a.codeOf(user.ID, purpose)
 		switch {
 		case c == nil || c.PaidAt == 0:
-			return fail("nothing has reached Emissio's code yet; it is checked every few minutes, so submit again shortly")
+			return fail("nothing has reached Emissio's code yet; Emissio checks every few minutes")
 		case c.PaidAsset != asset || c.PaidAtoms != atoms:
 			return fail("Emissio's code received %s of %s, not what Emissio sent you", amountText(c.PaidAtoms), short(c.PaidAsset))
 		}
@@ -753,18 +753,18 @@ func (a *App) arcaCheck(kind string, user *User) checkResult {
 		c := a.codeOf(user.ID, purpose)
 		switch {
 		case c == nil:
-			return fail("ask Emissio for your receive code on the task page first")
+			return fail("ask Emissio for your receive code above first")
 		case c.BtcSats == 0:
-			return fail("no BTC has reached your code's Bitcoin part yet; it is checked every few minutes, so submit again shortly")
+			return fail("no BTC has reached your code's Bitcoin part yet; Emissio checks every few minutes")
 		}
 		return pass("%d sats reached this account's own Bitcoin ark address at Emissio (OK)", c.BtcSats)
 	case "arca-pay-code", "arca-swap":
 		c := a.codeOf(user.ID, purpose)
 		switch {
 		case c == nil:
-			return fail("ask Emissio for your receive code on the task page first")
+			return fail("ask Emissio for your receive code above first")
 		case c.PaidAt == 0:
-			return fail("nothing has reached your Emissio code yet; it is checked every few minutes, so submit again shortly")
+			return fail("nothing has reached your Emissio code yet; Emissio checks every few minutes")
 		}
 		if kind == "arca-swap" {
 			want, _ := strconv.ParseInt(proofTag(user.ClaimCode), 10, 64)
@@ -786,6 +786,8 @@ type arcaView struct {
 	Code      string // Emissio's receive code for this account and task
 	Sent      bool   // Emissio has paid the account (the amount is not shown)
 	SentAt    int64
+	Ready     bool   // the task's check passes now, so the submission form opens
+	Next      string // what the check still misses, when not Ready
 	Linked    bool
 	Available bool
 }
@@ -805,5 +807,12 @@ func (a *App) arcaViewFor(user *User, task *Task) *arcaView {
 	}
 	a.db.QueryRow("SELECT created_at FROM arca_sends WHERE user_id = ? AND purpose = ? ORDER BY id DESC LIMIT 1", user.ID, purpose).Scan(&v.SentAt)
 	v.Sent = v.SentAt > 0
+	if v.Linked && v.Available {
+		res := a.arcaCheck(task.CheckKind, user)
+		v.Ready = res.Verdict == vPass
+		if !v.Ready {
+			v.Next = res.Note
+		}
+	}
 	return v
 }

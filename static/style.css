@@ -183,6 +183,9 @@ form .actions { margin-top: 1.2rem; }
   transition: border-color .15s;
 }
 .panel h3 { margin-top: 0; }
+.panel.next { border-color: color-mix(in srgb, var(--gold) 55%, var(--line)); box-shadow: inset 3px 0 0 var(--gold); }
+.panel.next.done { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); box-shadow: inset 3px 0 0 var(--ok); }
+.panel.next p:last-child { margin-bottom: 0; }
 
 /* claim code + address blocks */
 .kv {
