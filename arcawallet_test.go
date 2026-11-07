@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -108,7 +109,14 @@ func TestArcaTasks(t *testing.T) {
 		t.Fatalf("wrong amount: %q", m)
 	}
 	app.db.Exec("UPDATE arca_codes SET paid_at = 0 WHERE id = ?", back.ID)
-	pay("leaf3", asset, strings.TrimLeft(strings.Replace(amountText(atoms), ".", "", 1), "0"), back)
+	// Short by more than a transfer's margins: refused.
+	pay("leaf2b", asset, strconv.FormatInt(atoms-returnShortAtoms-1, 10), back)
+	if m := submit("web-wallet-roundtrip"); !strings.Contains(m, "not what Emissio sent you") {
+		t.Fatalf("far short: %q", m)
+	}
+	app.db.Exec("UPDATE arca_codes SET paid_at = 0 WHERE id = ?", back.ID)
+	// Short by what a wallet keeps back for its transfer's fees: accepted.
+	pay("leaf3", asset, strconv.FormatInt(atoms-704, 10), back)
 	if page := get(t, client, srv.URL+"/tasks/web-wallet-roundtrip"); !strings.Contains(page, "Emissio received exactly what it paid you") || !strings.Contains(page, "Submit evidence") {
 		t.Fatal("the right return does not open the form")
 	}

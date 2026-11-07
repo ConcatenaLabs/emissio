@@ -57,6 +57,13 @@ const (
 	unblindAttempts   = 5
 	minPaymentAtoms   = 10_000_000 // 0.1 of a unit
 	paymentAtomsRange = 90_000_000 // up to 1.0
+	// returnShortAtoms is how far short of Emissio's payment a web wallet's
+	// return may fall: a transfer out of round leaves margins for its
+	// transactions' fees out of the payer's coins, so a wallet that holds
+	// only what Emissio paid can send back a little less than all of it.
+	// 0.001 of a unit is a few hundred margins, and a thousandth of the
+	// range a payment is drawn from.
+	returnShortAtoms = 100_000
 )
 
 var forbiddenWallet = regexp.MustCompile(`(?i)reserve|treasury|bridge|faucet|sbtc|service|founder|custody|pool|stake`)
