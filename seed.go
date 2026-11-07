@@ -98,11 +98,11 @@ The check is automatic: the code is yours alone, so a payment reaching it is kno
 	{
 		slug: "web-wallet-roundtrip", title: "Receive from Emissio and send back what arrived", category: "Web wallet", surface: "webwallet", check: "arca-roundtrip",
 		reward: 25, cap: 2000, needsTxid: false, sort: 7,
-		body: `Emissio pays your receive code an amount it does not tell you. Send exactly that back.
+		body: `Emissio pays your receive code an amount it does not tell you. Send it back.
 
 - In the web wallet, open Receive and copy your receive code. Paste it below and ask Emissio to pay you.
 - Watch the payment arrive: the Balance and History tabs show which asset and how much.
-- Send exactly that amount of that asset to the receive code Emissio shows below, then submit the task.
+- Send that amount of that asset to the receive code Emissio shows below, then submit the task. A transfer keeps a few atoms back for its fees, so if you hold nothing else of that asset, send the little less the wallet allows: Emissio accepts a return up to 0.001 short.
 
 The check is automatic: only a wallet that received the payment knows what to send back.`,
 	},
@@ -144,12 +144,12 @@ The check is automatic: the payment must reach your code with your proof decimal
 	{
 		slug: "web-wallet-name", title: "Get paid at your payment name", category: "Web wallet", surface: "webwallet", check: "arca-name",
 		reward: 20, cap: 1000, needsTxid: false, sort: 12,
-		body: `A payment name lets other wallets pay you at name@sequentiatestnet.com, in any amount they choose. Choose one, let Emissio pay you at it, and send back exactly what arrived.
+		body: `A payment name lets other wallets pay you at name@sequentiatestnet.com, in any amount they choose. Choose one, let Emissio pay you at it, and send back what arrived.
 
 - In the web wallet, open Receive, press Choose a name under Your payment name, and save a name.
 - Keep the web wallet open: a name is paid while its wallet is open. Type the name below and ask Emissio to pay you. Emissio does not say how much.
 - Watch the payment arrive: Balance and History show which asset and how much.
-- Send exactly that amount of that asset to the receive code Emissio shows below, then submit the task.
+- Send that amount of that asset to the receive code Emissio shows below, then submit the task. If the wallet allows a little less, send that: Emissio accepts a return up to 0.001 short.
 
 The check is automatic: only the wallet that holds the name knows what Emissio sent.`,
 	},

@@ -35,7 +35,7 @@
         <div class="panel next">
           <p><strong>Now send it back.</strong> Emissio paid your web wallet {{datetime .SentAt}} (your wallet shows your local time). In the wallet, open History, find the payment that arrived then, and send exactly what arrived, that asset and that amount, to this code:</p>
           <div class="kv u-word-break-break-all" data-emissio-code>{{.Code}}</div>
-          <p class="small muted">The amount is not shown here on purpose: only the wallet that received it knows it, and that is what the task proves.</p>
+          <p class="small muted">The amount is not shown here on purpose: only the wallet that received it knows it, and that is what the task proves. If the wallet can send only a little less than all of it, it keeps that back for its transfer's fees: send what it can, and Emissio accepts a return up to 0.001 short.</p>
           <p class="small muted">Not yet: {{.Next}}. <a href="{{base}}/tasks/{{$.Data.Task.Slug}}">Check again</a></p>
         </div>
         {{end}}

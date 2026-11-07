@@ -10,7 +10,7 @@ package main
 //     receive request of its own>, so whatever arrives at either part is
 //     known to come from that account's wallet;
 //   - Emissio pays an account's receive code an amount it does not show,
-//     and the account sends back exactly what arrived, which only a wallet
+//     and the account sends back what arrived, which only a wallet
 //     that received it can know;
 //   - Emissio pays an invoice the account's wallet made;
 //   - Emissio pays the wallet at its payment name, through the name service
@@ -465,7 +465,7 @@ func (a *App) handleArcaRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		switch task.CheckKind {
 		case "arca-roundtrip":
-			a.payCode(w, r, user, back, purpose, r.FormValue("code"), "Emissio has paid your receive code. Send back exactly what arrived, to Emissio's code below.")
+			a.payCode(w, r, user, back, purpose, r.FormValue("code"), "Emissio has paid your receive code. Send back what arrived, to Emissio's code below.")
 		case "arca-name":
 			a.payName(w, r, user, back, purpose)
 		default:
@@ -572,7 +572,7 @@ func (a *App) payName(w http.ResponseWriter, r *http.Request, user *User, back, 
 		a.redirect(w, r, back, "", err.Error())
 		return
 	}
-	a.payCode(w, r, user, back, purpose, code, "Emissio has paid you at "+name+"@"+a.cfg.LnaddrDomain+". Send back exactly what arrived, to Emissio's code below.")
+	a.payCode(w, r, user, back, purpose, code, "Emissio has paid you at "+name+"@"+a.cfg.LnaddrDomain+". Send back what arrived, to Emissio's code below.")
 }
 
 // resolveName asks the name service for the receive code of the wallet
@@ -745,8 +745,12 @@ func (a *App) arcaCheck(kind string, user *User) checkResult {
 		switch {
 		case c == nil || c.PaidAt == 0:
 			return fail("nothing has reached Emissio's code yet; Emissio checks every few minutes")
-		case c.PaidAsset != asset || c.PaidAtoms != atoms:
-			return fail("Emissio's code received %s of %s, not what Emissio sent you", amountText(c.PaidAtoms), short(c.PaidAsset))
+		case c.PaidAsset != asset || c.PaidAtoms > atoms || atoms-c.PaidAtoms > returnShortAtoms:
+			return fail("Emissio's code received %s of %s, not what Emissio sent you (a return may fall short by up to %s, what a wallet keeps back for its transfer's fees)",
+				amountText(c.PaidAtoms), short(c.PaidAsset), amountText(returnShortAtoms))
+		}
+		if c.PaidAtoms < atoms {
+			return pass("received what Emissio paid and sent %s of %s back, %s short for the transfer's fees (OK)", amountText(c.PaidAtoms), short(asset), amountText(atoms-c.PaidAtoms))
 		}
 		return pass("received what Emissio paid and sent exactly %s of %s back (OK)", amountText(atoms), short(asset))
 	case "arca-pay-btc":
