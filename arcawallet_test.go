@@ -86,16 +86,32 @@ func TestArcaTasks(t *testing.T) {
 	var asset string
 	var atoms int64
 	app.db.QueryRow("SELECT asset, atoms FROM arca_sends WHERE purpose = 'roundtrip'").Scan(&asset, &atoms)
-	if page := get(t, client, srv.URL+"/tasks/web-wallet-roundtrip"); strings.Contains(page, amountText(atoms)) || !strings.Contains(page, "Send exactly what arrived") {
+	if page := get(t, client, srv.URL+"/tasks/web-wallet-roundtrip"); strings.Contains(page, amountText(atoms)) || !strings.Contains(page, "send exactly what arrived") {
 		t.Fatal("the round trip page shows the amount, or no code to return it to")
+	}
+	page = get(t, client, srv.URL+"/tasks/web-wallet-roundtrip")
+	if !strings.Contains(page, "Now send it back") || !strings.Contains(page, "nothing has reached Emissio&#39;s code yet") {
+		t.Fatal("the round trip page does not say the return is the next step")
+	}
+	if strings.Contains(page, "Submit evidence") || !strings.Contains(page, "Send it to a reviewer") {
+		t.Fatal("the submission form is open before anything came back")
+	}
+	if !strings.Contains(page, "Ask for a new payment") || strings.Contains(page, ">Ask again<") {
+		t.Fatal("asking again is not behind its warning")
 	}
 	back := app.codeOf(1, "roundtrip")
 	pay("leaf2", asset, "1", back) // the wrong amount
+	if page := get(t, client, srv.URL+"/tasks/web-wallet-roundtrip"); !strings.Contains(page, "not what Emissio sent you") || strings.Contains(page, "Submit evidence") {
+		t.Fatal("a wrong return is not shown, or opens the form")
+	}
 	if m := submit("web-wallet-roundtrip"); !strings.Contains(m, "not what Emissio sent you") {
 		t.Fatalf("wrong amount: %q", m)
 	}
 	app.db.Exec("UPDATE arca_codes SET paid_at = 0 WHERE id = ?", back.ID)
 	pay("leaf3", asset, strings.TrimLeft(strings.Replace(amountText(atoms), ".", "", 1), "0"), back)
+	if page := get(t, client, srv.URL+"/tasks/web-wallet-roundtrip"); !strings.Contains(page, "Emissio received exactly what it paid you") || !strings.Contains(page, "Submit evidence") {
+		t.Fatal("the right return does not open the form")
+	}
 	if m := submit("web-wallet-roundtrip"); !strings.Contains(m, "Checked and credited") {
 		t.Fatalf("right amount: %q", m)
 	}
@@ -106,9 +122,15 @@ func TestArcaTasks(t *testing.T) {
 	if bc == nil || bc.Ark == "" {
 		t.Fatal("no ark address in the BTC code")
 	}
+	if page := get(t, client, srv.URL+"/tasks/web-wallet-btc"); strings.Contains(page, "Submit evidence") || !strings.Contains(page, "no BTC has reached") {
+		t.Fatal("the BTC task opens the form before any BTC arrived")
+	}
 	moves, _ := json.Marshal([]map[string]any{{"status": "successful", "received_on": []map[string]any{{"destination": map[string]string{"type": "ark", "value": bc.Ark}, "amount_sat": 1500}}}})
 	os.WriteFile(filepath.Join(dir, "ark-"+bc.Ark+".json"), moves, 0o600)
 	app.followArca()
+	if page := get(t, client, srv.URL+"/tasks/web-wallet-btc"); !strings.Contains(page, "Submit evidence") {
+		t.Fatal("the BTC task stays closed after the BTC arrived")
+	}
 	if m := submit("web-wallet-btc"); !strings.Contains(m, "Checked and credited") {
 		t.Fatalf("btc: %q", m)
 	}
@@ -197,7 +219,7 @@ func TestPaymentNameTask(t *testing.T) {
 	if atoms == 0 {
 		t.Fatal("no payment recorded")
 	}
-	if page := get(t, client, srv.URL+"/tasks/web-wallet-name"); strings.Contains(page, amountText(atoms)) || !strings.Contains(page, "Send exactly what arrived") {
+	if page := get(t, client, srv.URL+"/tasks/web-wallet-name"); strings.Contains(page, amountText(atoms)) || !strings.Contains(page, "send exactly what arrived") {
 		t.Fatal("the page shows the amount, or no code to return it to")
 	}
 	back := app.codeOf(1, "name")

@@ -21,20 +21,45 @@
     <p class="muted">First <a href="{{base}}/tasks/link-web-wallet">link your web wallet</a> to this account.</p>
   {{else}}
     {{if or (eq .Kind "arca-roundtrip") (eq .Kind "arca-invoice") (eq .Kind "arca-name")}}
-      {{if .Sent}}<p class="small">Emissio paid you {{datetime .SentAt}}.{{if ne .Kind "arca-invoice"}} Send exactly what arrived to this code:{{end}}</p>{{end}}
-      {{if and (ne .Kind "arca-invoice") .Code}}<div class="kv u-word-break-break-all" data-emissio-code>{{.Code}}</div>{{end}}
-      {{if or (not $.Data.Mine) (eq $.Data.Mine.Status "rejected")}}
-      <form class="stack wide u-margin-top-1rem" method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/wallet">
-        <input type="hidden" name="csrf" value="{{$.CSRF}}">
-        <label for="code">{{if eq .Kind "arca-invoice"}}Your receive code with an amount{{else if eq .Kind "arca-name"}}Your payment name{{else}}Your receive code{{end}}</label>
-        <input class="mono" type="text" id="code" name="code" required{{if eq .Kind "arca-name"}} placeholder="yourname@sequentiatestnet.com" autocapitalize="none"{{end}}>
-        <div class="actions"><button class="btn{{if .Sent}} ghost{{end}}" type="submit">{{if .Sent}}Ask again{{else}}Ask Emissio to pay me{{end}}</button></div>
-      </form>
+      {{if .Sent}}
+        {{if .Ready}}
+        <div class="panel next done">
+          <p><strong>Done.</strong> {{if eq .Kind "arca-invoice"}}Emissio paid your invoice.{{else}}Emissio received exactly what it paid you.{{end}} Submit the task below to claim your reward.</p>
+        </div>
+        {{else if eq .Kind "arca-invoice"}}
+        <div class="panel next">
+          <p><strong>Now keep your web wallet open.</strong> Emissio started paying your invoice {{datetime .SentAt}}; the payment completes while the wallet is open.</p>
+          <p class="small muted">Not yet: {{.Next}}. <a href="{{base}}/tasks/{{$.Data.Task.Slug}}">Check again</a></p>
+        </div>
+        {{else}}
+        <div class="panel next">
+          <p><strong>Now send it back.</strong> Emissio paid your web wallet {{datetime .SentAt}} (your wallet shows your local time). In the wallet, open History, find the payment that arrived then, and send exactly what arrived, that asset and that amount, to this code:</p>
+          <div class="kv u-word-break-break-all" data-emissio-code>{{.Code}}</div>
+          <p class="small muted">The amount is not shown here on purpose: only the wallet that received it knows it, and that is what the task proves.</p>
+          <p class="small muted">Not yet: {{.Next}}. <a href="{{base}}/tasks/{{$.Data.Task.Slug}}">Check again</a></p>
+        </div>
+        {{end}}
+        {{if and (not .Ready) (or (not $.Data.Mine) (eq $.Data.Mine.Status "rejected"))}}
+        <details>
+          <summary>{{if eq .Kind "arca-invoice"}}The payment never arrived?{{else}}Nothing arrived in your wallet?{{end}}</summary>
+          <div class="inner">
+            <p class="small">Asking again makes a new payment{{if ne .Kind "arca-invoice"}} of a different amount, and only the newest one counts: what already arrived no longer does{{end}}. Emissio pays an account at most three times per task.</p>
+            {{template "arcaask" $}}
+          </div>
+        </details>
+        {{end}}
+      {{else if or (not $.Data.Mine) (eq $.Data.Mine.Status "rejected")}}
+        {{template "arcaask" $}}
       {{end}}
     {{else}}
       {{if .Code}}
         <p class="small">Emissio's receive code for your account:</p>
         <div class="kv u-word-break-break-all" data-emissio-code>{{.Code}}</div>
+        {{if .Ready}}
+        <div class="panel next done u-margin-top-1rem"><p><strong>Done.</strong> Emissio's code received your payment. Submit the task below to claim your reward.</p></div>
+        {{else}}
+        <p class="small muted">Not yet: {{.Next}}. <a href="{{base}}/tasks/{{$.Data.Task.Slug}}">Check again</a></p>
+        {{end}}
       {{else}}
       <form method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/wallet">
         <input type="hidden" name="csrf" value="{{$.CSRF}}">
@@ -86,7 +111,7 @@
       <p><span class="pill rejected">rejected</span> {{if .Data.Mine.ReviewNote}}<span class="muted">{{.Data.Mine.ReviewNote}}</span>{{end}}</p>
       <p class="muted small">You can submit again with corrected evidence.</p>
       {{if eq .Data.Task.CheckKind "wallet-link"}}{{template "connectwallet" .}}{{end}}
-      {{template "taskform" .}}
+      {{template "gatedform" .}}
     {{else}}
       <p><span class="pill {{.Data.Mine.Status}}">{{.Data.Mine.Status}}</span>
       {{if .Data.Mine.Txid}}<span class="mono small muted"> txid {{short .Data.Mine.Txid}}</span>{{end}}</p>
@@ -98,10 +123,11 @@
     <p class="muted">All {{seq .Data.Task.Cap}} rewards for this task have been claimed. The task stays open for practice, but no further rewards are paid.</p>
   {{else}}
     {{if eq .Data.Task.CheckKind "wallet-link"}}{{template "connectwallet" .}}{{end}}
-    {{template "taskform" .}}
+    {{template "gatedform" .}}
   {{end}}
 </div>
 {{if and .User (eq .Data.Task.CheckKind "wallet-link")}}<script type="module" src="{{base}}/static/connect-wallet.js"></script>{{end}}
+{{if .Data.Wallet}}<script type="module" src="{{base}}/static/copy-code.js"></script>{{end}}
 {{end}}
 
 {{define "connectwallet"}}
@@ -131,4 +157,36 @@
   {{end}}
   <div class="actions"><button class="btn" type="submit">Submit evidence</button></div>
 </form>
+{{end}}
+
+{{define "arcaask"}}
+{{with .Data.Wallet}}
+<form class="stack wide u-margin-top-1rem" method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/wallet">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <label for="code">{{if eq .Kind "arca-invoice"}}Your receive code with an amount{{else if eq .Kind "arca-name"}}Your payment name{{else}}Your receive code{{end}}</label>
+  <input class="mono" type="text" id="code" name="code" required{{if eq .Kind "arca-name"}} placeholder="yourname@sequentiatestnet.com" autocapitalize="none"{{end}}>
+  <div class="actions"><button class="btn{{if .Sent}} ghost{{end}}" type="submit">{{if .Sent}}Ask for a new payment{{else}}Ask Emissio to pay me{{end}}</button></div>
+</form>
+{{end}}
+{{end}}
+
+{{define "gatedform"}}
+{{$w := .Data.Wallet}}
+{{if and $w $w.Available (not $w.Ready)}}
+<p class="muted">The task can be submitted once Emissio sees the step above done. Not yet: {{if $w.Linked}}{{$w.Next}}{{else}}link your web wallet first{{end}}.</p>
+<details>
+  <summary>Sure you did it, and Emissio still does not see it after fifteen minutes?</summary>
+  <div class="inner">
+    <form class="stack wide" method="post" action="{{base}}/tasks/{{.Data.Task.Slug}}/submit">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="review" value="1">
+      <label for="notes">What you did</label>
+      <textarea id="notes" name="notes" required placeholder="What you sent, when, and from which wallet."></textarea>
+      <div class="actions"><button class="btn ghost" type="submit">Send it to a reviewer</button></div>
+    </form>
+  </div>
+</details>
+{{else}}
+{{template "taskform" .}}
+{{end}}
 {{end}}
