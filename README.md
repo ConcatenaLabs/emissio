@@ -78,7 +78,7 @@ The web wallet's tasks are worded as its default mode speaks: receive codes, Sen
   - **Pay Emissio**: anything reaching the account's code.
   - **Receive and send back**: Emissio pays the account's receive code a random fraction of a random asset it holds, and never shows the amount; the account sends what arrived to Emissio's code. The return may fall up to 0.001 of a unit short (`returnShortAtoms`): a transfer out of round leaves margins for its transactions' fees out of the payer's own coins, so a wallet that holds only what Emissio paid can send back a little less than all of it.
   - **Pay in BTC**: BTC reaching the code's Bitcoin ark address.
-  - **An invoice**: Emissio pays an invoice the account's wallet made (a receive code with an amount carries one), of at most 10,000 sats.
+  - **An invoice**: Emissio pays an invoice the account's wallet made (a receive code with an amount carries one), in BTC or in a Sequentia asset Emissio holds (`invoicelimit.go`). A BTC invoice may ask up to 10,000 sats; one in a Sequentia asset up to about $10 of it at the price feed's price, rounded down to a round amount of the asset (10 USDX, 5 EURX, 0.002 GOLD), so the limit reads as an amount a person would type. An asset the registry does not name or the feed does not price is not paid. The task page lists the limit in every asset, and a refusal names it.
   - **A swap**: a payment to the account's code ending in its proof decimals, in an asset other than tSEQ.
   - **A payment name**: the account gives the payment name its web wallet chose (`name@sequentiatestnet.com`). Emissio asks the name service (`EMISSIO_LNADDR`, the LSP's `/lnaddr`) for that name's receive code, which the service has only while the wallet is open (`fresh`), and pays it as in the round trip; the account sends what arrived to Emissio's code. The return may fall up to 0.001 of a unit short (`returnShortAtoms`): a transfer out of round leaves margins for its transactions' fees out of the payer's own coins, so a wallet that holds only what Emissio paid can send back a little less than all of it. Only the wallet holding the name knows the amount, so a name another person holds earns nothing.
 
@@ -329,6 +329,8 @@ All configuration is environment variables (`loadConfig` in `main.go`):
 | `EMISSIO_CONNECTORS` | `webwallet` | The wallets the link task offers to connect, in order, comma-separated: `webwallet` (the web wallet in another tab of this origin), `extension` (the browser extension), `phone` (a wallet on a phone, paired by a code), `local` (Sequentia Core through the `sequentia-connect` daemon). The page's content security policy lets it reach the pairing relays and the daemon's loopback port only while `phone` and `local` are offered |
 | `EMISSIO_LNADDR` | empty | The payment-name service the payment-name task resolves names at, the LSP's base URL (for example `https://sequentiatestnet.com/lsp`); empty turns that task off |
 | `EMISSIO_LNADDR_DOMAIN` | `sequentiatestnet.com` | The domain of the payment names Emissio pays |
+| `EMISSIO_PRICES` | `https://sequentiatestnet.com/prices` | The price feed (USD per unit, by ticker) that sets the invoice limit in a Sequentia asset; empty: BTC invoices only |
+| `EMISSIO_REGISTRY` | `https://sequentiatestnet.com/registry` | The asset registry that names an asset's ticker and precision, read as `<url>/<asset id>`; empty: BTC invoices only |
 | `EMISSIO_ARCA`, `EMISSIO_ARCA_DATADIR` | empty | The `arca` command line and Emissio's wallet directory for the web wallet tasks (empty turns the counterparty ones off). The wallet is made with `arca create` against the testnet's operator and funded by boarding, as the faucet's leaf wallet is; keep it free of channels, so payments to its receive requests arrive as coins it can attribute |
 | `EMISSIO_WALLET` | empty | Name of Emissio's own wallet on that node, which pays the counterparty tasks (empty turns them off) |
 | `EMISSIO_WALLET_ASSETS` | empty | Comma-separated asset ids the wallet may pay in; empty: any it holds |
@@ -382,6 +384,7 @@ Keep real secrets (such as the bot token) out of the repo and out of every unit 
 | `signals.go` | Addresses each account's evidence touched, for the admin's clustering signals |
 | `walletlink.go` | Linking a wallet by a signed message: key recovery, its addresses |
 | `arcawallet.go` | Emissio's arca wallet: receive codes, paying codes and invoices, the follower, the web wallet checks |
+| `invoicelimit.go` | The most Emissio pays one invoice in each asset, and the asset an invoice is paid in |
 | `receivecode.go` | Reads a wallet's receive code: its parts, its address, its short Sequentia request expanded |
 | `desk.go` | The admin desk: the queue, account search and pages, signals, holds, revocations, exports, registration limits |
 | `bugs.go` | Bug reports: the form, screenshots, the wallet intake, the admin review |

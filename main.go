@@ -64,6 +64,10 @@ type Config struct {
 	WalletURL    string
 	LnaddrURL    string
 	LnaddrDomain string
+	// The price feed and asset registry that value an invoice in a Sequentia
+	// asset (invoicelimit.go). Without both, Emissio pays BTC invoices only.
+	PricesURL   string
+	RegistryURL string
 	// The wallets the link task offers to connect (connect.go), in order.
 	Connectors []string
 
@@ -124,6 +128,8 @@ func loadConfig() Config {
 		WalletURL:     envOr("EMISSIO_WALLET_URL", "https://sequentiatestnet.com/wallet/"),
 		LnaddrURL:     strings.TrimRight(envOr("EMISSIO_LNADDR", ""), "/"),
 		LnaddrDomain:  strings.ToLower(envOr("EMISSIO_LNADDR_DOMAIN", "sequentiatestnet.com")),
+		PricesURL:     envOr("EMISSIO_PRICES", "https://sequentiatestnet.com/prices"),
+		RegistryURL:   strings.TrimRight(envOr("EMISSIO_REGISTRY", "https://sequentiatestnet.com/registry"), "/"),
 		Connectors:    parseConnectors(envOr("EMISSIO_CONNECTORS", "webwallet")),
 		WalletAssets:  strings.Split(envOr("EMISSIO_WALLET_ASSETS", ""), ","),
 		SMTPHost:      envOr("EMISSIO_SMTP_HOST", ""),
@@ -179,6 +185,8 @@ type App struct {
 	mailIPLimit     *slidingLimiter
 	faucetAddr      map[string]bool
 	arcaMu          sync.Mutex // one arca call at a time
+	capsMu          sync.Mutex // guards caps
+	caps            invoiceCaps
 }
 
 func NewApp(cfg Config, db *sql.DB) *App {

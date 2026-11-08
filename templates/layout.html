@@ -32,7 +32,7 @@
   </div>
 </header>
 {{if .Flash}}<div class="wrap"><div class="flash">{{.Flash}}</div></div>{{end}}
-{{if .Error}}<div class="wrap"><div class="flash err">{{.Error}}</div></div>{{end}}
+{{if .Error}}<div class="wrap"><div class="flash err" data-error>{{.Error}}</div></div><script type="module" src="{{base}}/static/error-dialog.js"></script>{{end}}
 <main>
   <div class="wrap">
     {{template "content" .}}

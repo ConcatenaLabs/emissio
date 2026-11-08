@@ -123,7 +123,7 @@ The check is automatic: the BTC part of the code is your account's alone.`,
 		reward: 20, cap: 1000, needsTxid: false, sort: 9,
 		body: `A receive code with an amount also carries an invoice, which wallets on the Bitcoin network can pay too. Let Emissio pay yours.
 
-- In the web wallet, open Receive, type an amount in BTC of at most 0.0001 (10,000 sats), and copy the code.
+- In the web wallet, open Receive, choose BTC or an asset, type an amount up to the most Emissio pays in it (shown below), and copy the code.
 - Paste it below and ask Emissio to pay. Keep the web wallet open while it pays.
 - Submit the task once Emissio says it has paid.
 

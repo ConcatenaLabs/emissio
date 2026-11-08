@@ -164,6 +164,7 @@
 <form class="stack wide u-margin-top-1rem" method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/wallet">
   <input type="hidden" name="csrf" value="{{$.CSRF}}">
   <label for="code">{{if eq .Kind "arca-invoice"}}Your receive code with an amount{{else if eq .Kind "arca-name"}}Your payment name{{else}}Your receive code{{end}}</label>
+  {{if .Caps}}<p class="small muted">Emissio pays an invoice of up to {{.Caps}}.</p>{{end}}
   <input class="mono" type="text" id="code" name="code" required{{if eq .Kind "arca-name"}} placeholder="yourname@sequentiatestnet.com" autocapitalize="none"{{end}}>
   <div class="actions"><button class="btn{{if .Sent}} ghost{{end}}" type="submit">{{if .Sent}}Ask for a new payment{{else}}Ask Emissio to pay me{{end}}</button></div>
 </form>
