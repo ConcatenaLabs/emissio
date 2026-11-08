@@ -102,7 +102,7 @@ The check is automatic: the code is yours alone, so a payment reaching it is kno
 
 - In the web wallet, open Receive and copy your receive code. Paste it below and ask Emissio to pay you.
 - Watch the payment arrive: the Balance and History tabs show which asset and how much.
-- Send that amount of that asset to the receive code Emissio shows below, then submit the task. A transfer keeps a few atoms back for its fees, so if you hold nothing else of that asset, send the little less the wallet allows: Emissio accepts a return up to 0.001 short.
+- Send that amount of that asset back to the receive code Emissio shows below, then submit the task. Every payment has a small fee, which comes out of what you hold: if the wallet says you can send a little less than what arrived, or Max fills in a little less, send that. Emissio accepts it.
 
 The check is automatic: only a wallet that received the payment knows what to send back.`,
 	},
@@ -149,7 +149,7 @@ The check is automatic: the payment must reach your code with your proof decimal
 - In the web wallet, open Receive, press Choose a name under Your payment name, and save a name.
 - Keep the web wallet open: a name is paid while its wallet is open. Type the name below and ask Emissio to pay you. Emissio does not say how much.
 - Watch the payment arrive: Balance and History show which asset and how much.
-- Send that amount of that asset to the receive code Emissio shows below, then submit the task. If the wallet allows a little less, send that: Emissio accepts a return up to 0.001 short.
+- Send that amount of that asset back to the receive code Emissio shows below, then submit the task. Every payment has a small fee, which comes out of what you hold: if the wallet says you can send a little less than what arrived, or Max fills in a little less, send that. Emissio accepts it.
 
 The check is automatic: only the wallet that holds the name knows what Emissio sent.`,
 	},
