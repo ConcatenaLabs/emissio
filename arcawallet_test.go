@@ -87,7 +87,7 @@ func TestArcaTasks(t *testing.T) {
 	var asset string
 	var atoms int64
 	app.db.QueryRow("SELECT asset, atoms FROM arca_sends WHERE purpose = 'roundtrip'").Scan(&asset, &atoms)
-	if page := get(t, client, srv.URL+"/tasks/web-wallet-roundtrip"); strings.Contains(page, amountText(atoms)) || !strings.Contains(page, "send exactly what arrived") {
+	if page := get(t, client, srv.URL+"/tasks/web-wallet-roundtrip"); strings.Contains(page, amountText(atoms)) || !strings.Contains(page, "send back what arrived") {
 		t.Fatal("the round trip page shows the amount, or no code to return it to")
 	}
 	page = get(t, client, srv.URL+"/tasks/web-wallet-roundtrip")
@@ -117,7 +117,7 @@ func TestArcaTasks(t *testing.T) {
 	app.db.Exec("UPDATE arca_codes SET paid_at = 0 WHERE id = ?", back.ID)
 	// Short by what a wallet keeps back for its transfer's fees: accepted.
 	pay("leaf3", asset, strconv.FormatInt(atoms-704, 10), back)
-	if page := get(t, client, srv.URL+"/tasks/web-wallet-roundtrip"); !strings.Contains(page, "Emissio received exactly what it paid you") || !strings.Contains(page, "Submit evidence") {
+	if page := get(t, client, srv.URL+"/tasks/web-wallet-roundtrip"); !strings.Contains(page, "Emissio got back what it paid you") || !strings.Contains(page, "Submit evidence") {
 		t.Fatal("the right return does not open the form")
 	}
 	if m := submit("web-wallet-roundtrip"); !strings.Contains(m, "Checked and credited") {
@@ -227,7 +227,7 @@ func TestPaymentNameTask(t *testing.T) {
 	if atoms == 0 {
 		t.Fatal("no payment recorded")
 	}
-	if page := get(t, client, srv.URL+"/tasks/web-wallet-name"); strings.Contains(page, amountText(atoms)) || !strings.Contains(page, "send exactly what arrived") {
+	if page := get(t, client, srv.URL+"/tasks/web-wallet-name"); strings.Contains(page, amountText(atoms)) || !strings.Contains(page, "send back what arrived") {
 		t.Fatal("the page shows the amount, or no code to return it to")
 	}
 	back := app.codeOf(1, "name")
