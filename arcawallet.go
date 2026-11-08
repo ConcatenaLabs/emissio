@@ -548,6 +548,18 @@ func (a *App) payCode(w http.ResponseWriter, r *http.Request, user *User, back, 
 	a.redirect(w, r, back, done, "")
 }
 
+// addressLike is whether text looks like a bare address of either chain,
+// transparent or confidential, rather than a receive code or an invoice.
+func addressLike(text string) bool {
+	t := strings.ToLower(text)
+	for _, p := range []string{"tb1", "bc1", "bcrt1", "tsqb1", "sqb1", "tex1", "lq1", "el1"} {
+		if strings.HasPrefix(t, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // nameRe is what a payment name may be (the web wallet's lnaddr.js).
 var nameRe = regexp.MustCompile(`^[a-z0-9_-]{3,32}$`)
 
@@ -618,8 +630,16 @@ func (a *App) resolveName(name string) (string, error) {
 // Sequentia asset, up to a small amount (invoicelimit.go).
 func (a *App) payInvoice(w http.ResponseWriter, r *http.Request, user *User, back, purpose string) {
 	inv := strings.TrimSpace(r.FormValue("code"))
-	if _, _, _, li := codeParts(inv); li != "" {
+	_, _, _, li := codeParts(inv)
+	switch {
+	case li != "":
 		inv = li
+	case strings.HasPrefix(strings.ToLower(inv), "bitcoin:"):
+		a.redirect(w, r, back, "", "That receive code carries no invoice yet. In the web wallet, after you type the amount, wait a few seconds for the code to be drawn again with its invoice (it then holds LIGHTNING=), and copy it then. If it never gets one, try a smaller amount or another asset.")
+		return
+	case addressLike(inv):
+		a.redirect(w, r, back, "", "That is an address, not a receive code with an amount. This task pays an invoice, which an address, transparent or confidential, does not carry: in the web wallet, open Receive, type an amount, and copy the whole code.")
+		return
 	}
 	amt, err := invoiceAmount(inv)
 	if err != nil {

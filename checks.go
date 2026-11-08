@@ -93,6 +93,17 @@ func knownCheck(k string) bool {
 }
 
 // evidenceCheck runs the task's check on a submission.
+// needsNotes is whether a task's evidence is read from the notes: by its
+// check, or by the reviewer of a task with no check. Elsewhere the notes are
+// optional, and the form says so.
+func needsNotes(kind string) bool {
+	switch kind {
+	case "", "none", "install-release", "emissio-unblind", "wallet-link", "anchor-lookup", "bridge-in", "bridge-both":
+		return true
+	}
+	return false
+}
+
 func (a *App) evidenceCheck(kind, txid, notes string, user *User) checkResult {
 	switch kind {
 	case "none", "":

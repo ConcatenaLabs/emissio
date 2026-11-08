@@ -68,14 +68,28 @@ main { padding: 2.6rem 0 4rem; }
   max-width: 62rem; font-size: .95rem;
 }
 .flash.err { border-left-color: var(--bad); }
-.error-dialog {
+.message-dialog {
   margin: auto; max-width: min(32rem, calc(100vw - 2rem));
-  border: 1px solid var(--line); border-left: 3px solid var(--bad); border-radius: 10px;
+  border: 1px solid var(--line); border-left: 3px solid var(--ok); border-radius: 10px;
   background: var(--surface); color: var(--text); padding: 1.2rem 1.3rem 1rem;
 }
-.error-dialog::backdrop { background: rgba(0, 0, 0, .6); }
-.error-dialog p { margin: 0 0 1rem; }
-.error-dialog form { display: flex; justify-content: flex-end; }
+.message-dialog.err { border-left-color: var(--bad); }
+.message-dialog::backdrop { background: rgba(0, 0, 0, .6); }
+.message-dialog p { margin: 0 0 1rem; }
+.message-dialog form { display: flex; justify-content: flex-end; }
+
+/* the way back from a task, and the task list's rows */
+.back { margin: 0 0 1rem; font-size: .9rem; }
+.back a { color: var(--muted); text-decoration: none; }
+.back a:hover { color: var(--gold); }
+.task-row { align-items: center; gap: .6rem; }
+.task-row .pill { white-space: nowrap; }
+.task-row.done .label a { color: var(--muted); }
+@media (max-width: 560px) {
+  .task-row { flex-wrap: wrap; }
+  .task-row .label { flex-basis: 100%; }
+  .task-row .leader { display: none; }
+}
 
 /* type */
 h1 { font-size: 1.9rem; font-weight: 700; line-height: 1.18; letter-spacing: -.01em; color: #fff; }

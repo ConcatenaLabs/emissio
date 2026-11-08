@@ -215,6 +215,8 @@ func parseTemplates(cfg Config) map[string]*template.Template {
 		"base":        func() string { return cfg.BasePath },
 		"connectors":  func() string { return strings.Join(cfg.Connectors, ",") },
 		"seq":         formatSEQ,
+		"credited":    func(m string) bool { return strings.HasPrefix(m, "Checked and credited") },
+		"needsnotes":  needsNotes,
 		"usd":         formatUSD,
 		"launchprice": func() string { return strconv.FormatFloat(launchPriceUSD, 'f', -1, 64) },
 		"date": func(ts int64) string {
