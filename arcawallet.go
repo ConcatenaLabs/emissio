@@ -245,6 +245,7 @@ func (a *App) followArca() time.Duration {
 		a.attribute(c.LeafID, c.Asset, c.Value)
 	}
 	a.followArk()
+	a.followInvoices()
 	if s.Schedule.NextSyncAt != nil {
 		if d := time.Duration(*s.Schedule.NextSyncAt-s.Schedule.Now) * time.Second; d > wait {
 			wait = d
@@ -347,6 +348,45 @@ func (a *App) followArk() {
 		}
 		if sats > 0 {
 			a.db.Exec("UPDATE arca_codes SET btc_sats = ? WHERE id = ?", sats, o.id)
+		}
+	}
+}
+
+// followInvoices brings the state of each invoice payment in a Sequentia
+// asset still under way up to date: the wallet's own record of it, which
+// `sync` moves on. A payment the receiving wallet has not taken yet answers
+// `paying` when it is made, and the invoice task's check reads the state
+// recorded here.
+func (a *App) followInvoices() {
+	rows, err := a.db.Query(`SELECT id, ref FROM arca_sends WHERE purpose = 'invoice' AND asset != 'btc' AND ref != ''
+		AND state NOT IN ('paid', 'returned', 'failed') AND created_at > ?`, now()-7*24*3600)
+	if err != nil {
+		return
+	}
+	type open struct {
+		id   int64
+		hash string
+	}
+	var opens []open
+	for rows.Next() {
+		var o open
+		rows.Scan(&o.id, &o.hash)
+		opens = append(opens, o)
+	}
+	rows.Close()
+	if len(opens) == 0 {
+		return
+	}
+	var pays map[string]struct {
+		State string `json:"state"`
+	}
+	if err := a.arca(time.Minute, &pays, "lightning", "payments"); err != nil {
+		log.Printf("arca: lightning payments: %v", err)
+		return
+	}
+	for _, o := range opens {
+		if p, ok := pays[o.hash]; ok && p.State != "" {
+			a.db.Exec("UPDATE arca_sends SET state = ? WHERE id = ?", p.State, o.id)
 		}
 	}
 }
@@ -657,23 +697,32 @@ func (a *App) payInvoice(w http.ResponseWriter, r *http.Request, user *User, bac
 	}
 	var out struct {
 		Payment *struct {
-			State    string `json:"state"`
-			Preimage string `json:"preimage"`
+			State       string `json:"state"`
+			Preimage    string `json:"preimage"`
+			PaymentHash string `json:"payment_hash"`
 		} `json:"payment"`
+		Paying struct {
+			PaymentHash string `json:"payment_hash"`
+		} `json:"paying"`
 	}
 	if err := a.arca(3*time.Minute, &out, "lightning", "pay", inv); err != nil {
 		log.Printf("arca: invoice for user %d: %v", user.ID, err)
 		a.redirect(w, r, back, "", "Emissio could not pay that invoice: "+err.Error())
 		return
 	}
-	state := "unknown"
+	state, hash := "unknown", out.Paying.PaymentHash
 	if out.Payment != nil {
 		state = out.Payment.State
+		if hash == "" {
+			hash = out.Payment.PaymentHash
+		}
 	}
-	a.db.Exec("INSERT INTO arca_sends (user_id, purpose, target, asset, atoms, state, ip, created_at) VALUES (?,?,?,?,?,?,?,?)",
-		user.ID, purpose, inv, asset, amt, state, clientIP(r), now())
+	// The payment hash is the ref the follower reads a payment still under
+	// way by (followInvoices).
+	a.db.Exec("INSERT INTO arca_sends (user_id, purpose, target, asset, atoms, state, ref, ip, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+		user.ID, purpose, inv, asset, amt, state, hash, clientIP(r), now())
 	if state != "paid" {
-		a.redirect(w, r, back, "", "Emissio's payment is under way ("+state+"). Keep your wallet open, then submit.")
+		a.redirect(w, r, back, "Emissio's payment is on its way. Keep your web wallet open: it completes when the wallet takes it, and Emissio sees that within a few minutes. Then submit the task.", "")
 		return
 	}
 	a.redirect(w, r, back, "Emissio paid your invoice. Submit the task.", "")

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -113,5 +115,50 @@ func TestInvoiceRefusal(t *testing.T) {
 	}
 	if got := capsText(app.shownCaps()); got != "0.0001 BTC (10,000 sats), 10 USDX" {
 		t.Fatalf("shown: %s", got)
+	}
+}
+
+// An invoice in a Sequentia asset: Emissio pays it, the receiving wallet
+// takes it later, and the follower brings the payment's state up to date,
+// which opens the task.
+func TestInvoicePaidLater(t *testing.T) {
+	app, srv, client := newTestServer(t)
+	dir := t.TempDir()
+	bin, _ := filepath.Abs("testdata/fake-arca.py")
+	app.cfg.ArcaBin, app.cfg.ArcaDatadir = bin, dir
+	gold := strings.Repeat("ab", 32) // the asset the stand-in arca holds
+	feeds := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/prices":
+			json.NewEncoder(w).Encode(map[string]any{"GOLD": map[string]any{"price": 4074.9}})
+		case "/registry/" + gold:
+			json.NewEncoder(w).Encode(map[string]any{"contract": map[string]any{"ticker": "GOLD", "precision": 8}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer feeds.Close()
+	app.cfg.PricesURL, app.cfg.RegistryURL = feeds.URL+"/prices", feeds.URL+"/registry"
+	register(t, client, srv.URL, "gold@x.io")
+	app.db.Exec("INSERT INTO wallet_links (user_id, address, pubkey, created_at) VALUES (1, 'tb1qlinked', '02ab', 0)")
+	csrf := csrfOf(t, client, srv.URL+"/account")
+	post := func(path string, v url.Values) string {
+		v.Set("csrf", csrf)
+		return from(t, client, "10.9.9.8", srv.URL+path, v)
+	}
+	if m := post("/tasks/web-wallet-invoice/wallet", url.Values{"code": {"bitcoin:tb1qx?lightning=" + seqInvoice("3m", gold)}}); !strings.Contains(m, "in GOLD of up to 0.002 GOLD") {
+		t.Fatalf("0.003 GOLD: %q", m)
+	}
+	if m := post("/tasks/web-wallet-invoice/wallet", url.Values{"code": {"bitcoin:tb1qx?lightning=" + seqInvoice("1m", gold)}}); !strings.Contains(m, "on its way") {
+		t.Fatalf("0.001 GOLD: %q", m)
+	}
+	if m := post("/tasks/web-wallet-invoice/submit", url.Values{}); !strings.Contains(m, "is paying, not paid") {
+		t.Fatalf("submit while paying: %q", m)
+	}
+	b, _ := json.Marshal(map[string]any{strings.Repeat("ef", 32): map[string]string{"state": "paid"}})
+	os.WriteFile(filepath.Join(dir, "payments.json"), b, 0o600)
+	app.followArca()
+	if m := post("/tasks/web-wallet-invoice/submit", url.Values{}); !strings.Contains(m, "Checked and credited") {
+		t.Fatalf("submit once paid: %q", m)
 	}
 }
