@@ -68,6 +68,7 @@ main { padding: 2.6rem 0 4rem; }
   max-width: 62rem; font-size: .95rem;
 }
 .flash.err { border-left-color: var(--bad); }
+.flash { overflow-wrap: anywhere; }
 .message-dialog {
   margin: auto; max-width: min(32rem, calc(100vw - 2rem));
   border: 1px solid var(--line); border-left: 3px solid var(--ok); border-radius: 10px;
@@ -75,7 +76,7 @@ main { padding: 2.6rem 0 4rem; }
 }
 .message-dialog.err { border-left-color: var(--bad); }
 .message-dialog::backdrop { background: rgba(0, 0, 0, .6); }
-.message-dialog p { margin: 0 0 1rem; }
+.message-dialog p { margin: 0 0 1rem; overflow-wrap: anywhere; }
 .message-dialog form { display: flex; justify-content: flex-end; }
 
 /* the way back from a task, and the task list's rows */

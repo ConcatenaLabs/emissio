@@ -152,6 +152,9 @@ func TestInvoicePaidLater(t *testing.T) {
 	if m := post("/tasks/web-wallet-invoice/wallet", url.Values{"code": {"bitcoin:tb1qx?lightning=" + seqInvoice("1m", gold)}}); !strings.Contains(m, "on its way") {
 		t.Fatalf("0.001 GOLD: %q", m)
 	}
+	if m := post("/tasks/web-wallet-invoice/wallet", url.Values{"code": {"bitcoin:tb1qx?lightning=" + seqInvoice("1m", gold)}}); !strings.Contains(m, "already paying that invoice") || strings.Contains(m, "{") {
+		t.Fatalf("the same invoice again: %q", m)
+	}
 	if m := post("/tasks/web-wallet-invoice/submit", url.Values{}); !strings.Contains(m, "is paying, not paid") {
 		t.Fatalf("submit while paying: %q", m)
 	}
