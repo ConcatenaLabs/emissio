@@ -588,6 +588,15 @@ func (a *App) payCode(w http.ResponseWriter, r *http.Request, user *User, back, 
 	a.redirect(w, r, back, done, "")
 }
 
+// wordsOnly is a wallet's refusal without the record it may carry after
+// its sentence (`...: {"amount":...}`), which says nothing to a person.
+func wordsOnly(msg string) string {
+	if i := strings.Index(msg, ": {"); i > 0 {
+		return msg[:i] + "."
+	}
+	return msg
+}
+
 // addressLike is whether text looks like a bare address of either chain,
 // transparent or confidential, rather than a receive code or an invoice.
 func addressLike(text string) bool {
@@ -707,7 +716,11 @@ func (a *App) payInvoice(w http.ResponseWriter, r *http.Request, user *User, bac
 	}
 	if err := a.arca(3*time.Minute, &out, "lightning", "pay", inv); err != nil {
 		log.Printf("arca: invoice for user %d: %v", user.ID, err)
-		a.redirect(w, r, back, "", "Emissio could not pay that invoice: "+err.Error())
+		if strings.Contains(err.Error(), "is paying this invoice already") {
+			a.redirect(w, r, back, "", "Emissio is already paying that invoice, or has paid it: asking again pays nothing more. Keep your web wallet open, its tab in front or behind, and the payment completes there. To be paid again, make a new receive code.")
+			return
+		}
+		a.redirect(w, r, back, "", "Emissio could not pay that invoice: "+wordsOnly(err.Error()))
 		return
 	}
 	state, hash := "unknown", out.Paying.PaymentHash

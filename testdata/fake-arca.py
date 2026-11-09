@@ -28,7 +28,10 @@ if args[0] == "sync":
     if os.path.exists(path("mailbox.json")): os.remove(path("mailbox.json"))
     out({"mailbox": {"accepted": mb}, "schedule": {"now": 100, "next_sync_at": 160}})
 if args[0] == "record": out({"leaf_id": args[1], "record": load("rec-" + args[1] + ".json", "00")})
+if args[0] == "lightning" and args[1] == "pay" and args[2] in load("paid-invoices.json", []):
+    print(json.dumps({"error": {"kind": "refused", "message": "refused: the wallet is paying this invoice already, or paid it: {\"amount\":\"1\"}"}})); sys.exit(1)
 if args[0] == "lightning" and args[1] == "pay" and args[2].startswith("lntsqt"):
+    json.dump(load("paid-invoices.json", []) + [args[2]], open(path("paid-invoices.json"), "w"))
     out({"paying": {"payment_hash": "ef" * 32}, "payment": {"state": "paying", "payment_hash": "ef" * 32}})
 if args[0] == "lightning" and args[1] == "pay": out({"side": "bitcoin", "invoice": args[2], "payment": {"state": "paid", "preimage": "cd" * 32}})
 if args[0] == "lightning" and args[1] == "payments": out(load("payments.json", {}))
