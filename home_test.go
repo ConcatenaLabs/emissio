@@ -59,4 +59,25 @@ func TestFrontPage(t *testing.T) {
 	if !strings.Contains(page, `<span class="figure">10</span> SEQ earned`) || !strings.Contains(page, "1 of ") || !strings.Contains(page, "Next: <a href=\"/tasks/web-wallet-pay\">") || !strings.Contains(page, "tasks, 0 done") || !strings.Contains(page, `<span class="tile-state ok">Done</span>`) {
 		t.Fatalf("signed in after a task:\n%s", page)
 	}
+	// The task list shows the same progress: what each task credited, the
+	// next one to do, and a way into every task still open.
+	tasks = get(t, client, srv.URL+"/tasks")
+	for _, want := range []string{"<strong>10 SEQ</strong> earned from tasks", "1 of ", `href="/tasks/web-wallet-pay">Do the next task`,
+		`<span class="pill approved">Done</span>`, "+10 <small>SEQ</small>", `<a class="btn small" href="/tasks/web-wallet-pay">Start</a>`} {
+		if !strings.Contains(tasks, want) {
+			t.Errorf("task list signed in: no %q", want)
+		}
+	}
+	if strings.Contains(tasks, `<a class="btn small" href="/tasks/link-web-wallet">Start</a>`) {
+		t.Error("task list: a done task offers to start it")
+	}
+	// A task page leads back to the list, and says which notes are optional.
+	tp := get(t, client, srv.URL+"/tasks/web-wallet-pay")
+	if !strings.Contains(tp, `href="/tasks#s-webwallet">&larr; All tasks</a>`) {
+		t.Error("the task page has no way back to the list")
+	}
+	tp = get(t, client, srv.URL+"/tasks/first-transaction")
+	if !strings.Contains(tp, `Notes <span class="muted">(optional)</span>`) {
+		t.Error("the notes of a task whose check does not read them are not marked optional")
+	}
 }

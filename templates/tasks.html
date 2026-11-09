@@ -1,17 +1,38 @@
 {{define "content"}}
+{{$d := .Data}}
 <div class="eyebrow">Testnet tasks</div>
 <h1>Earn by using the testnet</h1>
 <p class="lede muted">Each task pays once per account. Most are checked automatically against the chain and the services themselves, and credited the moment your evidence passes; the rest go to a reviewer. Tasks with a cap pay the first accounts whose evidence is approved. Found something broken on the way? <a href="{{base}}/bugs">Report it</a>: bug reports are rewarded too.</p>
-{{range .Data}}
+{{if $d.Signed}}
+<div class="panel next{{if not $d.Next}} done{{end}} u-margin-top-1-4rem">
+  <p><strong>{{seq $d.TasksEarned}} SEQ</strong> earned from tasks · {{$d.Done}} of {{$d.Total}} done</p>
+  {{with $d.Next}}
+  <p>Next: <a href="{{base}}/tasks/{{.Task.Slug}}">{{.Task.Title}}</a>, <span class="gold">{{seq .Task.Reward}} SEQ</span>{{if eq .Status "rejected"}}<span class="small muted"> (submit it again)</span>{{end}}</p>
+  <p class="step-action"><a class="btn" href="{{base}}/tasks/{{.Task.Slug}}">Do the next task</a></p>
+  {{else}}
+  <p>Every task is done or waiting for review. Bug reports and competitions still pay.</p>
+  {{end}}
+</div>
+{{else}}
+<p class="step-action"><a class="btn" href="{{base}}/register">Create your account</a> <a class="btn ghost" href="{{base}}/login">Sign in</a></p>
+{{end}}
+{{range $d.Groups}}
 <div class="section" id="s-{{.Key}}">
   <h2>{{.Name}}</h2>
   <div class="ledger">
-    {{range .Tasks}}
-    <div class="ledger-row">
+    {{range .Tasks}}{{$st := ""}}{{if $d.Signed}}{{$st = index $d.Status .ID}}{{end}}
+    <div class="ledger-row task-row{{if eq $st "approved"}} done{{end}}">
       <span class="label"><a href="{{base}}/tasks/{{.Slug}}">{{.Title}}</a>
         <span class="sub">{{.Category}}{{if .Cap}} · {{seq .Awarded}} of {{seq .Cap}} rewards claimed{{end}}</span></span>
       <span class="leader"></span>
+      {{if eq $st "approved"}}
+      <span class="pill approved">Done</span>
+      <span class="amount">+{{seq (index $d.Earned .ID)}} <small>SEQ</small></span>
+      {{else}}
+      {{if eq $st "pending"}}<span class="pill pending">Waiting for review</span>{{else if eq $st "rejected"}}<span class="pill rejected">Try again</span>{{end}}
       <span class="amount">{{seq .Reward}} <small>SEQ</small></span>
+      {{if and $d.Signed (ne $st "pending")}}<a class="btn small" href="{{base}}/tasks/{{.Slug}}">Start</a>{{end}}
+      {{end}}
     </div>
     {{end}}
   </div>

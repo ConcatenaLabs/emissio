@@ -28,7 +28,10 @@ if args[0] == "sync":
     if os.path.exists(path("mailbox.json")): os.remove(path("mailbox.json"))
     out({"mailbox": {"accepted": mb}, "schedule": {"now": 100, "next_sync_at": 160}})
 if args[0] == "record": out({"leaf_id": args[1], "record": load("rec-" + args[1] + ".json", "00")})
+if args[0] == "lightning" and args[1] == "pay" and args[2].startswith("lntsqt"):
+    out({"paying": {"payment_hash": "ef" * 32}, "payment": {"state": "paying", "payment_hash": "ef" * 32}})
 if args[0] == "lightning" and args[1] == "pay": out({"side": "bitcoin", "invoice": args[2], "payment": {"state": "paid", "preimage": "cd" * 32}})
+if args[0] == "lightning" and args[1] == "payments": out(load("payments.json", {}))
 if args[0] == "bitcoin":
     rest = [a for a in args[1:] if a != "--quiet"]
     if rest == ["address"]: print("tark1qaccountaddress%d" % (load("ark.json", 0))); sys.exit(0)

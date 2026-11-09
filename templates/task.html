@@ -1,4 +1,5 @@
 {{define "content"}}
+<p class="back"><a href="{{base}}/tasks{{if .Data.Task.Surface}}#s-{{.Data.Task.Surface}}{{end}}">&larr; All tasks</a></p>
 <div class="eyebrow">{{surfacetitle .Data.Task.Surface}}{{if ne (surfacetitle .Data.Task.Surface) .Data.Task.Category}} · {{.Data.Task.Category}}{{end}}</div>
 <h1>{{.Data.Task.Title}}</h1>
 <div class="ledger u-margin-1-2rem-0">
@@ -149,11 +150,18 @@
   <input class="mono" type="text" id="txid" name="txid" placeholder="64 hex characters" required minlength="64" maxlength="64">
   <div class="field-note">The txid of the transaction that proves you completed this task, on the Sequentia testnet.{{if .Data.ProofTag}} It must contain a transparent output whose amount ends in <strong class="mono">.{{.Data.ProofTag}}</strong>, your proof decimals.{{end}}</div>
   {{end}}
+  {{if needsnotes .Data.Task.CheckKind}}
   <label for="notes">Notes</label>
-  <textarea id="notes" name="notes" placeholder="Anything the task asks for, and anything that went wrong or was unclear on the way."></textarea>
+  <textarea id="notes" name="notes" placeholder="What the task asks you to write here, and anything that went wrong or was unclear on the way."></textarea>
+  <div class="field-note">Write here what the task asks for: the check reads it.</div>
+  {{else}}
+  <label for="notes">Notes <span class="muted">(optional)</span></label>
+  <textarea id="notes" name="notes" placeholder="If you like, tell us anything that went wrong or was unclear on the way."></textarea>
+  <div class="field-note">Optional: you can leave this empty and submit.</div>
+  {{end}}
   {{if .Data.Auto}}
   <div class="field-note">Evidence that passes the check is credited at once; evidence that does not is returned with the reason.</div>
-  <label class="small"><input type="checkbox" name="review" value="1"> If the check refuses evidence you are sure is right, send it to a reviewer instead</label>
+  <label class="small"><input type="checkbox" name="review" value="1"> Optional: if the check refuses evidence you are sure is right, send it to a reviewer instead</label>
   {{end}}
   <div class="actions"><button class="btn" type="submit">Submit evidence</button></div>
 </form>
@@ -164,6 +172,7 @@
 <form class="stack wide u-margin-top-1rem" method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/wallet">
   <input type="hidden" name="csrf" value="{{$.CSRF}}">
   <label for="code">{{if eq .Kind "arca-invoice"}}Your receive code with an amount{{else if eq .Kind "arca-name"}}Your payment name{{else}}Your receive code{{end}}</label>
+  {{if .Caps}}<p class="small muted">Emissio pays an invoice of up to {{.Caps}}.</p>{{end}}
   <input class="mono" type="text" id="code" name="code" required{{if eq .Kind "arca-name"}} placeholder="yourname@sequentiatestnet.com" autocapitalize="none"{{end}}>
   <div class="actions"><button class="btn{{if .Sent}} ghost{{end}}" type="submit">{{if .Sent}}Ask for a new payment{{else}}Ask Emissio to pay me{{end}}</button></div>
 </form>

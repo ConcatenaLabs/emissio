@@ -74,8 +74,7 @@ CREATE INDEX IF NOT EXISTS arca_sends_user ON arca_sends(user_id, purpose);
 `
 
 const (
-	maxInvoiceSats = 10_000 // the most Emissio pays one invoice, in sats (or atoms)
-	arcaSendsDay   = 3      // payments per network address per day
+	arcaSendsDay = 3 // payments per network address per day
 )
 
 func (a *App) arcaOn() bool { return a.cfg.ArcaBin != "" && a.cfg.ArcaDatadir != "" }
@@ -246,6 +245,7 @@ func (a *App) followArca() time.Duration {
 		a.attribute(c.LeafID, c.Asset, c.Value)
 	}
 	a.followArk()
+	a.followInvoices()
 	if s.Schedule.NextSyncAt != nil {
 		if d := time.Duration(*s.Schedule.NextSyncAt-s.Schedule.Now) * time.Second; d > wait {
 			wait = d
@@ -352,6 +352,45 @@ func (a *App) followArk() {
 	}
 }
 
+// followInvoices brings the state of each invoice payment in a Sequentia
+// asset still under way up to date: the wallet's own record of it, which
+// `sync` moves on. A payment the receiving wallet has not taken yet answers
+// `paying` when it is made, and the invoice task's check reads the state
+// recorded here.
+func (a *App) followInvoices() {
+	rows, err := a.db.Query(`SELECT id, ref FROM arca_sends WHERE purpose = 'invoice' AND asset != 'btc' AND ref != ''
+		AND state NOT IN ('paid', 'returned', 'failed') AND created_at > ?`, now()-7*24*3600)
+	if err != nil {
+		return
+	}
+	type open struct {
+		id   int64
+		hash string
+	}
+	var opens []open
+	for rows.Next() {
+		var o open
+		rows.Scan(&o.id, &o.hash)
+		opens = append(opens, o)
+	}
+	rows.Close()
+	if len(opens) == 0 {
+		return
+	}
+	var pays map[string]struct {
+		State string `json:"state"`
+	}
+	if err := a.arca(time.Minute, &pays, "lightning", "payments"); err != nil {
+		log.Printf("arca: lightning payments: %v", err)
+		return
+	}
+	for _, o := range opens {
+		if p, ok := pays[o.hash]; ok && p.State != "" {
+			a.db.Exec("UPDATE arca_sends SET state = ? WHERE id = ?", p.State, o.id)
+		}
+	}
+}
+
 func (a *App) startArcaFollower() {
 	if !a.arcaOn() {
 		return
@@ -359,6 +398,12 @@ func (a *App) startArcaFollower() {
 	go func() {
 		for {
 			time.Sleep(a.followArca())
+		}
+	}()
+	go func() { // the invoice limits a task page shows (invoicelimit.go)
+		for {
+			a.invoiceCaps()
+			time.Sleep(capsFresh)
 		}
 	}()
 }
@@ -543,6 +588,18 @@ func (a *App) payCode(w http.ResponseWriter, r *http.Request, user *User, back, 
 	a.redirect(w, r, back, done, "")
 }
 
+// addressLike is whether text looks like a bare address of either chain,
+// transparent or confidential, rather than a receive code or an invoice.
+func addressLike(text string) bool {
+	t := strings.ToLower(text)
+	for _, p := range []string{"tb1", "bc1", "bcrt1", "tsqb1", "sqb1", "tex1", "lq1", "el1"} {
+		if strings.HasPrefix(t, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // nameRe is what a payment name may be (the web wallet's lnaddr.js).
 var nameRe = regexp.MustCompile(`^[a-z0-9_-]{3,32}$`)
 
@@ -609,40 +666,63 @@ func (a *App) resolveName(name string) (string, error) {
 	return out.Code, nil
 }
 
-// payInvoice pays an invoice the account's wallet made, up to a small amount.
+// payInvoice pays an invoice the account's wallet made, in BTC or a
+// Sequentia asset, up to a small amount (invoicelimit.go).
 func (a *App) payInvoice(w http.ResponseWriter, r *http.Request, user *User, back, purpose string) {
 	inv := strings.TrimSpace(r.FormValue("code"))
-	if _, _, _, li := codeParts(inv); li != "" {
+	_, _, _, li := codeParts(inv)
+	switch {
+	case li != "":
 		inv = li
+	case strings.HasPrefix(strings.ToLower(inv), "bitcoin:"):
+		a.redirect(w, r, back, "", "That receive code carries no invoice yet. In the web wallet, after you type the amount, wait a few seconds for the code to be drawn again with its invoice (it then holds LIGHTNING=), and copy it then. If it never gets one, try a smaller amount or another asset.")
+		return
+	case addressLike(inv):
+		a.redirect(w, r, back, "", "That is an address, not a receive code with an amount. This task pays an invoice, which an address, transparent or confidential, does not carry: in the web wallet, open Receive, type an amount, and copy the whole code.")
+		return
 	}
 	amt, err := invoiceAmount(inv)
 	if err != nil {
-		a.redirect(w, r, back, "", "Paste an invoice for an amount: in the web wallet, Receive, an amount in BTC, then copy the code.")
+		a.redirect(w, r, back, "", "Paste an invoice for an amount: in the web wallet, Receive, an amount, then copy the code.")
 		return
 	}
-	if amt > maxInvoiceSats {
-		a.redirect(w, r, back, "", fmt.Sprintf("Emissio pays invoices of up to %d sats.", maxInvoiceSats))
+	asset, err := invoiceAsset(inv)
+	if err != nil {
+		a.redirect(w, r, back, "", "Paste an invoice for an amount: in the web wallet, Receive, an amount, then copy the code.")
+		return
+	}
+	if why := a.invoiceRefusal(asset, amt); why != "" {
+		a.redirect(w, r, back, "", why)
 		return
 	}
 	var out struct {
 		Payment *struct {
-			State    string `json:"state"`
-			Preimage string `json:"preimage"`
+			State       string `json:"state"`
+			Preimage    string `json:"preimage"`
+			PaymentHash string `json:"payment_hash"`
 		} `json:"payment"`
+		Paying struct {
+			PaymentHash string `json:"payment_hash"`
+		} `json:"paying"`
 	}
 	if err := a.arca(3*time.Minute, &out, "lightning", "pay", inv); err != nil {
 		log.Printf("arca: invoice for user %d: %v", user.ID, err)
 		a.redirect(w, r, back, "", "Emissio could not pay that invoice: "+err.Error())
 		return
 	}
-	state := "unknown"
+	state, hash := "unknown", out.Paying.PaymentHash
 	if out.Payment != nil {
 		state = out.Payment.State
+		if hash == "" {
+			hash = out.Payment.PaymentHash
+		}
 	}
-	a.db.Exec("INSERT INTO arca_sends (user_id, purpose, target, asset, atoms, state, ip, created_at) VALUES (?,?,?,?,?,?,?,?)",
-		user.ID, purpose, inv, "btc", amt, state, clientIP(r), now())
+	// The payment hash is the ref the follower reads a payment still under
+	// way by (followInvoices).
+	a.db.Exec("INSERT INTO arca_sends (user_id, purpose, target, asset, atoms, state, ref, ip, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+		user.ID, purpose, inv, asset, amt, state, hash, clientIP(r), now())
 	if state != "paid" {
-		a.redirect(w, r, back, "", "Emissio's payment is under way ("+state+"). Keep your wallet open, then submit.")
+		a.redirect(w, r, back, "Emissio's payment is on its way. Keep your web wallet open: it completes when the wallet takes it, and Emissio sees that within a few minutes. Then submit the task.", "")
 		return
 	}
 	a.redirect(w, r, back, "Emissio paid your invoice. Submit the task.", "")
@@ -794,6 +874,7 @@ type arcaView struct {
 	Next      string // what the check still misses, when not Ready
 	Linked    bool
 	Available bool
+	Caps      string // the invoice task: the most Emissio pays, in each asset
 }
 
 func (a *App) arcaViewFor(user *User, task *Task) *arcaView {
@@ -801,6 +882,9 @@ func (a *App) arcaViewFor(user *User, task *Task) *arcaView {
 		return nil
 	}
 	v := &arcaView{Kind: task.CheckKind, Available: a.arcaOn()}
+	if task.CheckKind == "arca-invoice" {
+		v.Caps = capsText(a.shownCaps())
+	}
 	if user == nil {
 		return v
 	}

@@ -31,8 +31,9 @@
     </nav>
   </div>
 </header>
-{{if .Flash}}<div class="wrap"><div class="flash">{{.Flash}}</div></div>{{end}}
-{{if .Error}}<div class="wrap"><div class="flash err">{{.Error}}</div></div>{{end}}
+{{if .Flash}}<div class="wrap"><div class="flash" data-message{{if credited .Flash}} data-credited{{end}}>{{.Flash}}</div></div>{{end}}
+{{if .Error}}<div class="wrap"><div class="flash err" data-message data-error>{{.Error}}</div></div>{{end}}
+{{if or .Flash .Error}}<script type="module" src="{{base}}/static/message-dialog.js"></script>{{end}}
 <main>
   <div class="wrap">
     {{template "content" .}}

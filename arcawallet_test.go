@@ -144,7 +144,16 @@ func TestArcaTasks(t *testing.T) {
 	}
 
 	// An invoice: too large is refused, a small one is paid.
-	if m := post("web-wallet-invoice", url.Values{"code": {"lntb1m1pjxyzacd"}}); !strings.Contains(m, "up to 10000 sats") {
+	if page := get(t, client, srv.URL+"/tasks/web-wallet-invoice"); !strings.Contains(page, "Emissio pays an invoice of up to 0.0001 BTC (10,000 sats)") {
+		t.Fatal("the invoice task does not show the limit")
+	}
+	if m := post("web-wallet-invoice", url.Values{"code": {"bitcoin:tb1qx?ark=tark1q&sequentia=sqr1q"}}); !strings.Contains(m, "carries no invoice yet") {
+		t.Fatalf("code without invoice: %q", m)
+	}
+	if m := post("web-wallet-invoice", url.Values{"code": {"tsqb1qconfidential"}}); !strings.Contains(m, "transparent or confidential") {
+		t.Fatalf("an address: %q", m)
+	}
+	if m := post("web-wallet-invoice", url.Values{"code": {"lntb1m1pjxyzacd"}}); !strings.Contains(m, "in BTC of up to 0.0001 BTC") {
 		t.Fatalf("large invoice: %q", m)
 	}
 	if m := post("web-wallet-invoice", url.Values{"code": {"bitcoin:tb1qx?amount=0.0001&lightning=lntb100u1pjxyzacd"}}); !strings.Contains(m, "Emissio paid your invoice") {

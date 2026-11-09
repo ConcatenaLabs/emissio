@@ -265,7 +265,54 @@ func (a *App) handleTasks(w http.ResponseWriter, r *http.Request) {
 		a.serverError(w, err)
 		return
 	}
-	a.render(w, r, "tasks", "Tasks", taskGroupsFull(webWalletFirst(tasks)))
+	d := tasksData{Groups: taskGroupsFull(webWalletFirst(tasks))}
+	u, _, err := a.currentUser(r)
+	if err != nil {
+		a.serverError(w, err)
+		return
+	}
+	if u != nil {
+		dash, err := loadDashboard(a.db, u.ID)
+		if err != nil {
+			a.serverError(w, err)
+			return
+		}
+		d.Done, d.Total, d.Status = dash.Done, dash.Total, dash.Status
+		for i := range dash.Open {
+			if dash.Open[i].Status != "pending" {
+				d.Next = &dash.Open[i]
+				break
+			}
+		}
+		d.Earned = map[int64]int64{}
+		rows, err := a.db.Query(`SELECT s.task_id, SUM(l.amount) FROM ledger l JOIN submissions s ON s.id = l.ref_id
+			WHERE l.kind = 'submission' AND l.user_id = ? GROUP BY s.task_id`, u.ID)
+		if err != nil {
+			a.serverError(w, err)
+			return
+		}
+		for rows.Next() {
+			var id, amt int64
+			rows.Scan(&id, &amt)
+			d.Earned[id] = amt
+			d.TasksEarned += amt
+		}
+		rows.Close()
+		d.Signed = true
+	}
+	a.render(w, r, "tasks", "Tasks", d)
+}
+
+// tasksData is the task list, with the signed-in account's progress: each
+// task's status, what each credited, and the next task to do.
+type tasksData struct {
+	Groups      []fullGroup
+	Signed      bool
+	Done, Total int
+	TasksEarned int64
+	Next        *openTask
+	Status      map[int64]string
+	Earned      map[int64]int64
 }
 
 // fullGroup is one surface's tasks, for the task page.
