@@ -170,8 +170,21 @@ func TestArcaTasks(t *testing.T) {
 	if m := submit("web-wallet-swap"); !strings.Contains(m, "does not end in your proof decimals") {
 		t.Fatalf("swap without tag: %q", m)
 	}
-	app.db.Exec("UPDATE arca_codes SET paid_at = 0 WHERE id = ?", sc.ID)
-	pay("leaf5", strings.Repeat("ab", 32), "186718345", sc)
+	// A code takes one payment: the page offers a new one, and only the newest counts.
+	if page := get(t, client, srv.URL+"/tasks/web-wallet-swap"); !strings.Contains(page, "Get a new receive code") {
+		t.Fatal("a spent code offers no new one")
+	}
+	if m := post("web-wallet-swap", url.Values{}); !strings.Contains(m, "Your receive code from Emissio is below.") {
+		t.Fatalf("new code: %q", m)
+	}
+	sc2 := app.codeOf(1, "swap")
+	if sc2.ID == sc.ID || sc2.Request == sc.Request {
+		t.Fatal("the new code is the spent one")
+	}
+	if page := get(t, client, srv.URL+"/tasks/web-wallet-swap"); strings.Contains(page, "Get a new receive code") {
+		t.Fatal("an unpaid code offers a new one")
+	}
+	pay("leaf5", strings.Repeat("ab", 32), "186718345", sc2)
 	if m := submit("web-wallet-swap"); !strings.Contains(m, "Checked and credited") {
 		t.Fatalf("swap: %q", m)
 	}
