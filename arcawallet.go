@@ -881,6 +881,7 @@ func (a *App) arcaCheck(kind string, user *User) checkResult {
 type arcaView struct {
 	Kind      string
 	Code      string // Emissio's receive code for this account and task
+	Spent     bool   // that code was paid already: it takes no other payment
 	Sent      bool   // Emissio has paid the account (the amount is not shown)
 	SentAt    int64
 	Ready     bool   // the task's check passes now, so the submission form opens
@@ -905,6 +906,7 @@ func (a *App) arcaViewFor(user *User, task *Task) *arcaView {
 	purpose := arcaPurpose(task.CheckKind)
 	if c := a.codeOf(user.ID, purpose); c != nil {
 		v.Code = a.receiveCode(c)
+		v.Spent = c.PaidAt != 0
 	}
 	a.db.QueryRow("SELECT created_at FROM arca_sends WHERE user_id = ? AND purpose = ? ORDER BY id DESC LIMIT 1", user.ID, purpose).Scan(&v.SentAt)
 	v.Sent = v.SentAt > 0

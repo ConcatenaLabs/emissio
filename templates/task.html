@@ -60,6 +60,13 @@
         <div class="panel next done u-margin-top-1rem"><p><strong>Done.</strong> Emissio's code received your payment. Submit the task below to claim your reward.</p></div>
         {{else}}
         <p class="small muted">Not yet: {{.Next}}. <a href="{{base}}/tasks/{{$.Data.Task.Slug}}">Check again</a></p>
+        {{if .Spent}}
+        <p class="small">This code has been paid already, and a receive code takes one payment: a wallet refuses to pay it again. Get a new code and pay that one; only the newest code counts.</p>
+        <form method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/wallet">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <button class="btn" type="submit">Get a new receive code</button>
+        </form>
+        {{end}}
         {{end}}
       {{else}}
       <form method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/wallet">
