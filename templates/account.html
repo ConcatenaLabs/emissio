@@ -27,6 +27,7 @@
     <h3 class="u-margin-top-1-6rem">Refer a friend</h3>
     <div class="kv">{{.Data.RefLink}}</div>
     <p class="small muted">When someone joins through this link and you have each earned at least {{seq .Data.RefThreshold}} SEQ from tasks, competitions or security reports, you both receive {{seq .Data.RefBonus}} SEQ automatically. Paid for up to {{.Data.RefCap}} referrals; {{seq .Data.RefCount}} qualified so far.</p>
+    {{with .Data.Share}}{{template "sharekit" .}}{{end}}
   </div>
   <div class="register-card">
     <div class="eyebrow">Mainnet payout address</div>
@@ -132,9 +133,9 @@
 </div>
 {{end}}
 
-<div class="section">
+<div class="section" id="verified">
   <h2>Verified accounts</h2>
-  <p class="muted"><strong>At least one verified account is required to receive your payout at launch</strong> and for referral rewards; each verified platform also earns {{seq .Data.VerifBonus}} SEQ. Link accounts that are at least two years old: put your account code (above) in the profile's bio or public description first, then submit the handle; for X, publish a post containing the code and submit the link to it. You can remove the code once verified. A social account can vouch for one Emissio account only.</p>
+  <p class="muted"><strong>At least one verified account is required to receive your payout at launch</strong> and for referral rewards; each verified platform also earns {{seq .Data.VerifBonus}} SEQ. Link accounts that are at least two years old: put your account code (above) in the profile's bio or public description first, then submit the handle; for X, publish a post containing the code and submit the link to it (the invite post above already contains it). You can remove the code once verified. A social account can vouch for one Emissio account only.</p>
   {{range .Data.Verifs}}
   <details {{if not .Mine}}{{else}}open{{end}}>
     <summary><strong>{{.Name}}</strong>{{if .Mine}} · {{handlefmt .Platform .Mine.Handle}} · <span class="pill {{if eq .Mine.Status "verified"}}approved{{else}}{{.Mine.Status}}{{end}}">{{.Mine.Status}}</span>{{else}} · not linked · <span class="amount u-font-family-mono-color-gold">{{seq $.Data.VerifBonus}} SEQ</span>{{end}}</summary>

@@ -383,3 +383,10 @@ a.panel.link:hover h3 { color: var(--gold); }
 .u-white-space-pre-wrap { white-space:pre-wrap !important; }
 .u-white-space-pre-wrap-max-width-none { white-space:pre-wrap !important; max-width:none !important; }
 .u-word-break-break-all { word-break:break-all !important; }
+
+/* The invite kit */
+.panel.share { border-color: color-mix(in srgb, var(--gold) 40%, var(--line)); }
+.share-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin: .8rem 0; }
+.share-text { width: 100%; font-size: .85rem; }
+textarea.share-text { min-height: 6.5rem; }
+textarea.share-text.tall { min-height: 14rem; }

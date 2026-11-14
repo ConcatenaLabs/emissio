@@ -173,6 +173,8 @@ All automatic checks are advisory; a human reviewer makes the final call.
 
 Your claim code is also a referral link: `https://sequentiatestnet.com/emissio/r/<code>`. A referral pays 10 SEQ to each side, but only after both accounts hold a verified social platform and have each earned at least 50 SEQ from tasks, competitions, security reports, or positive admin adjustments (referral and pre-sale credits do not count), and for at most 20 referrals per referrer. Qualification is checked automatically whenever a credit lands.
 
+Signed in, the front page, the task page and the account page carry an invite kit (`share.go`): a post ready to publish, with the account's code and referral link already in it, and buttons that open it on X, Reddit (a text post) and Telegram, or copy it. The X post fits X's limit and names the code outside the link, since X shortens links, so the same post serves as the X verification post; the kit says so until X is verified. The longer post, for Reddit or anywhere else, says what Sequentia and Emissio are and why the program is not a scam: nothing to buy or deposit, no keys asked, every task checked on the public chain, the code open source, and a referral bonus that pays only after real work. A visitor who arrives through a referral link sees who invited them and the same points on the registration page, before the form asks for anything.
+
 ### Payout address
 
 You register a Sequentia mainnet receiving address on your account page. Sequentia's transparent addresses use Bitcoin's own bech32/bech32m encoding, so a mainnet address starts with `bc1` (segwit v0 or v1), and any audited Bitcoin wallet can generate one; the in-app guide explains safe key generation. Validation does a full checksum check and gives specific errors for testnet (`tb1`), confidential (`sqb1`), Liquid, and legacy formats.
@@ -273,7 +275,7 @@ Public routes, for orientation (see `routes()` in `main.go` for the full list in
 | `GET /security`, `POST /security/report` | Security program and private reports |
 | `GET /guide`, `GET /rules` | Wallet/key-safety guide and program rules |
 | `GET /account`, `POST /account/address`, `POST /account/verify` | Ledger, payout address, verifications |
-| `GET /r/{code}` | Referral link (sets a 30-day cookie, redirects to registration) |
+| `GET /r/{code}` | Referral link (sets a 30-day cookie, redirects to registration, which then names the inviter) |
 | `GET|POST /register`, `GET|POST /login`, `POST /logout` | Accounts (auth endpoints are rate-limited per IP) |
 | `GET /verify-email`, `POST /account/verify-email` | Confirming the email address, sending the link again |
 | `GET|POST /reset`, `GET|POST /reset/confirm` | Password reset by email |

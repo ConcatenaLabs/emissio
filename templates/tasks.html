@@ -13,6 +13,7 @@
   <p>Every task is done or waiting for review. Bug reports and competitions still pay.</p>
   {{end}}
 </div>
+{{with $d.Share}}<div class="u-margin-top-1-4rem">{{template "sharekit" .}}</div>{{end}}
 {{else}}
 <p class="step-action"><a class="btn" href="{{base}}/register">Create your account</a> <a class="btn ghost" href="{{base}}/login">Sign in</a></p>
 {{end}}

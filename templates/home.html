@@ -45,6 +45,12 @@
   {{end}}
 </ol>
 
+{{with $d.Share}}
+<div class="section">
+  {{template "sharekit" .}}
+</div>
+{{end}}
+
 {{$me := $d.Me}}
 <div class="section">
   <div class="section-head">

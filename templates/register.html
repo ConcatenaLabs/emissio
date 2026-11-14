@@ -2,6 +2,18 @@
 <div class="eyebrow">Create an account</div>
 <h1>Open your ledger</h1>
 <p class="muted u-max-width-32rem">An account is a ledger in your name. Everything you earn on the testnet is entered here and paid in Sequence tokens (SEQ) at mainnet launch.</p>
+{{with .Data}}{{if .InvitedBy}}
+<div class="panel next u-margin-top-1rem u-max-width-32rem">
+  <p><strong>You were invited by {{.InvitedBy}}.</strong> Sequentia is a Bitcoin sidechain for tokenized assets, and Emissio is its testnet rewards program: you try the network with simple tasks in the web wallet and Sequentia Core, and each one is credited in Sequence tokens (SEQ), paid at mainnet launch.</p>
+  <ul class="small">
+    <li>Nothing to buy or deposit: testnet coins come free from the faucet and have no value.</li>
+    <li>Nobody asks for your seed phrase or keys. The payout goes to an address you generate yourself.</li>
+    <li>Every task is checked on the public chain, and the code is open source at <a href="https://github.com/ConcatenaLabs" target="_blank" rel="noopener">github.com/ConcatenaLabs</a>.</li>
+    <li>Once you and {{.InvitedBy}} have each earned {{seq .RefMin}} SEQ from tasks, you both receive {{seq .RefBonus}} SEQ.</li>
+  </ul>
+  <p class="small muted">See <a href="{{base}}/tasks">the tasks</a> and <a href="{{base}}/rules">the program rules</a> first, if you like.</p>
+</div>
+{{end}}{{end}}
 <form class="stack" method="post" action="{{base}}/register">
   <label for="email">Email</label>
   <input type="email" id="email" name="email" required autocomplete="email">
