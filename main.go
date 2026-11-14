@@ -217,6 +217,7 @@ func parseTemplates(cfg Config) map[string]*template.Template {
 		"seq":         formatSEQ,
 		"credited":    func(m string) bool { return strings.HasPrefix(m, "Checked and credited") },
 		"needsnotes":  needsNotes,
+		"proofrule":   proofRule,
 		"usd":         formatUSD,
 		"launchprice": func() string { return strconv.FormatFloat(launchPriceUSD, 'f', -1, 64) },
 		"date": func(ts int64) string {

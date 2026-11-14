@@ -233,8 +233,20 @@ func (a *App) sendVerification(r *http.Request, u *User) error {
 }
 
 func (a *App) handleVerifyEmail(w http.ResponseWriter, r *http.Request) {
-	userID, err := a.useEmailToken(r.URL.Query().Get("t"), "verify", true)
+	tok := r.URL.Query().Get("t")
+	userID, err := a.useEmailToken(tok, "verify", true)
 	if err != nil {
+		// Mail scanners (Outlook's Safe Links among them) open every link
+		// before the person does, which spends the token and confirms the
+		// address. The person's own click then lands here, and should hear
+		// that the address is confirmed, not that the link is dead.
+		var verified int64
+		a.db.QueryRow(`SELECT u.email_verified_at FROM email_tokens t JOIN users u ON u.id = t.user_id
+			WHERE t.token_hash = ? AND t.purpose = 'verify'`, hashToken(tok)).Scan(&verified)
+		if verified != 0 {
+			a.redirect(w, r, "/account", "Your email address is confirmed. You can submit evidence and reports.", "")
+			return
+		}
 		a.redirect(w, r, "/account", "", err.Error()+" Send a new one from your account page.")
 		return
 	}

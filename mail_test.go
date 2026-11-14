@@ -81,6 +81,11 @@ func TestEmailVerificationGate(t *testing.T) {
 	if verified == 0 {
 		t.Fatal("the newest link did not confirm the address")
 	}
+	// A mail scanner opened the link first: the person's own click must
+	// hear that the address is confirmed, not that the link is dead.
+	if again := get(t, client, base+pathOf(t, link, base)); !strings.Contains(again, "Your email address is confirmed") || strings.Contains(again, "expired") {
+		t.Fatal("a second click on a used link does not say the address is confirmed")
+	}
 	client.PostForm(base+"/tasks/first-transaction/submit", url.Values{"csrf": {csrf}, "txid": {strings.Repeat("ab", 32)}})
 	app.db.QueryRow("SELECT COUNT(*) FROM submissions").Scan(&n)
 	if n != 1 {

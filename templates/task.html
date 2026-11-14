@@ -90,13 +90,19 @@
     {{with .Payment}}
     <div class="ledger wide">
       <div class="ledger-row"><span class="label">Paid to</span><span class="leader"></span><span class="amount plain mono small">{{.Address}}</span></div>
-      <div class="ledger-row"><span class="label">Asset</span><span class="leader"></span><span class="amount plain mono small">{{.Asset}}</span></div>
+      <div class="ledger-row"><span class="label">Asset</span><span class="leader"></span><span class="amount plain mono small" title="{{.Asset}}">{{$.Data.Pay.AssetName}}</span></div>
       {{if $.Data.Pay.Amount}}<div class="ledger-row"><span class="label">Amount</span><span class="leader"></span><span class="amount plain mono">{{$.Data.Pay.Amount}}</span></div>{{end}}
-      <div class="ledger-row"><span class="label">Transaction</span><span class="leader"></span><span class="amount plain mono small"><a href="https://sequentiatestnet.com/explorer/tx/{{.Txid}}" target="_blank" rel="noopener">{{short .Txid}}</a></span></div>
+      <div class="ledger-row"><span class="label">Transaction</span><span class="leader"></span><span class="amount plain mono small"><a class="u-word-break-break-all" href="https://sequentiatestnet.com/explorer/tx/{{.Txid}}" target="_blank" rel="noopener">{{.Txid}}</a></span></div>
       <div class="ledger-row"><span class="label">Sent</span><span class="leader"></span><span class="amount plain">{{datetime .CreatedAt}}</span></div>
     </div>
     {{end}}
     {{if .ReturnAddress}}<p class="small muted u-margin-top-8rem">Emissio's address, to return the payment to: <span class="mono">{{.ReturnAddress}}</span></p>{{end}}
+    {{if and .Payment .ReturnAddress}}
+    <div class="panel next u-margin-top-1rem">
+      <p><strong>Before you send:</strong> the return must spend the very coin Emissio sent you, and a wallet left to choose usually picks another coin of the same asset. Select it yourself: in Sequentia Core, open coin control on the send screen and tick the coin from transaction <span class="mono">{{short .Payment.Txid}}</span>; from a node, name it as an input of <span class="mono">walletcreatefundedpsbt</span> with <span class="mono">add_inputs</span> on.</p>
+      <p class="small muted">Send exactly {{.Amount}} {{.AssetName}} to Emissio's address and choose {{.AssetName}} as the fee asset. The fee needs a little more {{.AssetName}} than Emissio sent: the faucet hands it out.</p>
+    </div>
+    {{end}}
     {{if or (not $.Data.Mine) (eq $.Data.Mine.Status "rejected")}}
     <form class="stack wide u-margin-top-1rem" method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/request">
       <input type="hidden" name="csrf" value="{{$.CSRF}}">
@@ -154,8 +160,9 @@
   <input type="hidden" name="csrf" value="{{.CSRF}}">
   {{if .Data.Task.NeedsTxid}}
   <label for="txid">Transaction id (txid)</label>
-  <input class="mono" type="text" id="txid" name="txid" placeholder="64 hex characters" required minlength="64" maxlength="64">
-  <div class="field-note">The txid of the transaction that proves you completed this task, on the Sequentia testnet.{{if .Data.ProofTag}} It must contain a transparent output whose amount ends in <strong class="mono">.{{.Data.ProofTag}}</strong>, your proof decimals.{{end}}</div>
+  <input class="mono" type="text" id="txid" name="txid" placeholder="64 hex characters" required minlength="64" maxlength="64" value="{{.Data.Txid}}">
+  {{$rule := proofrule .Data.Task.CheckKind}}
+  <div class="field-note">The txid of the transaction that proves you completed this task, on the Sequentia testnet.{{if .Data.ProofTag}}{{if eq $rule "required"}} It must contain a transparent output whose amount ends in <strong class="mono">.{{.Data.ProofTag}}</strong>, your proof decimals.{{else if eq $rule "optional"}} Your proof decimals, <strong class="mono">.{{.Data.ProofTag}}</strong>, are needed only on a new stake bonded in the same transaction.{{else}} This one needs no proof decimals: the check reads what the transaction spends.{{end}}{{end}}</div>
   {{end}}
   {{if needsnotes .Data.Task.CheckKind}}
   <label for="notes">Notes</label>
