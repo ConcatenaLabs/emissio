@@ -149,7 +149,8 @@ type linkedAccount struct {
 }
 
 // linkedAccounts lists every other account that shares an address, a
-// browser or a chain address with this one, and what it shares.
+// browser, a chain address, a payout address or a mailbox (one address
+// under a +tag or Gmail dots) with this one, and what it shares.
 func linkedAccounts(db *sql.DB, userID int64) ([]linkedAccount, error) {
 	rows, err := db.Query(`
 		SELECT u.id, u.email, u.held, 'network address ' || b.ip FROM user_ips a JOIN user_ips b ON a.ip = b.ip JOIN users u ON u.id = b.user_id
@@ -163,7 +164,10 @@ func linkedAccounts(db *sql.DB, userID int64) ([]linkedAccount, error) {
 		UNION
 		SELECT u.id, u.email, u.held, 'payout address' FROM users me JOIN users u ON u.mainnet_address = me.mainnet_address
 			WHERE me.id = ? AND u.id != ? AND me.mainnet_address != ''
-		ORDER BY 1 LIMIT 300`, userID, userID, userID, userID, userID, userID, userID, userID)
+		UNION
+		SELECT u.id, u.email, u.held, 'mailbox' FROM users me JOIN users u ON u.email_key = me.email_key
+			WHERE me.id = ? AND u.id != ? AND me.email_key != ''
+		ORDER BY 1 LIMIT 300`, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID)
 	if err != nil {
 		return nil, err
 	}

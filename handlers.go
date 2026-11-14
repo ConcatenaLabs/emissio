@@ -944,6 +944,11 @@ func (a *App) handleRegister(w http.ResponseWriter, r *http.Request) {
 		a.redirect(w, r, "/login", "", "An account with that email already exists. Sign in instead.")
 		return
 	}
+	if mailboxTaken(a.db, email) {
+		// The same mailbox under another spelling: a +tag, or dots in Gmail.
+		a.redirect(w, r, "/register", "", "An account already uses this mailbox: an address with a +tag, or with dots in a Gmail name, delivers to the same inbox. One account per person; sign in to the one you have.")
+		return
+	}
 	if ok, why := a.registrationAllowed(clientIP(r), dev); !ok {
 		a.redirect(w, r, "/register", "", why)
 		return
