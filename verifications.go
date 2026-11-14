@@ -36,7 +36,7 @@ var verifPlatforms = []struct {
 	URLFmt string
 }{
 	{"telegram", "Telegram", "Add your account code to your Telegram bio (Settings, Bio), then submit your public @username. The bio is checked automatically; account age is assessed by the reviewer.", "https://t.me/%s"},
-	{"x", "X", "Publish a post from your X account containing your account code, then submit the link to that post. Ownership and account age are checked automatically from the post; you can delete it once verified.", "https://x.com/%s"},
+	{"x", "X", "Publish any post from your own X profile that contains your account code, then submit the link to that post. Any such post is valid, whatever else it says: a post in your own words, a reply or a quote. No particular text is required. Ownership and account age are checked automatically from the post; you can delete it once verified.", "https://x.com/%s"},
 	{"reddit", "Reddit", "", "https://www.reddit.com/user/%s"},
 }
 
