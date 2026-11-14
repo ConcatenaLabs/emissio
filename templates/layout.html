@@ -73,7 +73,7 @@
 {{define "sharekit"}}
 <div class="panel share" data-share>
   <h3>Invite friends with a post</h3>
-  <p class="small">Put your referral link and your account code <strong class="mono">{{.Code}}</strong> in a post, with your own words around them: what you tried, what you liked, what you would build. Anyone who joins through the link and earns {{seq .Threshold}} SEQ from tasks gets {{seq .Bonus}} SEQ, and so do you once you have earned {{seq .Threshold}} too. Then they can invite their own friends the same way.</p>
+  <p class="small">Put your referral link in a post, with your own words around it: what you tried, what you liked, what you would build. Anyone who joins through the link and earns {{seq .Threshold}} SEQ from tasks gets {{seq .Bonus}} SEQ, and so do you once you have earned {{seq .Threshold}} too. Then they can invite their own friends the same way.</p>
   <div class="share-actions">
     {{if .QuoteURL}}<a class="btn small" href="{{.QuoteURL}}" target="_blank" rel="noopener">Quote the official post on X</a>{{end}}
     <a class="btn small{{if .QuoteURL}} ghost{{end}}" href="{{.XURL}}" target="_blank" rel="noopener">Post on X</a>
@@ -81,7 +81,7 @@
     <a class="btn small ghost" href="{{.TGURL}}" target="_blank" rel="noopener">Share on Telegram</a>
     <button class="btn small ghost" type="button" data-copy="{{.Link}}">Copy link</button>
   </div>
-  <p class="small muted">On X the buttons write only your link and your code: the words are yours. Posts that all read alike look like coordinated engagement to X, and can get your account limited.</p>
+  <p class="small muted">The buttons write only your link, and on X your account code <strong class="mono">{{.Code}}</strong> under it: the words are yours. Posts that read alike from many accounts look like coordinated promotion to X and to Reddit, and can get your account limited and the link filtered.</p>
   {{if .QuoteURL}}
   <div class="share-steps">
     <p class="small"><strong>Quote <a href="{{.Official}}" target="_blank" rel="noopener">Sequentia's official post</a> on X.</strong> It introduces Sequentia and Emissio, so your followers see what it is about under your own words. A quote is a repost with your text on top; a plain repost carries no text, so it brings you no referrals.</p>
@@ -93,16 +93,14 @@
   {{end}}
   {{if not .XVerified}}<p class="small muted">Any post of yours on X that contains your account code verifies your X account: a quote of the official post, a post written from scratch, a reply, in any words. Once it is published, press its share icon, then <strong>Copy link</strong>, and paste it under Verified accounts on <a href="{{base}}/account#verified">your account page</a>.</p>{{end}}
   <details>
-    <summary class="small">See or copy the texts</summary>
+    <summary class="small">What the buttons write, and where to post</summary>
     <div class="inner">
       <label class="small" for="share-x">For X: your link and code, to put in your own post</label>
       <textarea id="share-x" class="share-text" readonly>{{.XText}}</textarea>
       <button class="btn small ghost" type="button" data-copy-from="share-x">Copy</button>
-      <label class="small u-margin-top-1rem" for="share-reddit">For Reddit, or a longer post anywhere</label>
-      <input id="share-reddit-title" class="share-text" type="text" readonly value="{{.RedTitle}}">
-      <textarea id="share-reddit" class="share-text tall" readonly>{{.Reddit}}</textarea>
-      <button class="btn small ghost" type="button" data-copy-from="share-reddit">Copy</button>
-      <p class="small muted">Post where sharing a link is welcome: your own profile or timeline, or a community whose rules allow it.</p>
+      <p class="small u-margin-top-1rem"><strong>On Reddit</strong> the button opens a text post with your link in it and nothing else: the title and the words are yours. Post it once, on your own profile or in one community whose rules allow referral links. The same post in several communities is what Reddit removes as spam. A post does not verify your Reddit account: <a href="{{base}}/account#verified">your account page</a> says how that is done.</p>
+      <p class="small"><strong>On Telegram</strong> the button sends your link and one line to the chat you choose.</p>
+      <p class="small muted">You do not have to explain everything. Whoever opens your link is told what Sequentia and Emissio are, that there is nothing to buy or deposit and that nobody asks for keys, before the form asks for anything. Post where sharing a link is welcome: your own profile or timeline, or a community whose rules allow it.</p>
     </div>
   </details>
 </div>

@@ -135,7 +135,7 @@
 
 <div class="section" id="verified">
   <h2>Verified accounts</h2>
-  <p class="muted"><strong>At least one verified account is required to receive your payout at launch</strong> and for referral rewards; each verified platform also earns {{seq .Data.VerifBonus}} SEQ. Link accounts that are at least two years old: put your account code (above) in the profile's bio or public description first, then submit the handle; for X, publish any post that contains the code, in your own words (a quote of Sequentia's official post works too), and submit the link to it. You can remove the code once verified. A social account can vouch for one Emissio account only.</p>
+  <p class="muted"><strong>At least one verified account is required to receive your payout at launch</strong> and for referral rewards; each verified platform also earns {{seq .Data.VerifBonus}} SEQ. Link accounts that are at least two years old. Each platform below says how to prove with your account code (above) that the account is yours; on X, any post of yours that contains the code does, in your own words (a quote of Sequentia's official post works too). You can remove the code once verified. A social account can vouch for one Emissio account only.</p>
   {{range .Data.Verifs}}
   <details {{if not .Mine}}{{else}}open{{end}}>
     <summary><strong>{{.Name}}</strong>{{if .Mine}} · {{handlefmt .Platform .Mine.Handle}} · <span class="pill {{if eq .Mine.Status "verified"}}approved{{else}}{{.Mine.Status}}{{end}}">{{.Mine.Status}}</span>{{else}} · not linked · <span class="amount u-font-family-mono-color-gold">{{seq $.Data.VerifBonus}} SEQ</span>{{end}}</summary>
