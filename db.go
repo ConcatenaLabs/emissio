@@ -148,6 +148,9 @@ func mustOpenDB(path string) *sql.DB {
 	db.Exec("ALTER TABLE reports ADD COLUMN body_hash TEXT NOT NULL DEFAULT ''")
 	db.Exec("ALTER TABLE users ADD COLUMN email_verified_at INTEGER NOT NULL DEFAULT 0")
 	db.Exec("ALTER TABLE users ADD COLUMN held INTEGER NOT NULL DEFAULT 0")
+	db.Exec("ALTER TABLE users ADD COLUMN email_key TEXT NOT NULL DEFAULT ''")
+	db.Exec("CREATE INDEX IF NOT EXISTS users_email_key ON users(email_key)")
+	backfillEmailKeys(db)
 	db.Exec("ALTER TABLE tasks ADD COLUMN surface TEXT NOT NULL DEFAULT ''")
 	db.Exec("ALTER TABLE tasks ADD COLUMN check_kind TEXT NOT NULL DEFAULT ''")
 	db.Exec("ALTER TABLE submissions ADD COLUMN auto INTEGER NOT NULL DEFAULT 0")
@@ -205,8 +208,8 @@ func getUserByID(db *sql.DB, id int64) (*User, error) {
 }
 
 func createUser(db *sql.DB, email, passHash, claimCode, regIP string) (int64, error) {
-	res, err := db.Exec("INSERT INTO users (email, pass_hash, claim_code, reg_ip, created_at) VALUES (?,?,?,?,?)",
-		email, passHash, claimCode, regIP, now())
+	res, err := db.Exec("INSERT INTO users (email, email_key, pass_hash, claim_code, reg_ip, created_at) VALUES (?,?,?,?,?,?)",
+		email, emailKey(email), passHash, claimCode, regIP, now())
 	if err != nil {
 		return 0, err
 	}
