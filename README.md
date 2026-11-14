@@ -34,7 +34,7 @@ All amounts below are whole SEQ, credited to your ledger. On the testnet you wor
 
 ### Testnet tasks
 
-Each task pays a fixed reward, most have a first-come cap, and you can have one submission per task (you may resubmit after a rejection). A txid can only ever be evidence for one account. Every task belongs to one surface of the public testnet (Sequentia Core, the block explorer, the faucet, Compages, the staking pools, the web wallet, Emissio), which is how the dashboard counts a tester's progress.
+Each task pays a fixed reward, most have a first-come cap, and you can have one submission per task (you may resubmit after a rejection). A txid can only ever be evidence for one account. Every task belongs to one surface of the public testnet (Sequentia Core, the block explorer, the faucet, Compages, the staking pools, the web wallet): the one the tester does it on, which is how the tasks are grouped and how the dashboard counts a tester's progress.
 
 Each task runs a check on its evidence (`evidenceCheck` in `checks.go`; a task's check kind, which admins pick in the task editor, says which). The check answers one of three ways:
 
@@ -108,7 +108,7 @@ The seeded catalog (`seed.go`; the live instance's admins can adjust rewards, ca
 | Pay a fee in an asset other than tSEQ | Sequentia Core | 15 | 2,500 |
 | Send two assets in one transaction | Sequentia Core | 15 | 2,000 |
 | Send an opt-in confidential transaction | Sequentia Core | 15 | 2,000 |
-| Return a payment to Emissio | Emissio | 25 | 1,000 |
+| Return a payment to Emissio | Sequentia Core | 25 | 1,000 |
 | Receive a confidential payment and unblind it | Block explorer | 25 | 1,000 |
 | Bridge an asset into Sequentia with Compages | Compages | 30 | 1,000 |
 | Bridge from the other source chain | Compages | 30 | 500 |

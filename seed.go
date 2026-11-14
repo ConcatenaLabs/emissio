@@ -50,7 +50,10 @@ type seedTask struct {
 var retiredTasks = []string{"seqdex-swap", "cross-chain-swap", "lightning-swap", "report-bug"}
 
 // surfaces are the public testnet's surfaces, in the order the dashboard
-// shows a tester's progress through them.
+// shows a tester's progress through them. A task belongs to the surface the
+// tester does it on. Emissio is not one of them: every task is submitted
+// here, and the ones in which Emissio's own wallet pays or is paid are done
+// in a wallet or on the explorer like any other.
 var surfaces = []struct{ Key, Name string }{
 	{"core", "Sequentia Core"},
 	{"explorer", "Block explorer"},
@@ -58,7 +61,6 @@ var surfaces = []struct{ Key, Name string }{
 	{"compages", "Compages bridge"},
 	{"pools", "Staking pools"},
 	{"webwallet", "Web wallet"},
-	{"emissio", "Emissio"},
 }
 
 func surfaceTitle(key string) string {
@@ -265,7 +267,7 @@ The check is automatic: outputs in two assets, and your proof decimals.`,
 The check is automatic: a blinded output, and your proof decimals.`,
 	},
 	{
-		slug: "emissio-return", title: "Return a payment to Emissio", category: "With Emissio", surface: "emissio", check: "emissio-return",
+		slug: "emissio-return", title: "Return a payment to Emissio", category: "Assets", surface: "core", check: "emissio-return",
 		reward: 25, cap: 1000, needsTxid: true, sort: 45,
 		body: `Emissio pays you, and you pay it back exactly, with the fee in the asset you return.
 
@@ -279,7 +281,7 @@ Emissio holds a testnet wallet of its own. Ask it for a payment below: it sends 
 The check is automatic: the transaction spends Emissio's payment, returns the exact amount of that asset, and pays its fee in it.`,
 	},
 	{
-		slug: "emissio-unblind", title: "Receive a confidential payment and unblind it", category: "With Emissio", surface: "explorer", check: "emissio-unblind",
+		slug: "emissio-unblind", title: "Receive a confidential payment and unblind it", category: "Assets", surface: "explorer", check: "emissio-unblind",
 		reward: 25, cap: 1000, needsTxid: false, sort: 47,
 		body: `Emissio pays you an amount that only you can see, and you prove you can see it.
 
