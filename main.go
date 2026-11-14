@@ -62,6 +62,7 @@ type Config struct {
 	// The web wallet the front page sends testers to, and the payment-name
 	// service (the LSP's /lnaddr) the payment-name task resolves names at.
 	WalletURL    string
+	XQuotePost   string // the official X post the invite kit offers to quote; empty: no quote button
 	LnaddrURL    string
 	LnaddrDomain string
 	// The price feed and asset registry that value an invoice in a Sequentia
@@ -126,6 +127,7 @@ func loadConfig() Config {
 		ArcaBin:       envOr("EMISSIO_ARCA", ""),
 		ArcaDatadir:   envOr("EMISSIO_ARCA_DATADIR", ""),
 		WalletURL:     envOr("EMISSIO_WALLET_URL", "https://sequentiatestnet.com/wallet/"),
+		XQuotePost:    xQuotePost(envOr("EMISSIO_X_QUOTE_POST", "")),
 		LnaddrURL:     strings.TrimRight(envOr("EMISSIO_LNADDR", ""), "/"),
 		LnaddrDomain:  strings.ToLower(envOr("EMISSIO_LNADDR_DOMAIN", "sequentiatestnet.com")),
 		PricesURL:     envOr("EMISSIO_PRICES", "https://sequentiatestnet.com/prices"),
