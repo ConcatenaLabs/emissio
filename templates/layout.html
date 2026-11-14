@@ -73,7 +73,7 @@
 {{define "sharekit"}}
 <div class="panel share" data-share>
   <h3>Invite friends with a post</h3>
-  <p class="small">Your post is ready, with your account code <strong class="mono">{{.Code}}</strong> and your referral link already in it. Anyone who joins through the link and earns {{seq .Threshold}} SEQ from tasks gets {{seq .Bonus}} SEQ, and so do you once you have earned {{seq .Threshold}} too. Then they can invite their own friends the same way.</p>
+  <p class="small">Put your referral link and your account code <strong class="mono">{{.Code}}</strong> in a post, with your own words around them: what you tried, what you liked, what you would build. Anyone who joins through the link and earns {{seq .Threshold}} SEQ from tasks gets {{seq .Bonus}} SEQ, and so do you once you have earned {{seq .Threshold}} too. Then they can invite their own friends the same way.</p>
   <div class="share-actions">
     {{if .QuoteURL}}<a class="btn small" href="{{.QuoteURL}}" target="_blank" rel="noopener">Quote the official post on X</a>{{end}}
     <a class="btn small{{if .QuoteURL}} ghost{{end}}" href="{{.XURL}}" target="_blank" rel="noopener">Post on X</a>
@@ -81,23 +81,21 @@
     <a class="btn small ghost" href="{{.TGURL}}" target="_blank" rel="noopener">Share on Telegram</a>
     <button class="btn small ghost" type="button" data-copy="{{.Link}}">Copy link</button>
   </div>
+  <p class="small muted">On X the buttons write only your link and your code: the words are yours. Posts that all read alike look like coordinated engagement to X, and can get your account limited.</p>
   {{if .QuoteURL}}
   <div class="share-steps">
-    <p class="small"><strong>Quote <a href="{{.Official}}" target="_blank" rel="noopener">Sequentia's official post</a> on X.</strong> A quote is a repost with your own words on top: your followers see your text, with your code and referral link, and Sequentia's post underneath. A plain repost carries no text, so it brings you no referrals.</p>
+    <p class="small"><strong>Quote <a href="{{.Official}}" target="_blank" rel="noopener">Sequentia's official post</a> on X.</strong> It introduces Sequentia and Emissio, so your followers see what it is about under your own words. A quote is a repost with your text on top; a plain repost carries no text, so it brings you no referrals.</p>
     <ol class="small">
-      <li>Press <strong>Quote the official post on X</strong>. X opens with your text already written and Sequentia's post attached under it. Press <strong>Post</strong>.</li>
-      <li>Or by hand: open <a href="{{.Official}}" target="_blank" rel="noopener">the official post</a>, press the repost icon (the two arrows), choose <strong>Quote</strong>, paste your text (<button class="linkish" type="button" data-copy-from="share-quote">copy it</button>) and press <strong>Post</strong>. Keep your code and link in it.</li>
-      {{if not .XVerified}}<li>On your published quote, press the share icon, then <strong>Copy link</strong>, and paste it under Verified accounts on <a href="{{base}}/account#verified">your account page</a>: it verifies your X account too.</li>{{end}}
+      <li>Press <strong>Quote the official post on X</strong>. X opens with your link and code, and Sequentia's post attached under them. Write your own words above them and press <strong>Post</strong>.</li>
+      <li>Or by hand: open <a href="{{.Official}}" target="_blank" rel="noopener">the official post</a>, press the repost icon (the two arrows), choose <strong>Quote</strong>, paste your link and code (<button class="linkish" type="button" data-copy-from="share-x">copy them</button>), write your own words and press <strong>Post</strong>.</li>
     </ol>
   </div>
-  {{else if not .XVerified}}<p class="small muted">The X post also verifies your X account: once it is published, paste its link under Verified accounts on <a href="{{base}}/account#verified">your account page</a>.</p>{{end}}
+  {{end}}
+  {{if not .XVerified}}<p class="small muted">Any post of yours on X that contains your account code verifies your X account: a quote of the official post, a post written from scratch, a reply, in any words. Once it is published, press its share icon, then <strong>Copy link</strong>, and paste it under Verified accounts on <a href="{{base}}/account#verified">your account page</a>.</p>{{end}}
   <details>
     <summary class="small">See or copy the texts</summary>
     <div class="inner">
-      {{if .QuoteURL}}<label class="small" for="share-quote">For the quote of the official post</label>
-      <textarea id="share-quote" class="share-text" readonly>{{.Quote}}</textarea>
-      <button class="btn small ghost" type="button" data-copy-from="share-quote">Copy</button>
-      {{end}}<label class="small{{if .QuoteURL}} u-margin-top-1rem{{end}}" for="share-x">For X</label>
+      <label class="small" for="share-x">For X: your link and code, to put in your own post</label>
       <textarea id="share-x" class="share-text" readonly>{{.XText}}</textarea>
       <button class="btn small ghost" type="button" data-copy-from="share-x">Copy</button>
       <label class="small u-margin-top-1rem" for="share-reddit">For Reddit, or a longer post anywhere</label>
