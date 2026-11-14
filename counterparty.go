@@ -27,6 +27,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -370,8 +371,11 @@ func (a *App) returnCheck(user *User, tx *chainTx) checkResult {
 			spends = true
 		}
 	}
+	name := a.assetName(p.Asset)
 	if !spends {
-		return fail("this transaction does not spend Emissio's payment %s to %s", short(p.Txid), short(p.Address))
+		return fail("this transaction does not spend Emissio's payment %s to %s. A wallet left to choose picks any coin of that asset; "+
+			"select Emissio's coin yourself (coin control in Sequentia Core, or the inputs of walletcreatefundedpsbt) and send the return again",
+			short(p.Txid), short(p.Address))
 	}
 	back := false
 	for _, o := range tx.Vout {
@@ -380,15 +384,42 @@ func (a *App) returnCheck(user *User, tx *chainTx) checkResult {
 		}
 	}
 	if !back {
-		return fail("no output pays exactly %s of asset %s back to %s", amountText(p.Atoms), short(p.Asset), ret)
+		return fail("no output pays exactly %s %s back to %s", amountText(p.Atoms), name, ret)
 	}
 	if fee := feeAsset(tx); fee != p.Asset {
-		return fail("returns the payment, but the fee is paid in %s: pay it in the asset you return, %s", short(fee), short(p.Asset))
+		return fail("returns the payment, but the fee is paid in %s: pay it in the asset you return, %s", a.assetName(fee), name)
 	}
-	return pass("spends Emissio's payment and returns exactly %s of asset %s, fee in the same asset (OK)", amountText(p.Atoms), short(p.Asset))
+	return pass("spends Emissio's payment and returns exactly %s %s, fee in the same asset (OK)", amountText(p.Atoms), name)
 }
 
-var amountRe = regexp.MustCompile(`[0-9]+(\.[0-9]{1,8})?`)
+// assetTickers caches the registry's ticker for each asset id.
+var assetTickers sync.Map
+
+// assetName is the asset's ticker as the registry names it, or its short
+// id when the registry does not know it.
+func (a *App) assetName(asset string) string {
+	if asset == "" {
+		return "no asset"
+	}
+	if t, ok := assetTickers.Load(asset); ok {
+		return t.(string)
+	}
+	var reg struct {
+		Contract struct {
+			Ticker string `json:"ticker"`
+		} `json:"contract"`
+	}
+	if a.cfg.RegistryURL == "" || getJSON(a.cfg.RegistryURL+"/"+asset, &reg) != nil || reg.Contract.Ticker == "" {
+		return short(asset)
+	}
+	assetTickers.Store(asset, reg.Contract.Ticker)
+	return reg.Contract.Ticker
+}
+
+var (
+	amountRe     = regexp.MustCompile(`[0-9]+(\.[0-9]{1,8})?`)
+	decimalComma = regexp.MustCompile(`\b([0-9]+),([0-9]{1,8})\b`)
+)
 
 // unblindCheck: the notes name the amount of Emissio's confidential
 // payment, as a number or inside an explorer link that unblinds it.
@@ -400,6 +431,8 @@ func (a *App) unblindCheck(user *User, notes string) checkResult {
 	if p.Attempts >= unblindAttempts {
 		return fail("too many wrong amounts for this payment: ask Emissio for a new one a day after the last")
 	}
+	// A decimal comma is as good as a point: 0,5 means 0.5.
+	notes = decimalComma.ReplaceAllString(notes, "$1.$2")
 	for _, m := range amountRe.FindAllString(notes, 64) {
 		v, ok := atomsOf(m)
 		if ok && (v == p.Atoms || (!strings.Contains(m, ".") && m == strconv.FormatInt(p.Atoms, 10))) {
@@ -413,6 +446,7 @@ func (a *App) unblindCheck(user *User, notes string) checkResult {
 // paymentView is what the task page shows of a counterparty payment.
 type paymentView struct {
 	Payment       *payment
+	AssetName     string // the registry's ticker, or the short id
 	Amount        string
 	ReturnAddress string
 	Confidential  bool
@@ -428,8 +462,11 @@ func (a *App) paymentViewFor(user *User, task *Task) *paymentView {
 	v.Available = err == nil
 	if user != nil {
 		v.Payment = a.latestPayment(user.ID, task.CheckKind)
-		if v.Payment != nil && !v.Confidential {
-			v.Amount = amountText(v.Payment.Atoms)
+		if v.Payment != nil {
+			v.AssetName = a.assetName(v.Payment.Asset)
+			if !v.Confidential {
+				v.Amount = amountText(v.Payment.Atoms)
+			}
 		}
 	}
 	if v.Available && !v.Confidential {

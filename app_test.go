@@ -447,6 +447,32 @@ func TestDuplicateTxidRejected(t *testing.T) {
 	}
 }
 
+// A refused submission keeps its txid in the form, and a refusal no
+// reviewer could overturn does not suggest asking one.
+func TestRefusalKeepsTxid(t *testing.T) {
+	app, srv, client := newTestServer(t)
+	txid := strings.Repeat("cd", 32)
+	explorer := fakeExplorer(t, map[string]string{
+		txid: txJSONid(txid, []map[string]any{{"is_coinbase": false}}, []map[string]any{vout(100000000, policy, "v0_p2wpkh")}, false),
+	}, nil, nil)
+	defer explorer.Close()
+	app.cfg.EsploraURL = explorer.URL
+	client.PostForm(srv.URL+"/register", url.Values{"email": {"eve@example.com"}, "password": {"a-long-password"}})
+	csrf := csrfOf(t, client, srv.URL+"/account")
+	resp, err := client.PostForm(srv.URL+"/tasks/first-transaction/submit", url.Values{"csrf": {csrf}, "txid": {txid}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := readAll(resp)
+	q := resp.Request.URL.Query()
+	if q.Get("txid") != txid || !strings.Contains(page, `value="`+txid+`"`) {
+		t.Fatalf("the refused txid is not back in the form: %s", resp.Request.URL)
+	}
+	if e := q.Get("e"); !strings.Contains(e, "not yet confirmed") || strings.Contains(e, "reviewer") {
+		t.Fatalf("refusal: %q", e)
+	}
+}
+
 func TestBasePath(t *testing.T) {
 	db := mustOpenDB(filepath.Join(t.TempDir(), "test.db"))
 	defer db.Close()

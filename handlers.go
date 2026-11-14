@@ -63,7 +63,11 @@ func (a *App) redirect(w http.ResponseWriter, r *http.Request, path, msg, errMsg
 		q.Set("e", errMsg)
 	}
 	if len(q) > 0 {
-		u += "?" + q.Encode()
+		sep := "?"
+		if strings.Contains(path, "?") {
+			sep = "&"
+		}
+		u += sep + q.Encode()
 	}
 	http.Redirect(w, r, u, http.StatusSeeOther)
 }
@@ -366,6 +370,7 @@ type taskData struct {
 	Auto     bool   // the task's check approves passing evidence at once
 	Pay      *paymentView
 	Wallet   *arcaView
+	Txid     string // a refused txid, put back into the form
 }
 
 func (a *App) handleTask(w http.ResponseWriter, r *http.Request) {
@@ -390,6 +395,9 @@ func (a *App) handleTask(w http.ResponseWriter, r *http.Request) {
 	user, _, _ := a.currentUser(r)
 	d.Pay = a.paymentViewFor(user, task)
 	d.Wallet = a.arcaViewFor(user, task)
+	if t := r.URL.Query().Get("txid"); txidRe.MatchString(t) {
+		d.Txid = t
+	}
 	body := *task
 	body.Body = strings.NewReplacer("{PROOF}", tag, "{CODE}", code).Replace(task.Body)
 	d.Task = &body
@@ -455,7 +463,17 @@ func (a *App) handleTaskSubmit(w http.ResponseWriter, r *http.Request) {
 	res := a.evidenceCheck(task.CheckKind, txid, notes, user)
 	forReview := r.FormValue("review") == "1"
 	if res.Verdict == vFail && !forReview {
-		a.redirect(w, r, back, "", "Not accepted: "+res.Note+". Fix it and submit again, or, if you are sure the evidence is right, tick the box to send it to a reviewer.")
+		// The txid goes back into the form, so a correction is not a
+		// fresh paste; it is public data and safe in a URL.
+		again := back
+		if txidRe.MatchString(txid) {
+			again += "?txid=" + strings.ToLower(txid)
+		}
+		advice := " Fix it and submit again, or, if you are sure the evidence is right, tick the box to send it to a reviewer."
+		if res.Firm {
+			advice = " Fix it and submit again."
+		}
+		a.redirect(w, r, again, "", "Not accepted: "+res.Note+"."+advice)
 		return
 	}
 	ins, err := a.db.Exec(`INSERT INTO submissions (user_id, task_id, txid, notes, chain_note, created_at)

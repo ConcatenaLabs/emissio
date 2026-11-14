@@ -39,7 +39,7 @@ Each task pays a fixed reward, most have a first-come cap, and you can have one 
 Each task runs a check on its evidence (`evidenceCheck` in `checks.go`; a task's check kind, which admins pick in the task editor, says which). The check answers one of three ways:
 
 - **pass**: the evidence proves the task, bound to the account. The submission is approved and credited at once.
-- **fail**: it does not, for a reason the tester can fix: no proof decimals, not yet confirmed, the fee in the wrong asset. The submission is refused with that reason and nothing is stored. A tester sure the check is wrong ticks a box and sends it to a reviewer instead.
+- **fail**: it does not, for a reason the tester can fix: no proof decimals, not yet confirmed, the fee in the wrong asset. The submission is refused with that reason and nothing is stored; where the transaction shows the likely slip (the fee taken out of the amount, the faucet's payment submitted instead of the tester's own send, the anchor's height instead of its hash, a delegation's authorization transaction instead of its record) the reason names it, and the refused txid goes back into the form. A tester sure the check is wrong ticks a box and sends it to a reviewer instead; the page suggests that only where a reviewer could decide otherwise, not for a transaction that is unconfirmed, missing or without the proof decimals.
 - **review**: nothing automatic can decide, because a service is unreachable or the task has no check. The submission waits in the review queue.
 
 An account an admin holds never has anything approved automatically: its passing evidence waits for a reviewer too.

@@ -153,12 +153,37 @@ func (a *App) anchorCheck(tx *chainTx, notes string) (bool, string) {
 		return false, "block anchor unavailable"
 	}
 	anchor := strings.ToLower(string(block.Anchor))
-	for _, h := range hashRe.FindAllString(notes, -1) {
+	hashes := hashRe.FindAllString(notes, -1)
+	for _, h := range hashes {
 		if h != tx.Txid && strings.Contains(anchor, strings.ToLower(h)) {
 			return true, "anchor hash in the notes matches the block's Bitcoin anchor (OK)"
 		}
 	}
-	return false, "no hash in the notes matches the block's Bitcoin anchor"
+	return false, "no hash in the notes matches the block's Bitcoin anchor" + anchorMissHint(tx, notes, hashes, block.Anchor)
+}
+
+// anchorMissHint names the near misses: the anchor's height instead of its
+// hash, or a Sequentia hash instead of the Bitcoin one.
+func anchorMissHint(tx *chainTx, notes string, hashes []string, raw json.RawMessage) string {
+	var anchor struct {
+		Height int64 `json:"height"`
+	}
+	json.Unmarshal(raw, &anchor)
+	const where = ": open the block in the explorer and click the Bitcoin anchor's block number, which opens that Bitcoin block and shows its hash"
+	for _, h := range hashes {
+		switch strings.ToLower(h) {
+		case strings.ToLower(tx.Status.BlockHash):
+			return ". That is the hash of the Sequentia block; the task asks for the Bitcoin block it anchors to" + where
+		case strings.ToLower(tx.Txid):
+			if len(hashes) == 1 {
+				return ". That is your transaction id; the notes need the Bitcoin block's hash" + where
+			}
+		}
+	}
+	if anchor.Height > 0 && regexp.MustCompile(`\b`+strconv.FormatInt(anchor.Height, 10)+`\b`).MatchString(notes) {
+		return fmt.Sprintf(". %d is the anchor's height; the task asks for its hash", anchor.Height) + where
+	}
+	return ""
 }
 
 // ---- peers: the public node's view of who is connected ----

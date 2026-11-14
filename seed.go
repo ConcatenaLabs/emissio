@@ -161,8 +161,9 @@ The check is automatic: only the wallet that holds the name knows what Emissio s
 - Download Sequentia Core from sequentiatestnet.com/download/core/ (Linux or Windows) and start it. It connects to the testnet on its own; let it sync.
 - In the wallet, choose Receive and create an address (it starts with tb1). From a node, sequentia-cli getnewaddress does the same.
 - Claim tSEQ at sequentiatestnet.com/faucet/ to that address.
-- Send exactly 1.{PROOF} tSEQ to another address. A second address of your own is fine. The eight decimals are your proof decimals: they are how we know the transaction is yours, and every transaction you submit for any task must carry them in one of its outputs.
-- Once it has confirmed, submit the txid. You find it in the wallet's transaction list, and at sequentiatestnet.com/explorer/.
+- Send exactly 1.{PROOF} tSEQ to another address. A second address of your own is fine. The eight decimals are your proof decimals: they are how we know the transaction is yours, and every transaction you submit for any task must carry them in one of its outputs. Pay the fee on top: a wallet told to take the fee out of the amount sends a little less, and the decimals no longer match.
+- Sequentia has an open fee market, so a transaction names the asset its fee is paid in. The desktop wallet asks on the send screen; from a node, sequentia-cli -named sendtoaddress address=<address> amount=1.{PROOF} fee_asset_label=tSEQ.
+- Once it has confirmed, about a minute later, submit the txid of your send, not the faucet's payment to you. You find it in the wallet's transaction list, and at sequentiatestnet.com/explorer/.
 
 The check is automatic: a confirmed transaction with your proof decimals is credited on the spot.`,
 	},
@@ -172,8 +173,8 @@ The check is automatic: a confirmed transaction with your proof decimals is cred
 		body: `Every Sequentia block commits to a Bitcoin testnet4 block header, and Sequentia reorganises whenever Bitcoin does. Trace that link for one of your own transactions.
 
 - Take a confirmed transaction with an output of 1.{PROOF} tSEQ (your first-transaction send qualifies).
-- Open it in the explorer at sequentiatestnet.com/explorer/ and go to the block that contains it. The block page shows the Bitcoin testnet4 block it anchors to.
-- Submit the txid, and in the notes paste the anchored Bitcoin block hash.
+- Open it in the explorer at sequentiatestnet.com/explorer/ and go to the block that contains it. The block page shows the Bitcoin testnet4 block it anchors to, with its hash; the block number links to that Bitcoin block.
+- Submit the txid, and in the notes paste the anchored Bitcoin block's hash: 64 hexadecimal characters, starting with zeros. Not the block number, and not the hash of the Sequentia block.
 
 The hash in your notes is compared with the anchor recorded for that block. If the explorer makes this hard to find, file a bug report: that is exactly the feedback the testnet is for.`,
 	},
@@ -182,10 +183,12 @@ The hash in your notes is compared with the anchor recorded for that block. If t
 		reward: 15, cap: 2000, needsTxid: true, sort: 18,
 		body: `Claim tSEQ from the faucet twice, then spend both coins together.
 
-The faucet pays tSEQ from a covenant that allows one payment at a time and a fresh claim only after a wait, so the second claim takes patience. If the faucet refuses a claim, it says why and when to try again: note anything about that message that is unclear.
+The faucet pays tSEQ from a covenant that allows one payment at a time and a fresh claim only after a wait of about nine minutes, shared by everyone who claims, so the second claim takes patience. If the faucet refuses a claim, it says why and when to try again: note anything about that message that is unclear.
+
+Both coins must be the faucet's own payments, untouched. A coin you have already spent, for this task or any other, comes back as change, and change does not count. Doing this task first is the easy way.
 
 - Claim tSEQ at sequentiatestnet.com/faucet/ to an address of yours, and again later to another address of yours.
-- Send both coins in one transaction: in Sequentia Core, use coin control to select both, or send an amount larger than either coin alone. Make one output exactly 1.{PROOF} tSEQ, and the rest can return to you as change.
+- Send both coins in one transaction: in Sequentia Core, use coin control to select exactly those two; from a node, name them as the inputs of walletcreatefundedpsbt. Make one output exactly 1.{PROOF} tSEQ, and the rest can return to you as change. A wrong first try spends the coins too, so check the inputs before you send.
 - Once it has confirmed, submit the txid.
 
 The check is automatic: the transaction must carry your proof decimals and spend coins from two faucet payments.`,
@@ -292,7 +295,7 @@ The check is automatic. A wrong amount counts as a try; after five, ask for a ne
 	{
 		slug: "bridge-in", title: "Bridge an asset into Sequentia with Compages", category: "Bridge", surface: "compages", check: "bridge-in",
 		reward: 30, cap: 1000, needsTxid: true, sort: 50,
-		body: `Lock an asset on Ethereum Sepolia or Solana devnet and receive the bridged asset on Sequentia.
+		body: `Lock an asset on Ethereum Sepolia or Solana devnet and receive the bridged asset on Sequentia. The bridge page also offers Bitcoin testnet4; that leg is not part of these tasks.
 
 Compages, at sequentiatestnet.com/bridge/, locks the original in a vault and mints a Sequentia asset for it; later deposits of the same token reissue the same asset.
 
@@ -335,7 +338,7 @@ The check is automatic: the bridge's own records show your transaction at that r
 		body: `Download Sequentia Core, verify the file before you run it, and connect it to the network.
 
 - Download the release for your system from sequentiatestnet.com/download/core/, and the SHA256SUMS file next to it.
-- Compute the file's SHA-256 (sha256sum on Linux, Get-FileHash in PowerShell on Windows) and compare it with the line in SHA256SUMS.
+- Compute the file's SHA-256 (sha256sum on Linux, Get-FileHash in PowerShell on Windows) and compare it with the line in SHA256SUMS that ends in that file's exact name. The list covers every download on the site, so search it: grep <file name> SHA256SUMS, or Select-String <file name> SHA256SUMS in PowerShell.
 - Start the node with -uacomment=emissio-{CODE} (your account code) and -addnode=159.195.15.140:18444, and keep it running while you submit.
 - In the notes, paste the checksum you computed.
 
@@ -388,7 +391,7 @@ A delegation is a separate record on the chain that points your staking output's
 
 - Pick a pool on the board at sequentiatestnet.com/pools/. Read what it has committed to paying out.
 - Delegate the stake from the previous task to that pool: in the web wallet, Stake lists the pools, so choose it and press Delegate; in Sequentia Core, its Staking tab; from a node, delegatestake. If you delegate a new amount instead, make it end in your proof decimals, for example 100.{PROOF}.
-- Once it has confirmed, submit the txid of the delegation record. Check the board afterwards: your weight should appear under the pool.
+- Once it has confirmed, submit the txid of the delegation record. delegatestake answers with two ids: submit the one named txid, not authorization_txid. Check the board afterwards: your weight should appear under the pool.
 
 The check is automatic: the record must name your stake's key (or the key of a new stake carrying your proof decimals in the same transaction) as its controller, and a pool on the board as its signer.`,
 	},
@@ -409,6 +412,8 @@ The check is automatic: the transaction must spend your delegation record and cr
 		body: `Start withdrawing your stake.
 
 A stake leaves in two steps: first it moves into an unbonding output of the same key, where it stops counting as weight, and only after the parent chain has moved on far enough can the coins be spent freely. Try it.
+
+A stake can be unbonded only once its lock has passed: 43,200 blocks after it was bonded, which at the testnet's present pace is about a month. The wallet shows the exact block and an estimated date beside the stake (from a node, liststakeutxos). Bond early, and come back to this task.
 
 - Once your stake's lock has passed, unbond it: in the web wallet, press Unbond beside it under Stake; in Sequentia Core, withdraw it from the Staking tab; from a node, withdrawstake does the same. If the wallet refuses or the lock has not passed, note the exact message: unclear errors here are worth a bug report.
 - Once the unbonding transaction has confirmed, submit its txid.

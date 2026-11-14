@@ -38,16 +38,23 @@ const (
 type checkResult struct {
 	Note    string
 	Verdict verdict
+	// Firm marks a refusal no reviewer could overturn: the transaction is
+	// unconfirmed, missing, or lacks the proof decimals. The page then does
+	// not suggest sending it to a reviewer.
+	Firm bool
 }
 
 func pass(format string, args ...any) checkResult {
-	return checkResult{fmt.Sprintf(format, args...), vPass}
+	return checkResult{Note: fmt.Sprintf(format, args...), Verdict: vPass}
 }
 func fail(format string, args ...any) checkResult {
-	return checkResult{fmt.Sprintf(format, args...), vFail}
+	return checkResult{Note: fmt.Sprintf(format, args...), Verdict: vFail}
+}
+func firmFail(format string, args ...any) checkResult {
+	return checkResult{Note: fmt.Sprintf(format, args...), Verdict: vFail, Firm: true}
 }
 func review(format string, args ...any) checkResult {
-	return checkResult{fmt.Sprintf(format, args...), vReview}
+	return checkResult{Note: fmt.Sprintf(format, args...), Verdict: vReview}
 }
 
 // checkKinds names every check, for the admin's task editor.
@@ -104,6 +111,18 @@ func needsNotes(kind string) bool {
 	return false
 }
 
+// proofRule is what the txid field says about the proof decimals for a
+// task's check: most evidence must carry them, some never can.
+func proofRule(kind string) string {
+	switch kind {
+	case "emissio-return", "redelegate", "unbond-stake":
+		return "none"
+	case "delegate-stake":
+		return "optional"
+	}
+	return "required"
+}
+
 func (a *App) evidenceCheck(kind, txid, notes string, user *User) checkResult {
 	switch kind {
 	case "none", "":
@@ -122,17 +141,17 @@ func (a *App) evidenceCheck(kind, txid, notes string, user *User) checkResult {
 		return a.arcaCheck(kind, user)
 	}
 	if txid == "" {
-		return fail("no txid submitted")
+		return firmFail("no txid submitted")
 	}
 	tx, note := a.fetchTx(txid)
 	if tx == nil {
 		if strings.Contains(note, "NOT FOUND") {
-			return fail("%s", note)
+			return firmFail("%s", note)
 		}
 		return review("%s", note)
 	}
 	if !tx.Status.Confirmed {
-		return fail("the transaction is in the mempool and not yet confirmed: submit it once it is in a block")
+		return firmFail("the transaction is in the mempool and not yet confirmed: wait about a minute for the next block, then submit it again")
 	}
 	where := fmt.Sprintf("confirmed at height %d", tx.Status.BlockHeight)
 	var r checkResult
@@ -160,7 +179,7 @@ func (a *App) taggedCheck(kind string, tx *chainTx, notes string, user *User) ch
 	tag := proofTag(user.ClaimCode)
 	idx, po := proofOutput(tx, tag)
 	if po == nil {
-		return fail("proof amount .%s NOT found in any transparent output", tag)
+		return firmFail("proof amount .%s NOT found in any transparent output%s", tag, a.proofMissHint(tx, tag))
 	}
 	found := fmt.Sprintf("proof amount found (output %d, asset %s)", idx, short(po.Asset))
 	policy := a.cfg.PolicyAsset
@@ -214,7 +233,7 @@ func (a *App) taggedCheck(kind string, tx *chainTx, notes string, user *User) ch
 		case kind == "issue-asset":
 			return pass("%s; issues asset %s (OK)", found, short(iss.AssetID))
 		case !iss.IsReissuance:
-			return fail("%s; this is a new issuance, not a reissuance", found)
+			return fail("%s; this is a new issuance, not a reissuance: submit it to the task \"Issue your own asset\", then reissue that asset and submit the reissuance here", found)
 		}
 		owns, note := a.ownsIssuance(user.ID, iss.AssetID)
 		switch owns {
@@ -544,6 +563,15 @@ func (a *App) delegationCheck(user *User, tx *chainTx) checkResult {
 			keys[k] = true
 		}
 	}
+	records := false
+	for _, o := range tx.Vout {
+		if _, _, ok := parseDelegation(o.Script); ok {
+			records = true
+		}
+	}
+	if !records {
+		return fail("this transaction holds no delegation record. If your wallet gave two transaction ids, submit the one named txid, not authorization_txid")
+	}
 	if len(keys) == 0 {
 		return fail("this account has no staking output on file, and this transaction bonds none with the proof decimals")
 	}
@@ -666,7 +694,38 @@ func (a *App) faucetCheck(tx *chainTx, found string) checkResult {
 	if len(payments) >= 2 {
 		return pass("%s; spends coins from %d faucet payments (OK)", found, len(payments))
 	}
-	return fail("%s; spends coins from %d faucet payment(s): it must combine coins from two", found, len(payments))
+	return fail("%s; spends coins from %d faucet payment(s): it must combine coins from two. "+
+		"A coin counts only while it is the faucet's own payment, untouched: once a wallet has spent it, "+
+		"what comes back is change and no longer counts. If one of yours is already spent, claim again "+
+		"to a new address and spend the two untouched faucet coins together, with coin control", found, len(payments))
+}
+
+// proofMissHint explains the commonest reasons a transaction lacks the
+// proof decimals, when the transaction itself shows which one it is.
+func (a *App) proofMissHint(tx *chainTx, tag string) string {
+	want, _ := strconv.ParseInt(tag, 10, 64)
+	for _, in := range tx.Vin {
+		if in.Prevout != nil && a.faucetAddr[strings.ToLower(in.Prevout.Address)] {
+			return ". This is the faucet's payment to you: submit the transaction you sent yourself, with an output ending in ." + tag
+		}
+	}
+	// A wallet told to take the fee out of the amount sends a little less
+	// than was typed, so the decimals come out just short.
+	for i, o := range tx.Vout {
+		if o.Value == nil || o.Type == "fee" || o.Type == "op_return" {
+			continue
+		}
+		if d := want - *o.Value%proofAtoms; d > 0 && d < 100000 {
+			return fmt.Sprintf(". Output %d is %s, just short of .%s: the wallet took the fee out of the amount. "+
+				"Send again with the fee paid on top (untick \"subtract fee from amount\"; from a node, leave subtractfeefromamount off)", i, atomsText(*o.Value), tag)
+		}
+	}
+	for _, o := range tx.Vout {
+		if o.ValueCommitment != "" {
+			return ". An output of this transaction is confidential, and a confidential amount is hidden from everyone, this check included: send the proof amount to a transparent (tb1) address"
+		}
+	}
+	return ""
 }
 
 // ---- Compages ----
