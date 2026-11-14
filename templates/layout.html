@@ -75,12 +75,14 @@
   <h3>Invite friends with a post</h3>
   <p class="small">Your post is ready, with your account code <strong class="mono">{{.Code}}</strong> and your referral link already in it. Anyone who joins through the link and earns {{seq .Threshold}} SEQ from tasks gets {{seq .Bonus}} SEQ, and so do you once you have earned {{seq .Threshold}} too. Then they can invite their own friends the same way.</p>
   <div class="share-actions">
-    <a class="btn small" href="{{.XURL}}" target="_blank" rel="noopener">Post on X</a>
+    {{if .QuoteURL}}<a class="btn small" href="{{.QuoteURL}}" target="_blank" rel="noopener">Quote the official post on X</a>{{end}}
+    <a class="btn small{{if .QuoteURL}} ghost{{end}}" href="{{.XURL}}" target="_blank" rel="noopener">Post on X</a>
     <a class="btn small ghost" href="{{.RedURL}}" target="_blank" rel="noopener">Post on Reddit</a>
     <a class="btn small ghost" href="{{.TGURL}}" target="_blank" rel="noopener">Share on Telegram</a>
     <button class="btn small ghost" type="button" data-copy="{{.Link}}">Copy link</button>
   </div>
-  {{if not .XVerified}}<p class="small muted">The X post also verifies your X account: once it is published, paste its link under Verified accounts on <a href="{{base}}/account#verified">your account page</a>.</p>{{end}}
+  {{if .QuoteURL}}<p class="small muted">Quoting Sequentia's official post spreads it to your followers with your code and link above it. Keep them in the text: a quote without them brings you no referrals.</p>{{end}}
+  {{if not .XVerified}}<p class="small muted">The X post, or the quote, also verifies your X account: once it is published, paste its link under Verified accounts on <a href="{{base}}/account#verified">your account page</a>.</p>{{end}}
   <details>
     <summary class="small">See or copy the texts</summary>
     <div class="inner">
