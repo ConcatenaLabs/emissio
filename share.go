@@ -14,9 +14,16 @@ package main
 // offers to quote it, with the same link and code above it: the official
 // post introduces Sequentia and Emissio, and a plain repost would carry no
 // link, so it would bring the tester no referrals.
+//
+// On Reddit the kit writes the link alone, with no title: Reddit removes a
+// text repeated across accounts and communities as spam and filters links by
+// domain, so one ready-made post from every tester would put the domain the
+// whole testnet lives on at risk. The code has no use there: Reddit keeps a
+// link whole, the link carries the referral by itself, and a Reddit account
+// is verified from the account page, not by a post. What a friend needs to
+// know before joining is on the page the link opens (registerData).
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -31,9 +38,7 @@ type shareView struct {
 	XURL     string
 	QuoteURL string // empty unless the official post is configured
 	Official string // the official post itself, to open and read
-	Reddit   string // the Reddit post's body
-	RedTitle string
-	RedURL   string
+	RedURL   string // a text post with the link alone, no title
 	TGURL    string
 	// XVerified: the account already has a verified X account, so the X
 	// post no longer earns the verification.
@@ -51,24 +56,14 @@ func xLength(text, link string) int {
 }
 
 // shareTexts gives the X text (link and code alone, for a post or a quote),
-// the Telegram line and the Reddit post.
-func shareTexts(code, link string) (x, tg, redTitle, reddit string) {
+// the Reddit text (the link alone) and the Telegram line, which goes under
+// the link in a chat the tester chooses.
+func shareTexts(code, link string) (x, reddit, tg string) {
 	// The blank lines leave room on top for the tester's own words.
 	x = "\n\n" + link + "\n" + code
-	tg = "I'm testing Sequentia, a Bitcoin wallet for every asset. My Emissio code: " + code
-	redTitle = "I'm testing Sequentia, a Bitcoin wallet for every asset, and earning tokens for every task"
-	reddit = "Sequentia puts every asset on your Bitcoin wallet: your Bitcoin address and keys hold BTC, stablecoins, " +
-		"tokenized shares and tokens anyone can issue, and swap them against BTC. Its wallet, node and ecosystem are " +
-		"open on testnet, and Emissio, the project's rewards program, credits Sequence tokens (SEQ) for every task: " +
-		"making a transaction, swapping against BTC, issuing an asset, staking, running a node, reporting bugs.\n\n" +
-		"Why this is not a scam or a chain letter:\n\n" +
-		"- Nothing to buy and nothing to deposit. Testnet coins come from the faucet and have no value.\n" +
-		"- Nobody asks for your seed phrase or private keys. Rewards are paid at mainnet launch to an address you generate yourself.\n" +
-		"- Every task is checked against the public testnet chain, and the code of the network, the wallets and Emissio itself is open source: github.com/ConcatenaLabs\n" +
-		fmt.Sprintf("- The referral bonus pays only once both people have earned %d SEQ each from real tasks, so fake accounts gain nothing.\n\n", referralThreshold) +
-		"If you want to try it: " + link + "\n\n" +
-		fmt.Sprintf("My Emissio code is %s. Join through the link and we each get %d SEQ once we have both earned %d.", code, referralBonus, referralThreshold)
-	return x, tg, redTitle, reddit
+	reddit = "\n\n" + link
+	tg = "I'm testing Sequentia, a Bitcoin sidechain for tokenized assets, and Emissio credits every task on its testnet."
+	return x, reddit, tg
 }
 
 // qesc escapes a query value with %20 for spaces, which every site reads
@@ -82,15 +77,15 @@ func (a *App) shareFor(r *http.Request, user *User) *shareView {
 	}
 	link := a.publicURL(r) + "/r/" + user.ClaimCode
 	v := &shareView{Code: user.ClaimCode, Link: link, Bonus: referralBonus, Threshold: referralThreshold}
-	var tg string
-	v.XText, tg, v.RedTitle, v.Reddit = shareTexts(user.ClaimCode, link)
+	x, reddit, tg := shareTexts(user.ClaimCode, link)
+	v.XText = x
 	v.XURL = "https://x.com/intent/post?text=" + qesc(v.XText)
 	if a.cfg.XQuotePost != "" {
 		// X attaches a post given as url as a quote of it.
 		v.QuoteURL = "https://x.com/intent/post?text=" + qesc(v.XText) + "&url=" + qesc(a.cfg.XQuotePost)
 		v.Official = a.cfg.XQuotePost
 	}
-	v.RedURL = "https://www.reddit.com/submit?type=TEXT&title=" + qesc(v.RedTitle) + "&text=" + qesc(v.Reddit)
+	v.RedURL = "https://www.reddit.com/submit?type=TEXT&text=" + qesc(reddit)
 	v.TGURL = "https://t.me/share/url?url=" + qesc(link) + "&text=" + qesc(tg)
 	if vs, err := verificationsOf(a.db, user.ID); err == nil {
 		for _, s := range vs {

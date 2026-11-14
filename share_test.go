@@ -14,7 +14,7 @@ import (
 func TestShareTexts(t *testing.T) {
 	code := "b4c0164766"
 	link := "https://sequentiatestnet.com/emissio/r/" + code
-	x, tg, title, reddit := shareTexts(code, link)
+	x, reddit, tg := shareTexts(code, link)
 	rest := strings.TrimSpace(strings.Replace(strings.Replace(x, link, "", 1), code, "", 1))
 	if rest != "" || !strings.Contains(x, link) || !strings.Contains(x, code) {
 		t.Fatalf("the X text is not just the link and the code: %q", x)
@@ -23,15 +23,19 @@ func TestShareTexts(t *testing.T) {
 	if n := xLength(x, link) + 1 + xURLWeight; n > 80 {
 		t.Fatalf("the X text takes %d of the 280 characters", n)
 	}
-	if !strings.Contains(reddit, link) || !strings.Contains(tg, code) {
-		t.Error("the Reddit post lacks the link, or the Telegram line the code")
+	// On Reddit the link alone: the title and the words are the tester's,
+	// and the link carries the referral by itself.
+	if strings.TrimSpace(reddit) != link {
+		t.Errorf("the Reddit text is not just the link: %q", reddit)
 	}
-	if !strings.Contains(reddit, code) || title == "" {
-		t.Error("the Reddit post lacks the code or a title")
+	// The Telegram line goes under the link, in a chat the tester chooses:
+	// it names Sequentia as what it is and promises nothing.
+	if !strings.Contains(tg, "a Bitcoin sidechain") || strings.Contains(tg, "Bitcoin wallet for") {
+		t.Errorf("the Telegram line does not say what Sequentia is: %q", tg)
 	}
 	for _, banned := range []string{"dollar", "euro", "free money", "guaranteed"} {
-		if strings.Contains(strings.ToLower(tg+title+reddit), banned) {
-			t.Errorf("the share texts say %q", banned)
+		if strings.Contains(strings.ToLower(tg), banned) {
+			t.Errorf("the Telegram line says %q", banned)
 		}
 	}
 }
@@ -51,6 +55,20 @@ func TestShareKitOnPages(t *testing.T) {
 			t.Errorf("%s does not say that any post with the code verifies X", path)
 		}
 	}
+	// The Reddit button opens a text post with the link alone and no title;
+	// no ready-made text is offered to paste.
+	page := get(t, client, srv.URL+"/account")
+	if !strings.Contains(page, "reddit.com/submit?type=TEXT&amp;text="+qesc("\n\n"+srv.URL+"/r/"+code)+`"`) {
+		t.Error("the Reddit button does not open a text post with the link alone")
+	}
+	for _, gone := range []string{"title=", "share-reddit", "Why this is not a scam"} {
+		if strings.Contains(page, gone) {
+			t.Errorf("the kit still carries %q", gone)
+		}
+	}
+	if !strings.Contains(page, "The same post in several communities is what Reddit removes as spam") {
+		t.Error("the kit does not say where a Reddit post belongs")
+	}
 	// Signed out, nothing to share.
 	if anon := get(t, &http.Client{Jar: newJar()}, srv.URL+"/tasks"); strings.Contains(anon, "Post on X") {
 		t.Error("a signed-out page shows the invite kit")
@@ -58,7 +76,7 @@ func TestShareKitOnPages(t *testing.T) {
 	// A visitor from the referral link is told who invited them and why
 	// this is not a scam, before being asked for anything.
 	friend := &http.Client{Jar: newJar()}
-	page := get(t, friend, srv.URL+"/r/"+code)
+	page = get(t, friend, srv.URL+"/r/"+code)
 	if !strings.Contains(page, "You were invited by "+code) || !strings.Contains(page, "Nothing to buy or deposit") {
 		t.Fatal("the referral landing does not explain the invitation")
 	}
