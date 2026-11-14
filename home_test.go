@@ -81,3 +81,33 @@ func TestFrontPage(t *testing.T) {
 		t.Error("the notes of a task whose check does not read them are not marked optional")
 	}
 }
+
+// Tasks are grouped by the surface the tester does them on. Every seeded
+// task names one of the surfaces, and every surface has a task, so the
+// pages show no empty group and no group for anything that is not a place
+// where a task is done.
+func TestSeededTasksAndSurfaces(t *testing.T) {
+	used := map[string]int{}
+	for _, task := range seedTasks {
+		known := false
+		for _, s := range surfaces {
+			known = known || s.Key == task.surface
+		}
+		if !known {
+			t.Errorf("task %s is on %q, which is not a surface", task.slug, task.surface)
+		}
+		used[task.surface]++
+	}
+	for _, s := range surfaces {
+		if used[s.Key] == 0 {
+			t.Errorf("surface %s has no task", s.Key)
+		}
+	}
+	// The task whose coin is chosen with coin control is done in Sequentia
+	// Core, beside the other asset tasks.
+	for _, task := range seedTasks {
+		if task.slug == "emissio-return" && (task.surface != "core" || task.category != "Assets") {
+			t.Errorf("emissio-return is on %q in %q", task.surface, task.category)
+		}
+	}
+}
