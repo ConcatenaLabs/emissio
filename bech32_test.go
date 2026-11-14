@@ -148,6 +148,12 @@ func TestCheckX(t *testing.T) {
 		"3": `{"__typename":"Tweet","text":"nothing here","user":{"screen_name":"alice_x","id_str":"` + young + `"}}`,
 		"4": `{"__typename":"Tweet","text":"CODE123","user":{"screen_name":"alice_x","id_str":"` + old + `"}}`,
 		"5": `{"__typename":"TweetTombstone"}`,
+		// Any post of the account's own that carries the code verifies it,
+		// whatever else it says: a reply, or a quote in the tester's words.
+		"6": `{"__typename":"Tweet","text":"@someone tried the swap today, worked first time. CODE123","in_reply_to_screen_name":"someone","user":{"screen_name":"alice_x","id_str":"12345"}}`,
+		"7": `{"__typename":"Tweet","text":"Issued my first asset on a Bitcoin sidechain.\n\nhttps://t.co/abc\nCODE123","quoted_tweet":{"text":"Welcome to real Bitcoin finance.","user":{"screen_name":"SequentiaSEQ"}},"user":{"screen_name":"alice_x","id_str":"12345"}}`,
+		// The code must be in the account's own words, not in a post it quotes.
+		"8": `{"__typename":"Tweet","text":"look at this","quoted_tweet":{"text":"my code is CODE123","user":{"screen_name":"bob"}},"user":{"screen_name":"alice_x","id_str":"12345"}}`,
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/tweet-result" || r.URL.Query().Get("token") == "" {
@@ -168,6 +174,9 @@ func TestCheckX(t *testing.T) {
 		"3": "code NOT found in the post; account created " + time.Now().AddDate(-1, 0, 0).Format("Jan 2006") + " (age UNDER 2 YEARS)",
 		"4": "post by @alice_x contains the code; account created " + time.Now().AddDate(-3, 0, 0).Format("Jan 2006") + " (age OK)",
 		"5": "post unavailable (deleted, protected account, or wrong link)",
+		"6": "post by @alice_x contains the code; account id predates 2016 (age OK)",
+		"7": "post by @alice_x contains the code; account id predates 2016 (age OK)",
+		"8": "code NOT found in the post; account id predates 2016 (age OK)",
 		"9": "post NOT FOUND (deleted, protected account, or wrong link)",
 	}
 	for id, want := range cases {
