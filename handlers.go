@@ -137,6 +137,7 @@ type homeData struct {
 	RefMin    int64
 	Verif     int64
 	Me        *homeProgress // nil when signed out
+	Share     *shareView    // nil when signed out
 }
 
 // taskGroup is the tasks of one surface, as the front page sums them up.
@@ -231,6 +232,7 @@ func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
 		a.serverError(w, err)
 		return
 	}
+	d.Share = a.shareFor(r, u)
 	if u != nil {
 		dash, err := loadDashboard(a.db, u.ID)
 		if err != nil {
@@ -276,6 +278,7 @@ func (a *App) handleTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if u != nil {
+		d.Share = a.shareFor(r, u)
 		dash, err := loadDashboard(a.db, u.ID)
 		if err != nil {
 			a.serverError(w, err)
@@ -317,6 +320,7 @@ type tasksData struct {
 	Next        *openTask
 	Status      map[int64]string
 	Earned      map[int64]int64
+	Share       *shareView
 }
 
 // fullGroup is one surface's tasks, for the task page.
@@ -668,6 +672,7 @@ type accountData struct {
 	Verified     bool // at least one platform verified: payout-eligible
 	MailOn       bool // this instance confirms email addresses
 	Dash         *dashboard
+	Share        *shareView
 }
 
 func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
@@ -725,13 +730,10 @@ func (a *App) handleAccount(w http.ResponseWriter, r *http.Request) {
 		a.serverError(w, err)
 		return
 	}
-	scheme := "http"
-	if a.cfg.SecureCookies || r.Header.Get("X-Forwarded-Proto") == "https" {
-		scheme = "https"
-	}
-	a.render(w, r, "account", "Your account", accountData{Dash: dash,
+	share := a.shareFor(r, user)
+	a.render(w, r, "account", "Your account", accountData{Dash: dash, Share: share,
 		Balance: bal, Ledger: led, Submissions: subs,
-		RefLink:  scheme + "://" + r.Host + a.cfg.BasePath + "/r/" + user.ClaimCode,
+		RefLink:  share.Link,
 		RefCount: refCount, RefBonus: referralBonus, RefThreshold: referralThreshold, RefCap: referralCap,
 		Verifs: vrows, RedditToken: a.cfg.RedditToken != "", VerifBonus: verificationBonus, Verified: verified,
 		Payout: a.accountPayoutOf(user), MailOn: a.mailOn(),
@@ -902,8 +904,20 @@ func (a *App) attachReferrer(r *http.Request, newUserID int64) {
 
 var emailRe = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
+// registerData says who invited the visitor, when a referral link brought
+// them: the page then explains what Emissio is before asking for anything.
+type registerData struct {
+	InvitedBy string
+	RefBonus  int64
+	RefMin    int64
+}
+
 func (a *App) handleRegisterForm(w http.ResponseWriter, r *http.Request) {
-	a.render(w, r, "register", "Create an account", nil)
+	d := registerData{RefBonus: referralBonus, RefMin: referralThreshold}
+	if c, err := r.Cookie(refCookie); err == nil && claimCodeRe.MatchString(c.Value) {
+		d.InvitedBy = c.Value
+	}
+	a.render(w, r, "register", "Create an account", d)
 }
 
 func (a *App) handleRegister(w http.ResponseWriter, r *http.Request) {
