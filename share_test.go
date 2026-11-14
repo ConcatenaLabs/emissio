@@ -7,38 +7,30 @@ import (
 	"testing"
 )
 
-// The X post must fit X's limit with the longest link this site makes, and
-// carry the code itself: X shortens links, so the code inside the link alone
-// would not reach the X verification check.
+// On X the kit writes the link and the code and nothing else: posts that
+// read alike across accounts look coordinated to X. The code must stand
+// outside the link, since X shortens links and the verification check reads
+// the post's text.
 func TestShareTexts(t *testing.T) {
 	code := "b4c0164766"
 	link := "https://sequentiatestnet.com/emissio/r/" + code
-	x, quote, title, reddit := shareTexts(code, link)
-	if n := xLength(x, link); n > 280 {
-		t.Fatalf("the X post is %d characters as X counts them", n)
+	x, tg, title, reddit := shareTexts(code, link)
+	rest := strings.TrimSpace(strings.Replace(strings.Replace(x, link, "", 1), code, "", 1))
+	if rest != "" || !strings.Contains(x, link) || !strings.Contains(x, code) {
+		t.Fatalf("the X text is not just the link and the code: %q", x)
 	}
-	// A quote carries the quoted post as a link too.
-	if n := xLength(quote, link) + 1 + xURLWeight; n > 280 {
-		t.Fatalf("the quote is %d characters as X counts them", n)
+	// Room for the tester's words, with the official post quoted below.
+	if n := xLength(x, link) + 1 + xURLWeight; n > 80 {
+		t.Fatalf("the X text takes %d of the 280 characters", n)
 	}
-	for name, s := range map[string]string{"x": x, "quote": quote} {
-		if !strings.Contains(strings.ReplaceAll(s, link, ""), code) {
-			t.Fatalf("the %s text carries the code only inside the link", name)
-		}
-		if !strings.Contains(s, "Bitcoin wallet") {
-			t.Errorf("the %s text does not say what Sequentia is: a Bitcoin wallet", name)
-		}
-	}
-	for name, s := range map[string]string{"x": x, "quote": quote, "reddit": reddit} {
-		if !strings.Contains(s, link) {
-			t.Errorf("the %s text has no referral link", name)
-		}
+	if !strings.Contains(reddit, link) || !strings.Contains(tg, code) {
+		t.Error("the Reddit post lacks the link, or the Telegram line the code")
 	}
 	if !strings.Contains(reddit, code) || title == "" {
 		t.Error("the Reddit post lacks the code or a title")
 	}
 	for _, banned := range []string{"dollar", "euro", "free money", "guaranteed"} {
-		if strings.Contains(strings.ToLower(x+quote+title+reddit), banned) {
+		if strings.Contains(strings.ToLower(tg+title+reddit), banned) {
 			t.Errorf("the share texts say %q", banned)
 		}
 	}
@@ -52,8 +44,11 @@ func TestShareKitOnPages(t *testing.T) {
 	for _, path := range []string{"/", "/tasks", "/account"} {
 		page := get(t, client, srv.URL+path)
 		if !strings.Contains(page, "Post on X") || !strings.Contains(page, "x.com/intent/post?text=") ||
-			!strings.Contains(page, qesc("My Emissio code: "+code)) {
-			t.Errorf("%s has no ready-made post with the code", path)
+			!strings.Contains(page, qesc("\n"+code)) {
+			t.Errorf("%s has no X post with the code", path)
+		}
+		if !strings.Contains(page, "Any post of yours on X that contains your account code verifies") {
+			t.Errorf("%s does not say that any post with the code verifies X", path)
 		}
 	}
 	// Signed out, nothing to share.
@@ -89,9 +84,10 @@ func TestQuoteOfficialPost(t *testing.T) {
 		t.Fatal("no quote button for the configured post")
 	}
 	// A tester who has never quoted a post is told how, button or by hand,
-	// and that the quote's link verifies their X account.
+	// to write their own words, and that the quote's link verifies their X
+	// account like any other post with the code.
 	for _, step := range []string{"press the repost icon", "choose <strong>Quote</strong>", "<strong>Copy link</strong>",
-		`href="https://x.com/SequentiaSEQ/status/1234567890"`, `id="share-quote"`} {
+		`href="https://x.com/SequentiaSEQ/status/1234567890"`, `data-copy-from="share-x"`, "write your own words"} {
 		if !strings.Contains(page, step) {
 			t.Errorf("the quote steps lack %q", step)
 		}
