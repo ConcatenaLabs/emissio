@@ -88,4 +88,12 @@ func TestQuoteOfficialPost(t *testing.T) {
 	if !strings.Contains(page, "Quote the official post on X") || !strings.Contains(page, "&amp;url="+qesc("https://x.com/SequentiaSEQ/status/1234567890")) {
 		t.Fatal("no quote button for the configured post")
 	}
+	// A tester who has never quoted a post is told how, button or by hand,
+	// and that the quote's link verifies their X account.
+	for _, step := range []string{"press the repost icon", "choose <strong>Quote</strong>", "<strong>Copy link</strong>",
+		`href="https://x.com/SequentiaSEQ/status/1234567890"`, `id="share-quote"`} {
+		if !strings.Contains(page, step) {
+			t.Errorf("the quote steps lack %q", step)
+		}
+	}
 }

@@ -28,6 +28,8 @@ type shareView struct {
 	XText    string
 	XURL     string
 	QuoteURL string // empty unless the official post is configured
+	Official string // the official post itself, to open and read
+	Quote    string // the text that goes above it
 	Reddit   string // the Reddit post's body
 	RedTitle string
 	RedURL   string
@@ -81,12 +83,12 @@ func (a *App) shareFor(r *http.Request, user *User) *shareView {
 	}
 	link := a.publicURL(r) + "/r/" + user.ClaimCode
 	v := &shareView{Code: user.ClaimCode, Link: link, Bonus: referralBonus, Threshold: referralThreshold}
-	var quote string
-	v.XText, quote, v.RedTitle, v.Reddit = shareTexts(user.ClaimCode, link)
+	v.XText, v.Quote, v.RedTitle, v.Reddit = shareTexts(user.ClaimCode, link)
 	v.XURL = "https://x.com/intent/post?text=" + qesc(v.XText)
 	if a.cfg.XQuotePost != "" {
 		// X attaches a post given as url as a quote of it.
-		v.QuoteURL = "https://x.com/intent/post?text=" + qesc(quote) + "&url=" + qesc(a.cfg.XQuotePost)
+		v.QuoteURL = "https://x.com/intent/post?text=" + qesc(v.Quote) + "&url=" + qesc(a.cfg.XQuotePost)
+		v.Official = a.cfg.XQuotePost
 	}
 	v.RedURL = "https://www.reddit.com/submit?type=TEXT&title=" + qesc(v.RedTitle) + "&text=" + qesc(v.Reddit)
 	v.TGURL = "https://t.me/share/url?url=" + qesc(link) + "&text=" + qesc(strings.TrimSpace(strings.Split(v.XText, "\n\n")[0]))
