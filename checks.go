@@ -86,7 +86,7 @@ var checkKinds = []struct{ Key, Desc string }{
 	{"install-release", "The release's checksum in the notes, and the node seen running that release"},
 	{"build-from-source", "A peer announcing the account code as its client name"},
 	{"run-node", "A week of sightings of a peer announcing the account code"},
-	{"own-bitcoin-node", "A Bitcoin node and a Sequentia node announcing the account code from one address, a validated anchor of the tip in the notes, and no recent call to the shared endpoint from it"},
+	{"own-bitcoin-node", "A synced Bitcoin node and a Sequentia node announcing the account code from one address that vouches for no other account, and no recent call to the shared endpoint from it"},
 	{"stake", "Proof decimals on a staking output of at least 40,000 tSEQ"},
 	{"delegate-stake", "A delegation record of this account's stake key to a pool on the board"},
 	{"redelegate", "Spends this account's delegation record into one for another pool"},
@@ -108,7 +108,7 @@ func knownCheck(k string) bool {
 // optional, and the form says so.
 func needsNotes(kind string) bool {
 	switch kind {
-	case "", "none", "install-release", "own-bitcoin-node", "emissio-unblind", "wallet-link", "anchor-lookup", "bridge-in", "bridge-both":
+	case "", "none", "install-release", "emissio-unblind", "wallet-link", "anchor-lookup", "bridge-in", "bridge-both":
 		return true
 	}
 	return false
@@ -137,7 +137,7 @@ func (a *App) evidenceCheck(kind, txid, notes string, user *User) checkResult {
 	case "install-release":
 		return a.releaseCheck(notes, user.ClaimCode)
 	case "own-bitcoin-node":
-		return a.ownBitcoinCheck(notes, user.ClaimCode, time.Now())
+		return a.ownBitcoinCheck(notes, user, time.Now())
 	case "emissio-unblind":
 		return a.unblindCheck(user, notes)
 	case "wallet-link":

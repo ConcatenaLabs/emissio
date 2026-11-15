@@ -421,12 +421,12 @@ The check is automatic: the checksum must match a file on the download page, and
 		reward: 40, cap: 500, needsTxid: false, sort: 610, needs: []string{"install-release"}, inactive: true,
 		body: `Every Sequentia block references a Bitcoin testnet4 block, and your node follows Bitcoin's reorganisations as they happen. A testnet node checks those anchors against a shared Bitcoin endpoint unless you give it one of its own. Give it yours.
 
-- Install Bitcoin Core (bitcoincore.org) and run it on testnet4, unpruned, with -testnet4 -txindex=1 -uacomment=emissio-{CODE} -addnode=159.195.15.140:48333. Let it sync. Sequentia Core also reads blocks and transactions from it for its BTC side, which is why it should keep the whole chain.
-- Point Sequentia Core at it, in its configuration or on the command line: mainchainrpchost=127.0.0.1, mainchainrpcport=48332 and mainchainrpccookiefile=<your Bitcoin data directory>/testnet4/.cookie. Start it with -uacomment=emissio-{CODE} -addnode=159.195.15.140:18444 too.
+- Install Bitcoin Core (bitcoincore.org) and run it with -testnet4 -uacomment=emissio-{CODE} -addnode=159.195.15.140:48333. Let it sync.
+- Point Sequentia Core at it, in its configuration or on the command line: mainchainrpchost=127.0.0.1, mainchainrpcport=48332 and mainchainrpccookiefile=<your Bitcoin data directory>/testnet4/.cookie. Start it with -uacomment=emissio-{CODE} -addnode=159.195.15.140:18444 too, on the same machine or the same internet address.
 - Check it: sequentia-cli getanchorstatus shows validateanchor true and anchorstatus ok.
-- Leave both running for a quarter of an hour, then paste the whole output of sequentia-cli getanchorstatus in the notes and submit while both nodes are connected.
+- Leave both running for a quarter of an hour, then submit while both nodes are connected. If your node reports a problem, paste the output of sequentia-cli getanchorstatus in the notes and the check tells you what is wrong.
 
-The check is automatic: the public Bitcoin node sees your Bitcoin node announcing your code, the public Sequentia node sees your Sequentia node announcing it from the same address, your node reports a validated anchor of the current tip, and the shared endpoint has had no call from that address for 15 minutes. It cannot see which Bitcoin node yours really asks, only that it no longer asks the shared one.`,
+The check sees a synced Bitcoin node announcing your code, connected to the public one for ten minutes, from the same address as your Sequentia node, and that this address has not called the shared endpoint for 15 minutes; it cannot see your nodes' settings. An address counts for one account only.`,
 	},
 	{
 		slug: "build-from-source", title: "Build Sequentia Core from source", category: "Infrastructure", surface: "core", check: "build-from-source",

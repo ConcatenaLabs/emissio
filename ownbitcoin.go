@@ -5,29 +5,38 @@ package main
 // sees:
 //
 //   - the box's Bitcoin node has a peer announcing the account code in its
-//     user agent (a -uacomment): its peer list, written every minute by a
-//     timer on the box to a file Emissio reads (EMISSIO_BTC_PEERS);
+//     user agent (a -uacomment), and only that one code; the node counts it
+//     as synced (its headers and blocks within a few of the box node's
+//     height when the connection began), it has been connected for ten
+//     minutes, and the same connection is in two successive peer lists. The
+//     lists are written every minute by a timer on the box to a file Emissio
+//     reads (EMISSIO_BTC_PEERS), each carrying the one before it on;
 //   - the public Sequentia node has a peer announcing the code from the same
 //     address;
-//   - the notes carry that node's getanchorstatus: anchors validated, the
-//     tip's anchor found on Bitcoin, the tip current, and its anchor the one
-//     the public chain records for that height;
 //   - the shared Bitcoin endpoint, which a testnet node uses unless told
-//     otherwise, has had no call from that address lately: its record of each
-//     address's last call (EMISSIO_ANCHOR_SEEN, answered on the box only).
+//     otherwise, has had no call from that address for the quiet interval,
+//     by its record of each address's last call (EMISSIO_ANCHOR_SEEN,
+//     answered on the box only), and that record covers the whole interval;
+//   - the address has not vouched for another account before: a Bitcoin
+//     node's address vouches for one account, ever, as a social handle does,
+//     and a second account from it goes to a reviewer.
 //
-// What it cannot see: which endpoint the node really uses, beyond the
-// absence of calls to the shared one, so a third-party endpoint passes too.
+// What it cannot see: the node's settings, and which endpoint the tester's
+// Sequentia node really asks beyond the absence of calls to the shared one.
+// A peer's user agent is what the peer announces; a program that completes
+// the handshake and answers for headers can announce it too. The
+// getanchorstatus a tester pastes is not evidence: it is read only to tell a
+// tester whose node reports a problem what is wrong.
 
 import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/url"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -36,22 +45,53 @@ const (
 	// btcPeersMaxAge is how old the box's Bitcoin peer list may be: the
 	// timer writes it every minute.
 	btcPeersMaxAge = 5 * time.Minute
-	// tipSlack is how far behind the public tip the pasted status may be.
-	tipSlack = 10
+	// btcSyncSlack is how many blocks below the box node's height, when the
+	// connection was first listed, a peer's headers and blocks may be for the
+	// node to count it as synced.
+	btcSyncSlack = 3
 )
 
 // sharedQuiet is how long the tester's address must not have called the
-// shared endpoint: a validating node calls it every few seconds. A variable
+// shared endpoint: a validating node calls it every few seconds. btcMinConn
+// is how long the tester's Bitcoin node must have been connected. Variables
 // only so the regtest run need not wait a quarter of an hour.
-var sharedQuiet = 15 * time.Minute
+var (
+	sharedQuiet = 15 * time.Minute
+	btcMinConn  = 10 * time.Minute
+)
+
+const btcNodeSchema = `
+CREATE TABLE IF NOT EXISTS btc_node_hosts (
+	host TEXT PRIMARY KEY,
+	user_id INTEGER NOT NULL REFERENCES users(id),
+	created_at INTEGER NOT NULL
+);
+`
+
+// btcPeer is one peer of the box's Bitcoin node, as btc-peers.py writes it.
+// Bitcoin Core learns a peer's height when it connects and when it announces
+// a block, and a node that only follows never announces one; so the list
+// follows each connection (ID and Conntime) from one list to the next:
+// FirstHeight is the box node's height when the connection was first
+// listed, BestHeaders and BestBlocks the highest synced heights seen on it,
+// and Listed how many successive lists carry it.
+type btcPeer struct {
+	ID          int64    `json:"id"`
+	Addr        string   `json:"addr"`
+	Subver      string   `json:"subver"`
+	Inbound     bool     `json:"inbound"`
+	Services    []string `json:"services"`
+	Conntime    int64    `json:"conntime"`
+	FirstHeight int64    `json:"first_height"`
+	BestHeaders int64    `json:"best_headers"`
+	BestBlocks  int64    `json:"best_blocks"`
+	Listed      int      `json:"listed"`
+}
 
 type btcPeerList struct {
-	Updated int64 `json:"updated"`
-	Peers   []struct {
-		Addr    string `json:"addr"`
-		Subver  string `json:"subver"`
-		Inbound bool   `json:"inbound"`
-	} `json:"peers"`
+	Updated int64     `json:"updated"`
+	Height  *int64    `json:"height"`
+	Peers   []btcPeer `json:"peers"`
 }
 
 // peerHost is a peer address without its port.
@@ -62,89 +102,181 @@ func peerHost(addr string) string {
 	return strings.ToLower(strings.Trim(addr, "[]"))
 }
 
-var anchorStatusRe = regexp.MustCompile(`(?s)\{.*\}`)
+var emissioCodeRe = regexp.MustCompile(`(?i)emissio-([0-9a-z]+)`)
+
+// agentCodes are the distinct account codes a user agent announces.
+func agentCodes(subver string) []string {
+	var codes []string
+	seen := map[string]bool{}
+	for _, m := range emissioCodeRe.FindAllStringSubmatch(subver, -1) {
+		c := strings.ToLower(m[1])
+		if !seen[c] {
+			seen[c] = true
+			codes = append(codes, c)
+		}
+	}
+	return codes
+}
+
+func announces(subver, code string) bool {
+	for _, c := range agentCodes(subver) {
+		if c == code {
+			return true
+		}
+	}
+	return false
+}
 
 type anchorStatus struct {
 	ValidateAnchor *bool  `json:"validateanchor"`
 	TipHeight      *int64 `json:"tipheight"`
-	AnchorHeight   int64  `json:"anchorheight"`
-	AnchorHash     string `json:"anchorhash"`
 	AnchorStatus   string `json:"anchorstatus"`
 }
 
-// parseAnchorStatus reads getanchorstatus output pasted in the notes.
+// parseAnchorStatus finds getanchorstatus output pasted in the notes: the
+// first JSON object, decoded from any opening brace, that has the status's
+// fields. Text and other objects or braces around it are passed over.
 func parseAnchorStatus(notes string) (*anchorStatus, bool) {
-	m := anchorStatusRe.FindString(notes)
-	if m == "" {
-		return nil, false
+	for i := 0; i < len(notes); i++ {
+		if notes[i] != '{' {
+			continue
+		}
+		var st anchorStatus
+		if json.NewDecoder(strings.NewReader(notes[i:])).Decode(&st) == nil && st.ValidateAnchor != nil && st.TipHeight != nil {
+			return &st, true
+		}
 	}
-	var st anchorStatus
-	if err := json.Unmarshal([]byte(m), &st); err != nil || st.ValidateAnchor == nil || st.TipHeight == nil {
-		return nil, false
-	}
-	return &st, true
+	return nil, false
 }
 
-func (a *App) fetchText(path string) (string, error) {
-	resp, err := proofClient.Get(strings.TrimRight(a.cfg.EsploraURL, "/") + path)
-	if err != nil {
-		return "", err
+// anchorDiagnosis is what a pasted status says is wrong, or "".
+func anchorDiagnosis(notes string) string {
+	st, ok := parseAnchorStatus(notes)
+	switch {
+	case !ok:
+		return ""
+	case !*st.ValidateAnchor:
+		return "the status you pasted says validateanchor false: your node does not check anchors at all. Point mainchainrpchost, mainchainrpcport and mainchainrpccookiefile at your Bitcoin node and restart it"
+	case st.AnchorStatus != "ok":
+		return fmt.Sprintf("the status you pasted says anchorstatus %q: your node cannot check the tip's anchor against its Bitcoin node (no_connection means it does not reach it). Fix the connection and wait until getanchorstatus says ok", st.AnchorStatus)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
-	return strings.TrimSpace(string(b)), err
+	return ""
 }
 
-// sharedLastCall is the time the shared endpoint last saw a call from host,
-// or zero when it has none on record.
-func (a *App) sharedLastCall(host string) (time.Time, error) {
+// sharedRecord is the shared endpoint's answer about one address: its last
+// call (zero when none is on record), when the record began (the proxy's
+// start), and when it last had to leave a new caller out because it was
+// full (zero when never).
+type sharedRecord struct {
+	Last, Since, Dropped time.Time
+}
+
+func unixOrZero(p *int64) time.Time {
+	if p == nil {
+		return time.Time{}
+	}
+	return time.Unix(*p, 0)
+}
+
+func (a *App) sharedLastCall(host string) (sharedRecord, error) {
 	resp, err := proofClient.Get(a.cfg.AnchorSeenURL + "?addr=" + url.QueryEscape(host))
 	if err != nil {
-		return time.Time{}, err
+		return sharedRecord{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return time.Time{}, fmt.Errorf("HTTP %d", resp.StatusCode)
+		return sharedRecord{}, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	var r struct {
-		Last *int64 `json:"last"`
+		Last    *int64 `json:"last"`
+		Since   *int64 `json:"since"`
+		Dropped *int64 `json:"dropped_last"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&r); err != nil {
-		return time.Time{}, err
+		return sharedRecord{}, err
 	}
-	if r.Last == nil {
-		return time.Time{}, nil
+	if r.Since == nil {
+		return sharedRecord{}, fmt.Errorf("the record does not say when it began")
 	}
-	return time.Unix(*r.Last, 0), nil
+	return sharedRecord{Last: unixOrZero(r.Last), Since: unixOrZero(r.Since), Dropped: unixOrZero(r.Dropped)}, nil
 }
 
-func (a *App) ownBitcoinCheck(notes, code string, now time.Time) checkResult {
+// minutesUntil is a wait in whole minutes, rounded up, in words.
+func minutesUntil(d time.Duration) string {
+	if n := int(math.Ceil(d.Minutes())); n != 1 {
+		return fmt.Sprintf("%d minutes", n)
+	}
+	return "1 minute"
+}
+
+// btcPeerVerdict judges one peer announcing the code: "" when it is the
+// node the task asks for, otherwise what is missing, and how far it got
+// (for choosing which refusal to show when several peers announce the code).
+func btcPeerVerdict(p btcPeer, code string, now time.Time) (string, int) {
+	if codes := agentCodes(p.Subver); len(codes) > 1 {
+		return fmt.Sprintf("your Bitcoin node announces several account codes (%s): announce only yours, with one -uacomment=emissio-%s", p.Subver, code), 0
+	}
+	if p.BestHeaders < p.FirstHeight-btcSyncSlack || p.BestBlocks < p.FirstHeight-btcSyncSlack {
+		return fmt.Sprintf("your Bitcoin node is seen (%s), but the public Bitcoin node does not count it as synced: on this connection it knows its headers to %d and its blocks to %d, and its own height was %d when the connection was first listed. Let your node finish syncing; once it has, restart it so that it connects afresh, and submit again after %d minutes", p.Subver, p.BestHeaders, p.BestBlocks, p.FirstHeight, int(btcMinConn.Minutes())), 1
+	}
+	if up := now.Sub(time.Unix(p.Conntime, 0)); up < btcMinConn {
+		return fmt.Sprintf("your Bitcoin node is seen (%s), connected %s ago: the check wants one connection of %d minutes. Keep it running and submit again in %s", p.Subver, up.Round(time.Second), int(btcMinConn.Minutes()), minutesUntil(btcMinConn-up)), 2
+	}
+	if p.Listed < 2 {
+		return fmt.Sprintf("your Bitcoin node is seen (%s) in the latest peer list but not on the same connection in the one before: keep it connected and submit again in two minutes", p.Subver), 3
+	}
+	return "", 4
+}
+
+func (a *App) ownBitcoinCheck(notes string, user *User, now time.Time) checkResult {
+	res := a.ownBitcoinObserved(user, now)
+	if res.Verdict == vFail {
+		if d := anchorDiagnosis(notes); d != "" {
+			res.Note = d + ". What the public side sees: " + res.Note
+		}
+	}
+	return res
+}
+
+func (a *App) ownBitcoinObserved(user *User, now time.Time) checkResult {
 	if a.cfg.BtcPeersFile == "" || a.cfg.AnchorSeenURL == "" {
 		return review("the Bitcoin peer list or the shared endpoint's record is not configured; manual review")
 	}
-	code = strings.ToLower(code)
+	code := strings.ToLower(user.ClaimCode)
 	// 1. The tester's Bitcoin node, among the box Bitcoin node's peers.
 	raw, err := os.ReadFile(a.cfg.BtcPeersFile)
 	var list btcPeerList
-	if err != nil || json.Unmarshal(raw, &list) != nil {
+	if err != nil || json.Unmarshal(raw, &list) != nil || list.Height == nil {
 		return review("the public Bitcoin node's peer list is unavailable; manual review")
 	}
 	if now.Sub(time.Unix(list.Updated, 0)) > btcPeersMaxAge {
 		return review("the public Bitcoin node's peer list is out of date; manual review")
 	}
-	btcHost, btcAgent := "", ""
-	for _, p := range list.Peers {
-		if strings.Contains(strings.ToLower(p.Subver), "emissio-"+code) {
-			btcHost, btcAgent = peerHost(p.Addr), p.Subver
+	var btc *btcPeer
+	why, best := "", -1
+	for i, p := range list.Peers {
+		if !announces(p.Subver, code) {
+			continue
+		}
+		w, stage := btcPeerVerdict(p, code, now)
+		if w == "" {
+			btc = &list.Peers[i]
 			break
 		}
+		if stage > best {
+			why, best = w, stage
+		}
 	}
-	if btcHost == "" {
-		return fail("the public Bitcoin node sees no peer announcing emissio-%s: start Bitcoin Core with -testnet4 -uacomment=emissio-%s -addnode=159.195.15.140:48333, wait until it is connected, and submit while it is running", code, code)
+	if btc == nil {
+		if best == 0 {
+			return firmFail("%s", why)
+		}
+		if why != "" {
+			return fail("%s", why)
+		}
+		return fail("the public Bitcoin node sees no peer announcing emissio-%s: start Bitcoin Core with -testnet4 -uacomment=emissio-%s -addnode=159.195.15.140:48333, let it sync, and submit while it is connected", code, code)
 	}
+	btcHost, btcAgent := peerHost(btc.Addr), btc.Subver
 	// 2. The tester's Sequentia node, from the same address.
 	ps, err := a.peers()
 	if err != nil {
@@ -152,11 +284,15 @@ func (a *App) ownBitcoinCheck(notes, code string, now time.Time) checkResult {
 	}
 	seqHost := ""
 	for _, p := range ps {
-		if strings.Contains(strings.ToLower(p.Subver), "emissio-"+code) {
-			seqHost = peerHost(p.Addr)
-			if seqHost == btcHost {
-				break
-			}
+		if !announces(p.Subver, code) {
+			continue
+		}
+		if len(agentCodes(p.Subver)) > 1 {
+			return firmFail("your Sequentia node announces several account codes (%s): announce only yours, with one -uacomment=emissio-%s", p.Subver, code)
+		}
+		seqHost = peerHost(p.Addr)
+		if seqHost == btcHost {
+			break
 		}
 	}
 	if seqHost == "" {
@@ -165,44 +301,28 @@ func (a *App) ownBitcoinCheck(notes, code string, now time.Time) checkResult {
 	if seqHost != btcHost {
 		return fail("your Bitcoin node connects from %s and your Sequentia node from %s: the check needs both on one address. If they run on one machine and reach the internet by different addresses (IPv6 for one and IPv4 for the other, a VPN), connect both with the IPv4 addnode the task gives, or send this to a reviewer", btcHost, seqHost)
 	}
-	// 3. The node's own report: anchors validated, against a current tip.
-	st, ok := parseAnchorStatus(notes)
-	if !ok {
-		return fail("both nodes are seen from %s; paste the whole output of sequentia-cli getanchorstatus in the notes", btcHost)
-	}
-	if !*st.ValidateAnchor {
-		return fail("your node reports validateanchor false: it does not check anchors at all. Point mainchainrpchost, mainchainrpcport and mainchainrpccookiefile at your Bitcoin node and restart it")
-	}
-	if st.AnchorStatus != "ok" {
-		return fail("your node reports anchorstatus %q: it cannot check the tip's anchor against its Bitcoin node (no_connection means it does not reach it). Fix the connection, then paste a fresh getanchorstatus", st.AnchorStatus)
-	}
-	var tip int64
-	if err := a.fetchJSON("/blocks/tip/height", &tip); err != nil {
-		return review("both nodes are seen and the status says ok; the explorer is unreachable, manual review")
-	}
-	if *st.TipHeight < tip-tipSlack || *st.TipHeight > tip {
-		return fail("the pasted status is of block %d and the chain is at %d: paste a fresh getanchorstatus from a synced node", *st.TipHeight, tip)
-	}
-	hash, err := a.fetchText("/block-height/" + strconv.FormatInt(*st.TipHeight, 10))
-	var block struct {
-		Anchor struct {
-			Height int64  `json:"height"`
-			Hash   string `json:"hash"`
-		} `json:"bitcoin_anchor"`
-	}
-	if err != nil || a.fetchJSON("/block/"+hash, &block) != nil {
-		return review("the explorer has no block %d yet; manual review", *st.TipHeight)
-	}
-	if !strings.EqualFold(block.Anchor.Hash, st.AnchorHash) {
-		return fail("the pasted status names anchor %s for block %d, but that block anchors to %s: paste the status exactly as your node prints it", short(st.AnchorHash), *st.TipHeight, short(block.Anchor.Hash))
-	}
-	// 4. Not the shared endpoint.
-	last, err := a.sharedLastCall(btcHost)
+	// 3. Not the shared endpoint, by a record that covers the whole interval.
+	rec, err := a.sharedLastCall(btcHost)
 	if err != nil {
-		return review("both nodes are seen and the anchor is validated; the shared endpoint's record is unavailable, manual review")
+		return review("both nodes are seen from %s; the shared endpoint's record is unavailable, manual review", btcHost)
 	}
-	if !last.IsZero() && now.Sub(last) < sharedQuiet {
-		return fail("the shared Bitcoin endpoint was called from %s %s ago: your Sequentia node still checks its anchors there. Set mainchainrpchost, mainchainrpcport and mainchainrpccookiefile to your own Bitcoin node, restart it, and submit again after %d quiet minutes (another node on the same address counts too)", btcHost, now.Sub(last).Round(time.Second), int(sharedQuiet.Minutes()))
+	if !rec.Last.IsZero() && now.Sub(rec.Last) < sharedQuiet {
+		return fail("the shared Bitcoin endpoint was called from %s %s ago: your Sequentia node still checks its anchors there. Set mainchainrpchost, mainchainrpcport and mainchainrpccookiefile to your own Bitcoin node, restart it, and submit again after %d quiet minutes (another node on the same address counts too)", btcHost, now.Sub(rec.Last).Round(time.Second), int(sharedQuiet.Minutes()))
 	}
-	return pass("your Bitcoin node (%s) and your Sequentia node are seen from %s; your node validates the anchor of block %d (%s), and the shared endpoint has had no call from that address for %d minutes (OK)", btcAgent, btcHost, *st.TipHeight, short(block.Anchor.Hash), int(sharedQuiet.Minutes()))
+	if !rec.Dropped.IsZero() && now.Sub(rec.Dropped) < sharedQuiet {
+		return review("both nodes are seen from %s; the shared endpoint's record was full %s ago and may have missed a call from that address, manual review", btcHost, now.Sub(rec.Dropped).Round(time.Second))
+	}
+	if age := now.Sub(rec.Since); age < sharedQuiet {
+		return fail("both nodes are seen from %s, but the shared endpoint's record began only %s ago and cannot yet show %d quiet minutes: keep both nodes running and submit again in %s", btcHost, age.Round(time.Second), int(sharedQuiet.Minutes()), minutesUntil(sharedQuiet-age))
+	}
+	// 4. One account per Bitcoin node address, ever.
+	a.db.Exec("INSERT OR IGNORE INTO btc_node_hosts (host, user_id, created_at) VALUES (?,?,?)", btcHost, user.ID, now.Unix())
+	var owner int64
+	if err := a.db.QueryRow("SELECT user_id FROM btc_node_hosts WHERE host = ?", btcHost).Scan(&owner); err != nil {
+		return review("both nodes are seen from %s; the record of addresses could not be read, manual review", btcHost)
+	}
+	if owner != user.ID {
+		return review("a Bitcoin node from %s has already been used for another account; a reviewer decides", btcHost)
+	}
+	return pass("a synced Bitcoin node announcing your code (%s), connected for %s, and your Sequentia node are seen from %s, and the shared endpoint has had no call from that address for %d minutes (OK)", btcAgent, now.Sub(time.Unix(btc.Conntime, 0)).Round(time.Minute), btcHost, int(sharedQuiet.Minutes()))
 }
