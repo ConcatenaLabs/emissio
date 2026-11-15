@@ -45,6 +45,9 @@ type seedTask struct {
 	// needs are the tasks this one builds on: their result, or what doing
 	// them sets up. The task page lists every task after all of its needs.
 	needs []string
+	// inactive seeds the task switched off, for an admin to switch on in the
+	// task editor once what its check reads is live on the server.
+	inactive bool
 }
 
 // stages are the task page's path, in the order a tester follows it, each
@@ -414,6 +417,18 @@ The check is automatic: the bridge's own records show your transaction at that r
 The check is automatic: the checksum must match a file on the download page, and the public node must see your node, announcing your code, running that release.`,
 	},
 	{
+		slug: "own-bitcoin-node", title: "Validate anchors with your own Bitcoin node", category: "Infrastructure", surface: "core", check: "own-bitcoin-node",
+		reward: 40, cap: 500, needsTxid: false, sort: 610, needs: []string{"install-release"}, inactive: true,
+		body: `Every Sequentia block references a Bitcoin testnet4 block, and your node follows Bitcoin's reorganisations as they happen. A testnet node checks those anchors against a shared Bitcoin endpoint unless you give it one of its own. Give it yours.
+
+- Install Bitcoin Core (bitcoincore.org) and run it on testnet4, unpruned, with -testnet4 -txindex=1 -uacomment=emissio-{CODE} -addnode=159.195.15.140:48333. Let it sync. Sequentia Core also reads blocks and transactions from it for its BTC side, which is why it should keep the whole chain.
+- Point Sequentia Core at it, in its configuration or on the command line: mainchainrpchost=127.0.0.1, mainchainrpcport=48332 and mainchainrpccookiefile=<your Bitcoin data directory>/testnet4/.cookie. Start it with -uacomment=emissio-{CODE} -addnode=159.195.15.140:18444 too.
+- Check it: sequentia-cli getanchorstatus shows validateanchor true and anchorstatus ok.
+- Leave both running for a quarter of an hour, then paste the whole output of sequentia-cli getanchorstatus in the notes and submit while both nodes are connected.
+
+The check is automatic: the public Bitcoin node sees your Bitcoin node announcing your code, the public Sequentia node sees your Sequentia node announcing it from the same address, your node reports a validated anchor of the current tip, and the shared endpoint has had no call from that address for 15 minutes. It cannot see which Bitcoin node yours really asks, only that it no longer asks the shared one.`,
+	},
+	{
 		slug: "build-from-source", title: "Build Sequentia Core from source", category: "Infrastructure", surface: "core", check: "build-from-source",
 		reward: 30, cap: 500, needsTxid: false, sort: 630, needs: []string{"install-release"},
 		body: `Build the node from the source repository on your own machine and prove it by what the build announces to the network.
@@ -525,8 +540,8 @@ func seedDB(db *sql.DB) {
 	if n == 0 {
 		for _, t := range seedTasks {
 			_, err := db.Exec(`INSERT INTO tasks (slug, title, category, body, surface, check_kind, reward, cap, needs_txid, active, sort)
-				VALUES (?,?,?,?,?,?,?,?,?,1,?)`,
-				t.slug, t.title, t.category, t.body, t.surface, t.check, t.reward, t.cap, t.needsTxid, t.sort)
+				VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+				t.slug, t.title, t.category, t.body, t.surface, t.check, t.reward, t.cap, t.needsTxid, !t.inactive, t.sort)
 			if err != nil {
 				log.Fatalf("seed task %s: %v", t.slug, err)
 			}
