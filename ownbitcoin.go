@@ -309,10 +309,15 @@ func (a *App) ownBitcoinObserved(user *User, now time.Time) checkResult {
 	if !rec.Last.IsZero() && now.Sub(rec.Last) < sharedQuiet {
 		return fail("the shared Bitcoin endpoint was called from %s %s ago: your Sequentia node still checks its anchors there. Set mainchainrpchost, mainchainrpcport and mainchainrpccookiefile to your own Bitcoin node, restart it, and submit again after %d quiet minutes (another node on the same address counts too)", btcHost, now.Sub(rec.Last).Round(time.Second), int(sharedQuiet.Minutes()))
 	}
-	if !rec.Dropped.IsZero() && now.Sub(rec.Dropped) < sharedQuiet {
+	// An address the record holds is followed even while the record is
+	// full (the endpoint updates an entry it has), so its silence is known.
+	// Only an address the record does not hold could have called unseen:
+	// while the record was full, or before it began.
+	known := !rec.Last.IsZero()
+	if !known && !rec.Dropped.IsZero() && now.Sub(rec.Dropped) < sharedQuiet {
 		return review("both nodes are seen from %s; the shared endpoint's record was full %s ago and may have missed a call from that address, manual review", btcHost, now.Sub(rec.Dropped).Round(time.Second))
 	}
-	if age := now.Sub(rec.Since); age < sharedQuiet {
+	if age := now.Sub(rec.Since); !known && age < sharedQuiet {
 		return fail("both nodes are seen from %s, but the shared endpoint's record began only %s ago and cannot yet show %d quiet minutes: keep both nodes running and submit again in %s", btcHost, age.Round(time.Second), int(sharedQuiet.Minutes()), minutesUntil(sharedQuiet-age))
 	}
 	// 4. One account per Bitcoin node address, ever.

@@ -126,6 +126,13 @@ func TestOwnBitcoinCheck(t *testing.T) {
 		app.cfg.NodeCLI = fakeCLI(t, seq("198.51.100.7:40000"))
 		return app.ownBitcoinCheck(notes, u, now)
 	}
+	// The same from an address the shared endpoint's record does not hold:
+	// one that never called it, or last did more than a day ago.
+	unseen := func(u *User) checkResult {
+		btc(fresh, good("198.51.100.11:51234"))
+		app.cfg.NodeCLI = fakeCLI(t, seq("198.51.100.11:40000"))
+		return app.ownBitcoinCheck("", u, now)
+	}
 	// The address-mismatch refusal is the tester's to send to a reviewer.
 	btc(fresh, good("198.51.100.7:51234"))
 	app.cfg.NodeCLI = fakeCLI(t, seq("198.51.100.8:40000"))
@@ -134,18 +141,24 @@ func TestOwnBitcoinCheck(t *testing.T) {
 	}
 	// A record that began five minutes ago cannot show 15 quiet minutes.
 	since = now.Unix() - 300
-	if got := run(user, ""); got.Verdict != vFail || !strings.Contains(got.Note, "began only 5m0s ago") || !strings.Contains(got.Note, "submit again in 10 minutes") {
+	if got := unseen(user); got.Verdict != vFail || !strings.Contains(got.Note, "began only 5m0s ago") || !strings.Contains(got.Note, "submit again in 10 minutes") {
 		t.Errorf("young record: %+v", got)
 	}
 	since = now.Unix() - 86400
-	// A record that was full three minutes ago may have missed the address.
+	// A record that was full three minutes ago may have missed an address
+	// it does not hold.
 	dropped = now.Unix() - 180
-	if got := run(user, ""); got.Verdict != vReview || !strings.Contains(got.Note, "was full 3m0s ago") {
-		t.Errorf("full record: %+v", got)
+	if got := unseen(user); got.Verdict != vReview || !strings.Contains(got.Note, "was full 3m0s ago") {
+		t.Errorf("full record, an address it does not hold: %+v", got)
+	}
+	// An address it holds is followed while it is full: its silence is
+	// known, so a full record does not send every tester to a reviewer.
+	if got := run(user, ""); got.Verdict != vPass {
+		t.Errorf("full record, an address it holds: %+v", got)
 	}
 	// Full twenty minutes ago: the last fifteen are whole again.
 	dropped = now.Unix() - 1200
-	if got := run(user, ""); got.Verdict != vPass {
+	if got := unseen(user); got.Verdict != vPass {
 		t.Errorf("full long ago: %+v", got)
 	}
 	dropped = 0
