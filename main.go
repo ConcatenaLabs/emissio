@@ -175,8 +175,10 @@ func envOr(k, def string) string {
 }
 
 type App struct {
-	cfg       Config
-	db        *sql.DB
+	cfg Config
+	db  *sql.DB
+	// claims serialises the submissions of one claim (claimlock.go).
+	claims    claimLocks
 	tpls      map[string]*template.Template
 	authLimit *rateLimiter
 	// The wallet problem-report intake: per address and per account code.
