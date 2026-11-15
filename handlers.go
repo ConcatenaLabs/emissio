@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -147,28 +148,19 @@ type taskGroup struct {
 	Reward      int64
 }
 
-// taskGroups sums up tasks by surface, in the surfaces' order. done says
-// whether the signed-in tester has completed a task (nil: signed out).
+// taskGroups sums up tasks by stage, in the path's order. done says whether
+// the signed-in tester has completed a task (nil: signed out).
 func taskGroups(tasks []*Task, done func(*Task) bool) []taskGroup {
 	var out []taskGroup
-	for _, sf := range append(surfaces[:len(surfaces):len(surfaces)], struct{ Key, Name string }{"", "Other tasks"}) {
-		g := taskGroup{Key: sf.Key, Name: sf.Name}
-		for _, t := range tasks {
-			if surfaceKey(t) != sf.Key {
-				continue
-			}
-			g.Count++
-			g.Reward += t.Reward
+	for _, g := range taskGroupsFull(tasks) {
+		sum := taskGroup{Key: g.Key, Name: g.Name, Count: len(g.Tasks)}
+		for _, t := range g.Tasks {
+			sum.Reward += t.Reward
 			if done != nil && done(t) {
-				g.Done++
+				sum.Done++
 			}
 		}
-		if g.Count > 0 {
-			if g.Key == "" {
-				g.Key = "other"
-			}
-			out = append(out, g)
-		}
+		out = append(out, sum)
 	}
 	return out
 }
@@ -182,23 +174,6 @@ type homeProgress struct {
 	Verified    bool
 	HasAddress  bool
 	Status      map[int64]string // task id: "approved", "pending" or "rejected"
-}
-
-// webWalletFirst orders tasks with the web wallet's first, keeping each
-// group's own order: the web wallet is where testers start.
-func webWalletFirst(tasks []*Task) []*Task {
-	out := make([]*Task, 0, len(tasks))
-	for _, t := range tasks {
-		if t.Surface == "webwallet" {
-			out = append(out, t)
-		}
-	}
-	for _, t := range tasks {
-		if t.Surface != "webwallet" {
-			out = append(out, t)
-		}
-	}
-	return out
 }
 
 func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
@@ -220,7 +195,7 @@ func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
 		RefBonus: referralBonus, RefMin: referralThreshold, Verif: verificationBonus}
 	var others []*Task
 	for _, t := range tasks {
-		if t.Surface == "webwallet" {
+		if stageOf(t.Category) == "webwallet" {
 			d.WebTasks = append(d.WebTasks, t)
 		} else {
 			others = append(others, t)
@@ -271,7 +246,7 @@ func (a *App) handleTasks(w http.ResponseWriter, r *http.Request) {
 		a.serverError(w, err)
 		return
 	}
-	d := tasksData{Groups: taskGroupsFull(webWalletFirst(tasks))}
+	d := tasksData{Groups: taskGroupsFull(tasks)}
 	u, _, err := a.currentUser(r)
 	if err != nil {
 		a.serverError(w, err)
@@ -323,39 +298,25 @@ type tasksData struct {
 	Share       *shareView
 }
 
-// fullGroup is one surface's tasks, for the task page.
+// fullGroup is one stage's tasks, for the task page.
 type fullGroup struct {
 	Key, Name string
 	Tasks     []*Task
 }
 
-// surfaceKey is a task's surface, or "" when it is none of the known ones.
-func surfaceKey(t *Task) string {
-	for _, sf := range surfaces {
-		if sf.Key == t.Surface {
-			return sf.Key
-		}
-	}
-	return ""
-}
-
-// taskGroupsFull lists the tasks by surface, the web wallet's first.
+// taskGroupsFull lists the tasks by stage, in the path's order, each stage
+// in its tasks' own order; tasks under no stage come last, as Other tasks.
 func taskGroupsFull(tasks []*Task) []fullGroup {
-	order := []string{"webwallet"}
-	for _, sf := range surfaces {
-		if sf.Key != "webwallet" {
-			order = append(order, sf.Key)
-		}
+	keys := make([]string, 0, len(stages)+1)
+	for _, st := range stages {
+		keys = append(keys, st.Key)
 	}
-	order = append(order, "")
+	keys = append(keys, "other")
 	var out []fullGroup
-	for _, k := range order {
-		g := fullGroup{Key: k, Name: surfaceTitle(k)}
-		if k == "" {
-			g.Key, g.Name = "other", "Other tasks"
-		}
+	for _, k := range keys {
+		g := fullGroup{Key: k, Name: stageName(k)}
 		for _, t := range tasks {
-			if surfaceKey(t) == k {
+			if stageOf(t.Category) == k {
 				g.Tasks = append(g.Tasks, t)
 			}
 		}
@@ -387,6 +348,7 @@ func (a *App) handleTask(w http.ResponseWriter, r *http.Request) {
 	// Task bodies name the user's own proof decimals and account code where
 	// they apply, so the instructions can be followed literally.
 	tag, code := "<your proof decimals>", "<your account code>"
+	priceA, rateA, priceB, rateB := "<your price>", "<your rate>", "<your price>", "<your rate>"
 	if user, _, _ := a.currentUser(r); user != nil {
 		d.Mine, err = latestSubmission(a.db, user.ID, task.ID)
 		if err != nil {
@@ -395,6 +357,8 @@ func (a *App) handleTask(w http.ResponseWriter, r *http.Request) {
 		}
 		d.ProofTag = proofTag(user.ClaimCode)
 		tag, code = d.ProofTag, user.ClaimCode
+		priceA, rateA = priceText(feeTaskCents("whitelist-fee", tag)), strconv.FormatInt(feeTaskRateFor("whitelist-fee", tag), 10)
+		priceB, rateB = priceText(feeTaskCents("price-server-fee", tag)), strconv.FormatInt(feeTaskRateFor("price-server-fee", tag), 10)
 	}
 	user, _, _ := a.currentUser(r)
 	d.Pay = a.paymentViewFor(user, task)
@@ -403,7 +367,8 @@ func (a *App) handleTask(w http.ResponseWriter, r *http.Request) {
 		d.Txid = t
 	}
 	body := *task
-	body.Body = strings.NewReplacer("{PROOF}", tag, "{CODE}", code).Replace(task.Body)
+	body.Body = strings.NewReplacer("{PROOF}", tag, "{CODE}", code,
+		"{PRICE_A}", priceA, "{RATE_A}", rateA, "{PRICE_B}", priceB, "{RATE_B}", rateB).Replace(task.Body)
 	d.Task = &body
 	a.render(w, r, "task", task.Title, d)
 }

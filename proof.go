@@ -68,10 +68,13 @@ type chainVin struct {
 	Issuance   *issuance  `json:"issuance"`
 }
 type chainTx struct {
-	Txid   string      `json:"txid"`
-	Vin    []chainVin  `json:"vin"`
-	Vout   []chainVout `json:"vout"`
-	Status struct {
+	Txid string      `json:"txid"`
+	Vin  []chainVin  `json:"vin"`
+	Vout []chainVout `json:"vout"`
+	// The sizes the fee-list checks recompute a fee from.
+	Weight        int64 `json:"weight"`
+	DiscountVsize int64 `json:"discount_vsize"`
+	Status        struct {
 		Confirmed   bool   `json:"confirmed"`
 		BlockHeight int64  `json:"block_height"`
 		BlockHash   string `json:"block_hash"`

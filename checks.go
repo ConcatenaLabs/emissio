@@ -67,6 +67,8 @@ var checkKinds = []struct{ Key, Desc string }{
 	{"reissue-asset", "Proof decimals on a reissuance of an asset this account issued"},
 	{"burn-asset", "A burn of an asset this account issued, of an amount with the proof decimals"},
 	{"any-asset-fee", "Proof decimals, and the fee paid in an asset other than tSEQ"},
+	{"whitelist-fee", "Proof decimals, and a USDX fee that follows from the account's rate for the whitelist task"},
+	{"price-server-fee", "Proof decimals, and a USDX fee that follows from the account's manual price for the price-server task"},
 	{"multi-asset-send", "Proof decimals, and outputs in two or more assets"},
 	{"confidential-tx", "Proof decimals, and a blinded output"},
 	{"emissio-return", "Returns Emissio's payment: spends it, pays the exact amount back, fee in that asset"},
@@ -201,6 +203,8 @@ func (a *App) taggedCheck(kind string, tx *chainTx, notes string, user *User) ch
 			return fail("%s; fee paid in tSEQ: it must be paid in another asset", found)
 		}
 		return pass("%s; fee paid in asset %s (OK)", found, short(fee))
+	case "whitelist-fee", "price-server-fee":
+		return a.feeListCheck(kind, tx, tag, found)
 	case "multi-asset-send":
 		assets := map[string]bool{}
 		for _, o := range tx.Vout {

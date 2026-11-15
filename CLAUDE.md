@@ -22,7 +22,7 @@ EMISSIO_LISTEN=127.0.0.1:8095 EMISSIO_DB=/path/to/emissio.db ./emissio
 `go test ./...` covers address validation, auth, email confirmation and reset, every task check's
 verdicts, the submission and review lifecycle, bug reports and the wallet intake, prize and report
 awards, the admin desk, registration limits, CSRF, and double-credit protection.
-`regtest_tasks_test.go` and `regtest_payout_test.go` need a regtest node and are skipped without
+`regtest_tasks_test.go`, `regtest_feelist_test.go` and `regtest_payout_test.go` need a regtest node and are skipped without
 one; their headers say what they need. CI (`.github/workflows/tests.yml`) runs `go vet` and
 `go test ./...` on every pull request and on `main`.
 
@@ -37,7 +37,8 @@ echo 'the-password' | ./emissio createadmin you@example.com
 ```
 
 After editing the seeded task copy in `seed.go`, refresh an existing database with
-`./emissio reseed-tasks`; rewards, caps and active flags set by admins are left untouched.
+`./emissio reseed-tasks`; rewards, caps and active flags set by admins are left untouched, and
+seeded tasks take the seed's place on the path (`sort`).
 
 ## The integrity model is the product
 
