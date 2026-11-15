@@ -66,8 +66,16 @@ func TestFeeListChecks(t *testing.T) {
 		"notag":      feeTx("notag", w, vout(100000000, usdx, "v0_p2wpkh"), vout(feeAt(39_000_000, 326), usdx, "fee")),
 		// The reviewer's transaction: 191 vbytes, no change, 100 atoms of dust change added to the fee.
 		"folded": feeTx("folded", 764, proof, vout(1418, usdx, "fee")),
-		// The same overpayment with a change output is not the wallet's folding.
+		// The same overpayment beside another output: change that was kept,
+		// or a second recipient with the change folded. The transaction
+		// cannot tell, so the message names both causes.
 		"overpaid": feeTx("overpaid", w, proof, vout(50000, usdx, "v0_p2wpkh"), vout(feeAt(39_000_000, 326)+100, usdx, "fee")),
+		// A second recipient, no change, the change folded into the fee: 257 vbytes, 1,500 atoms against 1,318.
+		"folded2": feeTx("folded2", 1028, proof, vout(50000, usdx, "v0_p2wpkh"), vout(1500, usdx, "fee")),
+		// No change and fee_rate=3 at the right rate, exactly: the fee rate is what is wrong.
+		"feerate3alone": feeTx("feerate3alone", w, proof, vout(2508, usdx, "fee")),
+		// Below what the rate gives: a rate above the task's.
+		"underpaid": feeTx("underpaid", w, proof, vout(50000, usdx, "v0_p2wpkh"), vout(feeAt(39_000_000, 326)-200, usdx, "fee")),
 	}
 	// A fee priced on the discounted vsize: the pass note names that size.
 	disc := map[string]any{"txid": "disc", "vin": []map[string]any{{"is_coinbase": false}}, "weight": 2726 * 4, "discount_vsize": 461,
@@ -95,14 +103,17 @@ func TestFeeListChecks(t *testing.T) {
 		{"price-server-fee", "listed", vFail, "follows from the price of the task \"List an asset for fees on your node\" (0.39)"},
 		{"whitelist-fee", "network", vFail, "valued USDX at 1, the network's rate (100000000): list it at 39000000 first"},
 		{"price-server-fee", "network", vFail, "list it at 63000000 first"},
-		{"whitelist-fee", "feerate3", vFail, "this task asks for rate 39000000 (USDX at 0.39) and fee_rate=2"},
+		{"whitelist-fee", "feerate3", vFail, "is what your rate (39000000, USDX at 0.39) gives at fee_rate=3: this task asks for fee_rate=2"},
+		{"whitelist-fee", "feerate3alone", vFail, "gives at fee_rate=3: this task asks for fee_rate=2"},
 		{"whitelist-fee", "gold", vFail, "this task's fee is paid in USDX"},
 		{"whitelist-fee", "tseq", vFail, "this task's fee is paid in USDX"},
 		{"whitelist-fee", "nofee", vFail, "no fee output"},
 		{"whitelist-fee", "nosize", vReview, "gives no size"},
 		{"whitelist-fee", "notag", vFail, "NOT found"},
 		{"whitelist-fee", "folded", vFail, "the transaction has no change, and its fee of 1418 USDX atoms is above the 980 your rate gives for its 191 vbytes"},
-		{"whitelist-fee", "overpaid", vFail, "a rate of about"},
+		{"whitelist-fee", "overpaid", vFail, "Either the wallet added change too small to keep to the fee"},
+		{"whitelist-fee", "folded2", vFail, "its fee of 1500 USDX atoms is above the 1318 your rate gives for its 257 vbytes. Either the wallet added change too small to keep"},
+		{"whitelist-fee", "underpaid", vFail, "a rate of about"},
 		{"whitelist-fee", "disc", vPass, fmt.Sprintf("a fee of %d USDX atoms for 461 vbytes", feeAt(39_000_000, 461))},
 	} {
 		got := app.evidenceCheck(k.kind, k.txid, "", user)
@@ -113,8 +124,10 @@ func TestFeeListChecks(t *testing.T) {
 	if got := app.evidenceCheck("whitelist-fee", "notag", "", user); !got.Firm {
 		t.Error("a transaction without the proof decimals is not a firm refusal")
 	}
-	if got := app.evidenceCheck("whitelist-fee", "folded", "", user); got.Firm || !strings.Contains(got.Note, "keeps a change output") {
-		t.Errorf("folded change: %+v", got)
+	for _, id := range []string{"folded", "folded2", "overpaid"} {
+		if got := app.evidenceCheck("whitelist-fee", id, "", user); got.Firm || !strings.Contains(got.Note, "keeps a change output, with fee_rate=2") {
+			t.Errorf("%s: %+v", id, got)
+		}
 	}
 }
 

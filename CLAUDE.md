@@ -52,6 +52,11 @@ that must not regress:
   submission, entry, report, verification and referral. One txid can only ever be evidence for one
   account, and a social account can vouch for exactly one Emissio account, ever. If you touch the
   credit paths, keep the guard in the schema rather than moving it into application code.
+- **A submission's claim is one step.** Between the queries that an account's task and a txid
+  are unclaimed and the insert, the evidence check waits on the explorer; `claimLocks`
+  (`claimlock.go`) holds a lock per account-and-task and per txid across all three, so two
+  submissions of one claim cannot both pass. The locks are in-process: one Emissio process per
+  database, which is how it runs.
 - **Referral qualification is checked automatically whenever a credit lands.** Both sides need a
   verified social platform and 50 SEQ each earned from tasks, competitions, security reports or
   positive admin adjustments; referral and pre-sale credits do not count toward that, and a

@@ -34,7 +34,7 @@ All amounts below are whole SEQ, credited to your ledger. On the testnet you wor
 
 ### Testnet tasks
 
-Each task pays a fixed reward, most have a first-come cap, and you can have one submission per task (you may resubmit after a rejection). A txid can only ever be evidence for one account. Every task belongs to one stage of a single path (web wallet, staking, Sequentia Core, assets, fees, bridge, infrastructure), named by its category, and is done on one surface of the public testnet (Sequentia Core, the block explorer, the faucet, Compages, the staking pools, the web wallet), which its page shows as a label. The stages are how the tasks are grouped and how the dashboard counts a tester's progress; see [The order of the tasks](#the-order-of-the-tasks).
+Each task pays a fixed reward, most have a first-come cap, and you can have one submission per task (you may resubmit after a rejection). A txid can only ever be evidence for one account, also when two accounts submit it at the same moment: a submission's claim queries, its check and its insert run as one step for that txid and that account's task. Every task belongs to one stage of a single path (web wallet, staking, Sequentia Core, assets, fees, bridge, infrastructure), named by its category, and is done on one surface of the public testnet (Sequentia Core, the block explorer, the faucet, Compages, the staking pools, the web wallet), which its page shows as a label. The stages are how the tasks are grouped and how the dashboard counts a tester's progress; see [The order of the tasks](#the-order-of-the-tasks).
 
 Each task runs a check on its evidence (`evidenceCheck` in `checks.go`; a task's check kind, which admins pick in the task editor, says which). The check answers one of three ways:
 
