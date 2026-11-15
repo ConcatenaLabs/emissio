@@ -1,8 +1,7 @@
 package main
 
 // The fee-list tasks end to end, on two elementsregtest nodes: a tester's
-// node T, with the fee list a fresh node starts with (the policy asset
-// only), and a producer P that lists the test USDX at the network's rate and
+// node T, whose fee list does not hold the test USDX, and a producer P that lists the test USDX at the network's rate and
 // mines. The tester lists USDX on T by hand, then through the real price
 // server, sends with the fee in USDX, P mines it, and the checks read the
 // transactions back from T through the explorer stand-in.

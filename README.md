@@ -137,7 +137,7 @@ Completing every task pays 725 SEQ; total task exposure across all users is 895,
 
 ### The order of the tasks
 
-The task page is one path, in the order a tester does things, and each stage goes from easiest to hardest: the web wallet, which needs no install; staking, from the web wallet; Sequentia Core, installed and verified first; assets; fees, where the node's own fee list comes before the tasks that pay a fee in another asset (a fresh node lists tSEQ alone and refuses any other fee asset); the bridge; and infrastructure. The stages are the list `stages` in `seed.go`, and a task's category names its stage. A task filed under any other category is listed last, under Other tasks.
+The task page is one path, in the order a tester does things, and each stage goes from easiest to hardest: the web wallet, which needs no install; staking, from the web wallet; Sequentia Core, installed and verified first; assets; fees, where the node's own fee list comes before the tasks that pay a fee in another asset (a node pays a fee only in an asset on its own list); the bridge; and infrastructure. The stages are the list `stages` in `seed.go`, and a task's category names its stage. A task filed under any other category is listed last, under Other tasks.
 
 Each seeded task names the tasks it builds on (`needs` in `seed.go`, shown in the table above), and its `sort` places it on the path. `TestSeededTasksFollowThePath` fails if a task comes before one it needs, names a task that does not exist, sits under no stage, or if `sort` does not rise along the path, and if a stage has no task.
 

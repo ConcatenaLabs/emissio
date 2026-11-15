@@ -277,7 +277,7 @@ The check is automatic: a burn of an asset your account issued, of an amount end
 
 Sequentia has an open fee market: fees can be paid in any accepted asset, and tSEQ has no special status beyond staking. Claim USDX, GOLD or another asset from the faucet, then send a transaction and choose that asset as the fee asset.
 
-Your node pays a fee only in an asset on its own fee list, and a fresh node lists tSEQ alone: list the asset first, as the task "List an asset for fees on your node" shows.
+Your node pays a fee only in an asset on its own fee list (sequentia-cli getfeeexchangerates shows it). If the asset you want to pay in is not on it, put it there first: the task "List an asset for fees on your node" shows how.
 
 - In the desktop wallet the fee asset is a choice on the send screen; from a node, pass fee_asset_label to sendtoaddress.
 - Make one output an amount ending in your proof decimals, for example 1.{PROOF} of whatever you send.
@@ -316,7 +316,7 @@ Emissio holds a testnet wallet of its own. Ask it for a payment below: it sends 
 
 - Give Emissio a tb1 address of your wallet and wait for the payment to arrive.
 - Send exactly the amount you received, of the same asset, back to Emissio's address shown below, in a transaction that spends the coin Emissio sent you. In Sequentia Core, coin control selects it.
-- Pay the fee in that same asset. You will need a little more of it than Emissio sent: the faucet hands out every asset Emissio pays in. Your node pays a fee only in an asset on its own fee list, and a fresh node lists tSEQ alone: list that asset first, as the task "List an asset for fees on your node" shows.
+- Pay the fee in that same asset. You will need a little more of it than Emissio sent: the faucet hands out every asset Emissio pays in. Your node pays a fee only in an asset on its own fee list (sequentia-cli getfeeexchangerates shows it). If that asset is not on it, put it there first, as the task "List an asset for fees on your node" shows.
 - Once it has confirmed, submit the txid below.
 
 The check is automatic: the transaction spends Emissio's payment, returns the exact amount of that asset, and pays its fee in it.`,
@@ -338,11 +338,11 @@ The check is automatic. A wrong amount counts as a try; after five, ask for a ne
 	{
 		slug: "fee-whitelist", title: "List an asset for fees on your node", category: "Fees", surface: "core", check: "whitelist-fee",
 		reward: 25, cap: 1000, needsTxid: true, sort: 410, needs: []string{"first-transaction"},
-		body: `Your node pays and relays fees only in the assets on its own fee list, and every block producer keeps a list of its own. A fresh testnet node lists tSEQ alone. Add USDX to yours, at a value this task gives your account, and pay a fee in it.
+		body: `Your node pays and relays fees only in the assets on its own fee list, and every block producer keeps a list of its own. No asset is the fee asset by default: an asset pays fees where it is listed, and only there. Put USDX on your node's list, at a value this task gives your account, and pay a fee in it.
 
 - Claim USDX from the faucet at sequentiatestnet.com/faucet/.
-- Try to send with the fee in USDX: sequentia-cli -named sendtoaddress address=<an address of yours> amount=1.{PROOF} assetlabel=USDX fee_asset_label=USDX. Your node refuses: USDX is not on its list.
-- List USDX at the rate for your account, and keep tSEQ: sequentia-cli setfeeexchangerates '{"tSEQ": 100000000, "USDX": {RATE_A}}'. The list is the whole table: an asset you leave out is no longer accepted, tSEQ included. sequentia-cli getfeeassetinfo USDX now shows it listed and accepted at that rate.
+- Look at your node's fee list: sequentia-cli getfeeexchangerates. Only an asset on it can pay a fee from this node; a send whose fee_asset_label names any other asset is refused, with the reason.
+- Put USDX on the list at the rate for your account. setfeeexchangerates replaces the whole table, so repeat every asset the list already held that you want to keep, each at the rate it had: sequentia-cli setfeeexchangerates '{"<an asset already listed>": <its rate>, "USDX": {RATE_A}}'. An asset you leave out is no longer accepted, whichever it is. sequentia-cli getfeeassetinfo USDX now shows it listed and accepted at that rate.
 - A rate is the value of one whole unit in reference units, times 100000000. Yours values USDX at {PRICE_A}, below the 1 the network's producers give it. A lower rate means your node values the asset less, so it pays more of it for the same fee.
 - Send again with fee_rate=2 added: sequentia-cli -named sendtoaddress address=<an address of yours> amount=1.{PROOF} assetlabel=USDX fee_asset_label=USDX fee_rate=2. Hold well more USDX than you send, so the transaction keeps a change output: a wallet adds change too small to keep to the fee, and that fee no longer shows your rate. The fee rate is in reference atoms per vByte, and your node turns it into USDX at its own rate. A producer values the fee by its own list, never by yours, and includes the transaction.
 - Once it has confirmed, submit the txid. The rate stays on your node's list until you change it; the price-server task replaces it.
@@ -358,7 +358,7 @@ The check is automatic: the USDX fee your node paid follows from the rate you li
 - In node_rpc, point it at your node: its RPC port, and the .cookie file in your node's data directory.
 - In source, add "mode": "except", "assets": ["USDX"], and set "manual_prices": {"USDX": {PRICE_B}}. The market feed prices every other asset, and you price USDX by hand, in reference units.
 - Run python3 price_server.py --config config.json --once --dry-run. It logs how many assets it admits and the whole table it would publish, by asset id, and publishes nothing. A rate is round(price × 100000000 × 10^(8 − decimals)), so yours for USDX, which has 8 decimals, is {RATE_B}: find it in the table. Its web page (--ui-port 8090) shows every asset's decision and why.
-- Run it again without --dry-run. It logs "published N rate(s) to 1/1 node(s)". sequentia-cli getfeeexchangerates now shows the server's table: it replaced your list whole, the tSEQ rate included. A restart of the node brings back the list you wrote yourself, until the server runs again.
+- Run it again without --dry-run. It logs "published N rate(s) to 1/1 node(s)". sequentia-cli getfeeexchangerates now shows the server's table: it replaced your list whole, every asset's rate included. A restart of the node brings back the list you wrote yourself, until the server runs again.
 - Send 1.{PROOF} of any asset you hold with the fee in USDX: add fee_asset_label=USDX fee_rate=2 to sendtoaddress. Hold well more USDX than the fee, so the transaction keeps a USDX change output: a wallet adds change too small to keep to the fee, and that fee no longer shows your price.
 - Once it has confirmed, submit the txid.
 
