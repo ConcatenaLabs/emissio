@@ -45,10 +45,13 @@ func feeTaskRateFor(kind, tag string) int64 { return feeTaskCents(kind, tag) * 1
 
 func priceText(cents int64) string { return fmt.Sprintf("%d.%02d", cents/100, cents%100) }
 
-// feeAt is what a node holding rate pays at feeTaskRate for vsize vbytes.
-func feeAt(rate, vsize int64) int64 {
-	return (feeTaskRate*vsize*rateScale + rate - 1) / rate
+// feeAtRate is what a node holding rate pays at fee rate fr for vsize vbytes.
+func feeAtRate(fr, rate, vsize int64) int64 {
+	return (fr*vsize*rateScale + rate - 1) / rate
 }
+
+// feeAt is that fee at the fee rate the tasks name.
+func feeAt(rate, vsize int64) int64 { return feeAtRate(feeTaskRate, rate, vsize) }
 
 // feeFollows reports whether a fee of f atoms comes from rate for this
 // transaction, and the explorer's size that matched. The size a wallet
@@ -66,27 +69,51 @@ func feeFollows(f, rate int64, sizes []int64) (int64, bool) {
 	return 0, false
 }
 
-// changeFolded reports the shape a wallet leaves when the change would be
-// too small to keep: it drops the change output and adds that value to the
-// fee. The transaction then holds nothing but the proof output and the fee,
-// and the fee is above what the rate gives. Such a fee no longer shows the
-// rate, so it is not evidence; the tester is told to send again.
-func changeFolded(tx *chainTx, f, rate int64, sizes []int64) bool {
-	outputs := 0
-	for _, o := range tx.Vout {
-		if o.Type != "fee" {
-			outputs++
+// otherFeeRate is the whole fee rate, other than the tasks', whose fee at
+// rate this is, or 0: the tester listed the right rate and named another
+// fee rate.
+func otherFeeRate(f, rate int64, sizes []int64) int64 {
+	for fr := int64(1); fr <= 20; fr++ {
+		if fr == feeTaskRate {
+			continue
+		}
+		for _, v := range sizes {
+			for d := int64(-1); d <= 2; d++ {
+				if v+d > 0 && feeAtRate(fr, rate, v+d) == f {
+					return fr
+				}
+			}
 		}
 	}
-	if outputs != 1 {
-		return false
-	}
+	return 0
+}
+
+// feeAbove reports a fee above what the rate gives for every size tried.
+// That is what a wallet leaves when the change would be too small to keep:
+// it drops the change output and adds that value to the fee. Such a fee no
+// longer shows the rate, so it is not evidence; the tester is told to send
+// again. A fee can also be above for another reason (another rate, another
+// fee rate), and the transaction alone cannot always tell which.
+func feeAbove(f, rate int64, sizes []int64) bool {
 	for _, v := range sizes {
 		if f <= feeAt(rate, v+2) {
 			return false
 		}
 	}
 	return true
+}
+
+// proofAndFeeOnly reports a transaction with one output besides the fee:
+// nothing was returned as change and nobody else was paid, so a fee above
+// the rate's is the wallet's folded change.
+func proofAndFeeOnly(tx *chainTx) bool {
+	outputs := 0
+	for _, o := range tx.Vout {
+		if o.Type != "fee" {
+			outputs++
+		}
+	}
+	return outputs == 1
 }
 
 func txSizes(tx *chainTx) []int64 {
@@ -139,8 +166,15 @@ func (a *App) feeListCheck(kind string, tx *chainTx, tag, found string) checkRes
 	case follows(f, feeTaskRateFor(other, tag), sizes):
 		return fail("%s; this fee follows from the price of the task \"%s\" (%s): for this task your node must value USDX at %s, rate %d", found, otherTask, priceText(feeTaskCents(other, tag)), priceText(cents), rate)
 	}
-	if changeFolded(tx, f, rate, sizes) {
-		return fail("%s; the transaction has no change, and its fee of %d USDX atoms is above the %d your rate gives for its %d vbytes: when the change left over is too small to keep, the wallet adds it to the fee, so the fee no longer shows the rate. Send again, from a coin well above the amount (an amount well below the USDX you hold), so that the transaction keeps a change output, and submit that txid", found, f, feeAt(rate, sizes[0]), sizes[0])
+	if fr := otherFeeRate(f, rate, sizes); fr != 0 {
+		return fail("%s; a fee of %d USDX atoms is what your rate (%d, USDX at %s) gives at fee_rate=%d: this task asks for fee_rate=%d. Send again with fee_rate=%d", found, f, rate, priceText(cents), fr, feeTaskRate, feeTaskRate)
+	}
+	if feeAbove(f, rate, sizes) {
+		again := "Send again, from a coin well above the amount (an amount well below the USDX you hold), so that the transaction keeps a change output, with fee_rate=%d, and submit that txid"
+		if proofAndFeeOnly(tx) {
+			return fail("%s; the transaction has no change, and its fee of %d USDX atoms is above the %d your rate gives for its %d vbytes: when the change left over is too small to keep, the wallet adds it to the fee, so the fee no longer shows the rate. "+again, found, f, feeAt(rate, sizes[0]), sizes[0], feeTaskRate)
+		}
+		return fail("%s; its fee of %d USDX atoms is above the %d your rate gives for its %d vbytes. Either the wallet added change too small to keep to the fee, which it does instead of making a tiny change output, so the fee no longer shows the rate; or the rate or the fee rate is not the task's (rate %d, USDX at %s, and fee_rate=%d). "+again, found, f, feeAt(rate, sizes[0]), sizes[0], rate, priceText(cents), feeTaskRate, feeTaskRate)
 	}
 	implied := feeTaskRate * sizes[0] * rateScale / f
 	return fail("%s; a fee of %d USDX atoms for %d vbytes is, at fee_rate=%d, a rate of about %d: this task asks for rate %d (USDX at %s) and fee_rate=%d. A different fee rate gives a different fee: check both", found, f, sizes[0], feeTaskRate, implied, rate, priceText(cents), feeTaskRate)
