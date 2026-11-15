@@ -340,27 +340,31 @@ The check is automatic. A wrong amount counts as a try; after five, ask for a ne
 		reward: 25, cap: 1000, needsTxid: true, sort: 410, needs: []string{"first-transaction"},
 		body: `Your node pays and relays fees only in the assets on its own fee list, and every block producer keeps a list of its own. No asset is the fee asset by default: an asset pays fees where it is listed, and only there. Put USDX on your node's list, at a value this task gives your account, and pay a fee in it.
 
+A testnet node reads its fee list from the network's price server, so the list follows market prices: sequentia-cli getfeepriceserver shows "dynamic", and the address it reads. Writing the list yourself, as this task does, makes it static: the node stops reading the price server and keeps exactly the list you wrote until you change it.
+
 - Claim USDX from the faucet at sequentiatestnet.com/faucet/.
 - Look at your node's fee list: sequentia-cli getfeeexchangerates. Only an asset on it can pay a fee from this node; a send whose fee_asset_label names any other asset is refused, with the reason.
-- Put USDX on the list at the rate for your account. setfeeexchangerates replaces the whole table, so repeat every asset the list already held that you want to keep, each at the rate it had: sequentia-cli setfeeexchangerates '{"<an asset already listed>": <its rate>, "USDX": {RATE_A}}'. An asset you leave out is no longer accepted, whichever it is. sequentia-cli getfeeassetinfo USDX now shows it listed and accepted at that rate.
+- Put USDX on the list at the rate for your account. setfeeexchangerates replaces the whole list, so repeat every asset the list already held that you want to keep, each at the rate it had: sequentia-cli setfeeexchangerates '{"<an asset already listed>": <its rate>, "USDX": {RATE_A}}'. An asset you leave out is no longer accepted, whichever it is. sequentia-cli getfeeassetinfo USDX now shows it listed and accepted at that rate, and getfeepriceserver shows "static".
 - A rate is the value of one whole unit in reference units, times 100000000. Yours values USDX at {PRICE_A}, below the 1 the network's producers give it. A lower rate means your node values the asset less, so it pays more of it for the same fee.
 - Send again with fee_rate=2 added: sequentia-cli -named sendtoaddress address=<an address of yours> amount=1.{PROOF} assetlabel=USDX fee_asset_label=USDX fee_rate=2. Hold well more USDX than you send, so the transaction keeps a change output: a wallet adds change too small to keep to the fee, and that fee no longer shows your rate. The fee rate is in reference atoms per vByte, and your node turns it into USDX at its own rate. A producer values the fee by its own list, never by yours, and includes the transaction.
-- Once it has confirmed, submit the txid. The rate stays on your node's list until you change it; the price-server task replaces it.
+- Once it has confirmed, submit the txid.
+- Then let your node follow market prices again: sequentia-cli setfeepriceserver "http://sequentiatestnet.com/feewhitelist". The network's list replaces yours at once, and getfeepriceserver shows "dynamic" again.
 
 The check is automatic: the USDX fee your node paid follows from the rate you listed and the transaction's size. It sees the fee, not your node, so it cannot tell how the rate came to be there.`,
 	},
 	{
 		slug: "price-server", title: "Run the price server", category: "Fees", surface: "core", check: "price-server-fee",
 		reward: 30, cap: 500, needsTxid: true, sort: 440, needs: []string{"fee-whitelist"},
-		body: `The price server keeps your node's fee list fresh from market prices, by rules you choose. Run it once, price one asset by hand, and pay a fee at that price.
+		body: `A price server turns market prices into a fee list, by rules you choose, and publishes it; a node connected to it reads that list every minute, so the node's list is dynamic. A testnet node reads the network's price server. Run one of your own, price one asset by hand, connect your node to it, and pay a fee at that price.
 
-- Get contrib/price-server/ from the Sequentia Core source (github.com/ConcatenaLabs/Sequentia), and copy config.example.json to config.json.
-- In node_rpc, point it at your node: its RPC port, and the .cookie file in your node's data directory.
+- Get contrib/price-server/ from the Sequentia Core source (github.com/ConcatenaLabs/Sequentia), and copy config.example.json to config.json. The price server needs no login to your node: it never writes to a node.
 - In source, add "mode": "except", "assets": ["USDX"], and set "manual_prices": {"USDX": {PRICE_B}}. The market feed prices every other asset, and you price USDX by hand, in reference units.
-- Run python3 price_server.py --config config.json --once --dry-run. It logs how many assets it admits and the whole table it would publish, by asset id, and publishes nothing. A rate is round(price × 100000000 × 10^(8 − decimals)), so yours for USDX, which has 8 decimals, is {RATE_B}: find it in the table. Its web page (--ui-port 8090) shows every asset's decision and why.
-- Run it again without --dry-run. It logs "published N rate(s) to 1/1 node(s)". sequentia-cli getfeeexchangerates now shows the server's table: it replaced your list whole, every asset's rate included. A restart of the node brings back the list you wrote yourself, until the server runs again.
+- Run python3 price_server.py --config config.json --once --dry-run. It logs how many assets it admits and the whole list it makes, by asset id. A rate is round(price × 100000000 × 10^(8 − decimals)), so yours for USDX, which has 8 decimals, is {RATE_B}: find it in the list.
+- Start it and leave it running: python3 price_server.py --config config.json --ui-port 8090. It publishes its list at http://127.0.0.1:8090/feewhitelist, on this computer only, and its web page at http://127.0.0.1:8090/ shows every asset's decision and why. Its first list is ready once its first round is done.
+- Connect your node to it: sequentia-cli setfeepriceserver "http://127.0.0.1:8090/feewhitelist". sequentia-cli getfeepriceserver shows it connected, "dynamic", and how many assets it read; getfeeassetinfo USDX shows your rate. The node keeps reading that address, across restarts, until you connect it elsewhere.
 - Send 1.{PROOF} of any asset you hold with the fee in USDX: add fee_asset_label=USDX fee_rate=2 to sendtoaddress. Hold well more USDX than the fee, so the transaction keeps a USDX change output: a wallet adds change too small to keep to the fee, and that fee no longer shows your price.
 - Once it has confirmed, submit the txid.
+- Then connect your node back to the network's price server, unless you mean to keep running your own: sequentia-cli setfeepriceserver "http://sequentiatestnet.com/feewhitelist". A node whose price server stops keeps the last list it read.
 
 The check is automatic: the USDX fee your node paid follows from your manual price. It sees the fee, not the server, so a rate set by hand at the same price passes too.`,
 	},
