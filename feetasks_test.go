@@ -58,13 +58,23 @@ func TestFeeListChecks(t *testing.T) {
 		"listedbyte": feeTx("listedbyte", w, proof, vout(feeAt(39_000_000, 327), usdx, "fee")),
 		"server":     feeTx("server", w, proof, vout(feeAt(63_000_000, 326), usdx, "fee")),
 		"network":    feeTx("network", w, proof, vout(feeAt(100_000_000, 326), usdx, "fee")),
-		"feerate3":   feeTx("feerate3", w, proof, vout(2508, usdx, "fee")),
+		"feerate3":   feeTx("feerate3", w, proof, vout(50000, usdx, "v0_p2wpkh"), vout(2508, usdx, "fee")),
 		"gold":       feeTx("gold", w, proof, vout(feeAt(39_000_000, 326), gold, "fee")),
 		"tseq":       feeTx("tseq", w, proof, vout(652, policy, "fee")),
 		"nofee":      feeTx("nofee", w, proof),
 		"nosize":     feeTx("nosize", 0, proof, vout(feeAt(39_000_000, 326), usdx, "fee")),
 		"notag":      feeTx("notag", w, vout(100000000, usdx, "v0_p2wpkh"), vout(feeAt(39_000_000, 326), usdx, "fee")),
+		// The reviewer's transaction: 191 vbytes, no change, 100 atoms of dust change added to the fee.
+		"folded": feeTx("folded", 764, proof, vout(1418, usdx, "fee")),
+		// The same overpayment with a change output is not the wallet's folding.
+		"overpaid": feeTx("overpaid", w, proof, vout(50000, usdx, "v0_p2wpkh"), vout(feeAt(39_000_000, 326)+100, usdx, "fee")),
 	}
+	// A fee priced on the discounted vsize: the pass note names that size.
+	disc := map[string]any{"txid": "disc", "vin": []map[string]any{{"is_coinbase": false}}, "weight": 2726 * 4, "discount_vsize": 461,
+		"vout":   []map[string]any{proof, vout(feeAt(39_000_000, 461), usdx, "fee")},
+		"status": map[string]any{"confirmed": true, "block_height": 42, "block_hash": "bh"}}
+	b, _ := json.Marshal(disc)
+	txs["disc"] = string(b)
 	explorer := fakeExplorer(t, txs, nil, nil)
 	defer explorer.Close()
 	app, _, _ := newTestServer(t)
@@ -91,6 +101,9 @@ func TestFeeListChecks(t *testing.T) {
 		{"whitelist-fee", "nofee", vFail, "no fee output"},
 		{"whitelist-fee", "nosize", vReview, "gives no size"},
 		{"whitelist-fee", "notag", vFail, "NOT found"},
+		{"whitelist-fee", "folded", vFail, "the transaction has no change, and its fee of 1418 USDX atoms is above the 980 your rate gives for its 191 vbytes"},
+		{"whitelist-fee", "overpaid", vFail, "a rate of about"},
+		{"whitelist-fee", "disc", vPass, fmt.Sprintf("a fee of %d USDX atoms for 461 vbytes", feeAt(39_000_000, 461))},
 	} {
 		got := app.evidenceCheck(k.kind, k.txid, "", user)
 		if got.Verdict != k.v || !strings.Contains(got.Note, k.want) {
@@ -99,6 +112,9 @@ func TestFeeListChecks(t *testing.T) {
 	}
 	if got := app.evidenceCheck("whitelist-fee", "notag", "", user); !got.Firm {
 		t.Error("a transaction without the proof decimals is not a firm refusal")
+	}
+	if got := app.evidenceCheck("whitelist-fee", "folded", "", user); got.Firm || !strings.Contains(got.Note, "keeps a change output") {
+		t.Errorf("folded change: %+v", got)
 	}
 }
 

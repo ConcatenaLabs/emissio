@@ -112,6 +112,11 @@ func TestRegtestFeeList(t *testing.T) {
 	}
 	check("whitelist-fee", listed, vPass, fmt.Sprintf("rate %d (OK)", rateA))
 	check("price-server-fee", listed, vFail, "follows from the price of the task \"List an asset for fees on your node\"")
+	// Negative, the reviewer's shape: a coin of just more than the amount,
+	// spent alone, leaves change too small to keep; the wallet adds it to
+	// the fee, which then no longer shows the rate.
+	folded := foldedChange(t, T, P, usdx, addr, amount)
+	check("whitelist-fee", folded, vFail, "the transaction has no change")
 	// Negative: another fee rate at the right rate.
 	wrongRate, _ := send("3")
 	check("whitelist-fee", wrongRate, vFail, "this task asks for rate")
@@ -186,4 +191,92 @@ func TestRegtestFeeList(t *testing.T) {
 	}
 	check("price-server-fee", served, vPass, fmt.Sprintf("rate %d (OK)", rateB))
 	check("whitelist-fee", served, vFail, "follows from the price of the task \"Run the price server\"")
+}
+
+// foldedChange funds the tester with one USDX coin of the amount plus a fee
+// and a little dust, and spends that coin alone at fee_rate=2. It returns the
+// mined txid once the wallet has dropped the change into the fee.
+func foldedChange(t *testing.T, T, P regNode, usdx, addr, amount string) string {
+	t.Helper()
+	base, _ := atomsOf(amount)
+	leftover := int64(1418)
+	for try := 0; try < 3; try++ {
+		to := T.call("-rpcwallet=tester", "getnewaddress")
+		fund := P.call("-rpcwallet=gen", "-named", "sendtoaddress", "address="+to, "amount="+amountText(base+leftover),
+			"assetlabel="+usdx, "fee_asset_label="+usdx)
+		P.call("-rpcwallet=gen", "generatetoaddress", "1", P.call("-rpcwallet=gen", "getnewaddress"))
+		want := P.call("getblockcount")
+		for i := 0; i < 60 && T.call("getblockcount") != want; i++ {
+			time.Sleep(500 * time.Millisecond)
+		}
+		var coins []struct {
+			Txid    string `json:"txid"`
+			Vout    int    `json:"vout"`
+			Address string `json:"address"`
+		}
+		T.json(&coins, "-rpcwallet=tester", "listunspent", "1")
+		vout := -1
+		for _, c := range coins {
+			if c.Txid == fund && c.Address == to {
+				vout = c.Vout
+			}
+		}
+		if vout < 0 {
+			t.Fatalf("the funding coin %s is not in the tester's wallet", fund)
+		}
+		in, _ := json.Marshal([]map[string]any{{"txid": fund, "vout": vout}})
+		out, _ := json.Marshal([]map[string]any{{addr: amount, "asset": usdx}})
+		opts, _ := json.Marshal(map[string]any{"add_inputs": false, "fee_rate": 2, "fee_asset": usdx})
+		var funded struct {
+			Psbt      string      `json:"psbt"`
+			Fee       json.Number `json:"fee"`
+			Changepos int         `json:"changepos"`
+		}
+		T.json(&funded, "-rpcwallet=tester", "walletcreatefundedpsbt", string(in), string(out), "0", string(opts))
+		fee, _ := atomsOf(funded.Fee.String())
+		if funded.Changepos != -1 {
+			// The change was big enough to keep: aim the next coin's leftover
+			// at this fee plus 100 atoms of dust.
+			t.Logf("leftover %d kept change; fee %d", leftover, fee)
+			leftover = fee + 100
+			continue
+		}
+		var processed struct {
+			Psbt string `json:"psbt"`
+		}
+		T.json(&processed, "-rpcwallet=tester", "walletprocesspsbt", funded.Psbt)
+		var final struct {
+			Hex      string `json:"hex"`
+			Complete bool   `json:"complete"`
+		}
+		T.json(&final, "-rpcwallet=tester", "finalizepsbt", processed.Psbt)
+		if !final.Complete {
+			t.Fatal("the folded-change transaction did not finalize")
+		}
+		txid := T.call("sendrawtransaction", final.Hex)
+		for i := 0; i < 60 && !strings.Contains(P.call("getrawmempool"), txid); i++ {
+			time.Sleep(500 * time.Millisecond)
+		}
+		P.call("-rpcwallet=gen", "generatetoaddress", "1", P.call("-rpcwallet=gen", "getnewaddress"))
+		want = P.call("getblockcount")
+		for i := 0; i < 60 && T.call("getblockcount") != want; i++ {
+			time.Sleep(500 * time.Millisecond)
+		}
+		var tx struct {
+			Vsize int64 `json:"vsize"`
+			Vout  []struct {
+				ScriptPubKey struct {
+					Type string `json:"type"`
+				} `json:"scriptPubKey"`
+			} `json:"vout"`
+		}
+		T.json(&tx, "getrawtransaction", txid, "1")
+		t.Logf("folded change: %s, %d outputs, vsize %d, fee %d atoms (the rate gives %d)", txid, len(tx.Vout), tx.Vsize, fee, feeAt(feeTaskRateFor("whitelist-fee", proofTag("0123456789")), tx.Vsize))
+		if len(tx.Vout) != 2 {
+			t.Fatalf("the folded-change transaction has %d outputs, want the proof output and the fee", len(tx.Vout))
+		}
+		return txid
+	}
+	t.Fatal("the wallet kept change every time")
+	return ""
 }

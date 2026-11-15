@@ -51,19 +51,42 @@ func feeAt(rate, vsize int64) int64 {
 }
 
 // feeFollows reports whether a fee of f atoms comes from rate for this
-// transaction. The size a wallet prices is the signed size it estimates,
-// which can differ from the final one by a byte or so; the explorer gives
-// both the weight and the discounted vsize, and either may be the one the
-// node priced.
-func feeFollows(f, rate int64, sizes []int64) bool {
+// transaction, and the explorer's size that matched. The size a wallet
+// prices is the signed size it estimates, which can differ from the final
+// one by a byte or so; the explorer gives both the weight and the
+// discounted vsize, and either may be the one the node priced.
+func feeFollows(f, rate int64, sizes []int64) (int64, bool) {
 	for _, v := range sizes {
 		for d := int64(-1); d <= 2; d++ {
 			if v+d > 0 && feeAt(rate, v+d) == f {
-				return true
+				return v, true
 			}
 		}
 	}
-	return false
+	return 0, false
+}
+
+// changeFolded reports the shape a wallet leaves when the change would be
+// too small to keep: it drops the change output and adds that value to the
+// fee. The transaction then holds nothing but the proof output and the fee,
+// and the fee is above what the rate gives. Such a fee no longer shows the
+// rate, so it is not evidence; the tester is told to send again.
+func changeFolded(tx *chainTx, f, rate int64, sizes []int64) bool {
+	outputs := 0
+	for _, o := range tx.Vout {
+		if o.Type != "fee" {
+			outputs++
+		}
+	}
+	if outputs != 1 {
+		return false
+	}
+	for _, v := range sizes {
+		if f <= feeAt(rate, v+2) {
+			return false
+		}
+	}
+	return true
 }
 
 func txSizes(tx *chainTx) []int64 {
@@ -102,8 +125,8 @@ func (a *App) feeListCheck(kind string, tx *chainTx, tag, found string) checkRes
 	}
 	rate := feeTaskRateFor(kind, tag)
 	cents := feeTaskCents(kind, tag)
-	if feeFollows(f, rate, sizes) {
-		return pass("%s; a fee of %d USDX atoms for %d vbytes: your node valued USDX at %s, rate %d (OK)", found, f, sizes[0], priceText(cents), rate)
+	if v, ok := feeFollows(f, rate, sizes); ok {
+		return pass("%s; a fee of %d USDX atoms for %d vbytes: your node valued USDX at %s, rate %d (OK)", found, f, v, priceText(cents), rate)
 	}
 	other := "whitelist-fee"
 	otherTask := "List an asset for fees on your node"
@@ -111,11 +134,19 @@ func (a *App) feeListCheck(kind string, tx *chainTx, tag, found string) checkRes
 		other, otherTask = "price-server-fee", "Run the price server"
 	}
 	switch {
-	case feeFollows(f, rateScale, sizes):
+	case follows(f, rateScale, sizes):
 		return fail("%s; your node valued USDX at 1, the network's rate (100000000): list it at %d first, as the task says, and send with fee_rate=%d", found, rate, feeTaskRate)
-	case feeFollows(f, feeTaskRateFor(other, tag), sizes):
+	case follows(f, feeTaskRateFor(other, tag), sizes):
 		return fail("%s; this fee follows from the price of the task \"%s\" (%s): for this task your node must value USDX at %s, rate %d", found, otherTask, priceText(feeTaskCents(other, tag)), priceText(cents), rate)
+	}
+	if changeFolded(tx, f, rate, sizes) {
+		return fail("%s; the transaction has no change, and its fee of %d USDX atoms is above the %d your rate gives for its %d vbytes: when the change left over is too small to keep, the wallet adds it to the fee, so the fee no longer shows the rate. Send again, from a coin well above the amount (an amount well below the USDX you hold), so that the transaction keeps a change output, and submit that txid", found, f, feeAt(rate, sizes[0]), sizes[0])
 	}
 	implied := feeTaskRate * sizes[0] * rateScale / f
 	return fail("%s; a fee of %d USDX atoms for %d vbytes is, at fee_rate=%d, a rate of about %d: this task asks for rate %d (USDX at %s) and fee_rate=%d. A different fee rate gives a different fee: check both", found, f, sizes[0], feeTaskRate, implied, rate, priceText(cents), feeTaskRate)
+}
+
+func follows(f, rate int64, sizes []int64) bool {
+	_, ok := feeFollows(f, rate, sizes)
+	return ok
 }
