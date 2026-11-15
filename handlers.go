@@ -395,12 +395,10 @@ func (a *App) handleTaskSubmit(w http.ResponseWriter, r *http.Request) {
 		a.redirect(w, r, back, "", "All rewards for this task have been claimed.")
 		return
 	}
-	prev, err := latestSubmission(a.db, user.ID, task.ID)
-	if err != nil {
+	if prev, err := latestSubmission(a.db, user.ID, task.ID); err != nil {
 		a.serverError(w, err)
 		return
-	}
-	if prev != nil && prev.Status != "rejected" {
+	} else if prev != nil && prev.Status != "rejected" {
 		a.redirect(w, r, back, "", "You already have a submission for this task.")
 		return
 	}
@@ -413,9 +411,28 @@ func (a *App) handleTaskSubmit(w http.ResponseWriter, r *http.Request) {
 		a.redirect(w, r, back, "", "Enter the transaction id: 64 hex characters.")
 		return
 	}
+	// From the claim queries to the insert, nothing else may claim this
+	// account's task or this transaction: the evidence check between them
+	// waits on the explorer, long enough for a second submission to pass the
+	// same queries (claimlock.go). The account's task is locked first and
+	// the txid second, always in that order.
+	defer a.claims.lock(fmt.Sprintf("task:%d:%d", user.ID, task.ID))()
+	if txid != "" {
+		defer a.claims.lock("txid:" + strings.ToLower(txid))()
+	}
+	// The queries again, now that no other submission of this claim can
+	// run between them and the insert.
+	if prev, err := latestSubmission(a.db, user.ID, task.ID); err != nil {
+		a.serverError(w, err)
+		return
+	} else if prev != nil && prev.Status != "rejected" {
+		a.redirect(w, r, back, "", "You already have a submission for this task.")
+		return
+	}
 	if txid != "" {
 		// A transaction proves work for one account only; recycling someone
-		// else's txid is the main farming vector.
+		// else's txid is the main farming vector. The same account may use
+		// its own transaction for another task, where that task allows it.
 		var claimed int64
 		if err := a.db.QueryRow(`SELECT COUNT(*) FROM submissions
 			WHERE txid = ? AND user_id != ? AND status != 'rejected'`,
