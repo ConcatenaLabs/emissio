@@ -39,6 +39,10 @@ type Config struct {
 	USDXAsset     string // asset id of USDX, the fee asset of the fee-list tasks
 	NodeCLI       string // sequentia-cli path; with NodeDatadir, enables peer-based checks
 	NodeDatadir   string
+	// The own-Bitcoin-node task (ownbitcoin.go): the box Bitcoin node's peer
+	// list, and the shared Bitcoin endpoint's record of each address's last call.
+	BtcPeersFile  string
+	AnchorSeenURL string
 	TgBotToken    string // BotFather token; enables ID-based Telegram age checks
 	TgBotName     string // bot username shown to users, without @
 
@@ -118,6 +122,8 @@ func loadConfig() Config {
 		USDXAsset:     envOr("EMISSIO_USDX_ASSET", "2a515539da5e6a60caa7766ecd65bac0c10d15717ddd2088844ba58f4d04b9de"),
 		NodeCLI:       envOr("EMISSIO_CLI", ""),
 		NodeDatadir:   envOr("EMISSIO_DATADIR", ""),
+		BtcPeersFile:  envOr("EMISSIO_BTC_PEERS", ""),
+		AnchorSeenURL: envOr("EMISSIO_ANCHOR_SEEN", ""),
 		TgBotToken:    envOr("EMISSIO_TG_BOT_TOKEN", ""),
 		TgBotName:     envOr("EMISSIO_TG_BOT_NAME", ""),
 		CompagesURL:   envOr("EMISSIO_COMPAGES", ""),
@@ -566,8 +572,8 @@ func reseedTasks(db *sql.DB) (updated, inserted, retired, comps int) {
 			continue
 		}
 		if _, err := db.Exec(`INSERT INTO tasks (slug, title, category, body, surface, check_kind, reward, cap, needs_txid, active, sort)
-			VALUES (?,?,?,?,?,?,?,?,?,1,?)`,
-			t.slug, t.title, t.category, t.body, t.surface, t.check, t.reward, t.cap, t.needsTxid, t.sort); err != nil {
+			VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+			t.slug, t.title, t.category, t.body, t.surface, t.check, t.reward, t.cap, t.needsTxid, !t.inactive, t.sort); err != nil {
 			log.Fatal(err)
 		}
 		inserted++
