@@ -336,12 +336,19 @@ type taskData struct {
 	Pay      *paymentView
 	Wallet   *arcaView
 	Txid     string // a refused txid, put back into the form
+	Closed   bool   // an inactive task: its page says so, with no instructions and no form
 }
 
 func (a *App) handleTask(w http.ResponseWriter, r *http.Request) {
 	task, err := taskBySlug(a.db, r.PathValue("slug"))
 	if err != nil {
 		http.NotFound(w, r)
+		return
+	}
+	// An inactive task (switched off, or retired) answers as closed, as its
+	// submit, payment and wallet routes do: no instructions and no form.
+	if !task.Active {
+		a.render(w, r, "task", task.Title, taskData{Task: task, Closed: true})
 		return
 	}
 	d := taskData{Task: task, Full: task.Cap > 0 && task.Awarded >= task.Cap, Auto: task.CheckKind != "" && task.CheckKind != "none"}

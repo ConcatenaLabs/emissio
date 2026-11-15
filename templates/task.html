@@ -2,6 +2,11 @@
 <p class="back"><a href="{{base}}/tasks#s-{{stageof .Data.Task.Category}}">&larr; All tasks</a></p>
 <div class="eyebrow">{{.Data.Task.Category}}{{if and .Data.Task.Surface (ne (surfacetitle .Data.Task.Surface) .Data.Task.Category)}} · {{surfacetitle .Data.Task.Surface}}{{end}}</div>
 <h1>{{.Data.Task.Title}}</h1>
+{{if .Data.Closed}}
+<div class="section">
+  <p class="muted">This task is closed: it takes no evidence and pays no reward. See the <a href="{{base}}/tasks">open tasks</a>.</p>
+</div>
+{{else}}
 <div class="ledger u-margin-1-2rem-0">
   <div class="ledger-row"><span class="label">Reward</span><span class="leader"></span><span class="amount">{{seq .Data.Task.Reward}} <small>SEQ</small></span></div>
   {{if .Data.Task.Cap}}
@@ -142,6 +147,7 @@
 </div>
 {{if and .User (eq .Data.Task.CheckKind "wallet-link")}}<script type="module" src="{{base}}/static/connect-wallet.js"></script>{{end}}
 {{if .Data.Wallet}}<script type="module" src="{{base}}/static/copy-code.js"></script>{{end}}
+{{end}}
 {{end}}
 
 {{define "connectwallet"}}
