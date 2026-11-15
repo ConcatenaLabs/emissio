@@ -79,9 +79,9 @@
 {{with .Data.Dash}}
 <div class="section">
   <h2>Your testing</h2>
-  <p class="muted">{{.Done}} of {{.Total}} tasks done. Each surface of the testnet, and how far you have taken it:</p>
+  <p class="muted">{{.Done}} of {{.Total}} tasks done. Each stage of the path, and how far you have taken it:</p>
   <div class="ledger wide">
-    {{range .Surfaces}}{{if .Total}}
+    {{range .Stages}}{{if .Total}}
     <div class="ledger-row">
       <span class="label"><strong>{{.Name}}</strong><span class="sub">{{.Done}} of {{.Total}} {{if eq .Total 1}}task{{else}}tasks{{end}} done{{if .Pending}} · {{.Pending}} waiting for review{{end}}</span>
         <span class="progress" aria-hidden="true"><span class="bar w{{.Bar}}"></span></span></span>

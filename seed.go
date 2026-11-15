@@ -42,6 +42,43 @@ type seedTask struct {
 	reward, cap                 int64
 	needsTxid                   bool
 	sort                        int64
+	// needs are the tasks this one builds on: their result, or what doing
+	// them sets up. The task page lists every task after all of its needs.
+	needs []string
+}
+
+// stages are the task page's path, in the order a tester follows it, each
+// going from easiest to hardest. A task's category names its stage; the
+// front page, the task page and the dashboard all group by it. A task an
+// admin files under any other category is shown last, under Other tasks.
+var stages = []struct{ Key, Name string }{
+	{"webwallet", "Web wallet"},
+	{"staking", "Staking"},
+	{"core", "Sequentia Core"},
+	{"assets", "Assets"},
+	{"fees", "Fees"},
+	{"bridge", "Bridge"},
+	{"infrastructure", "Infrastructure"},
+}
+
+// stageOf is the key of the stage a category names, or "other".
+func stageOf(category string) string {
+	for _, s := range stages {
+		if s.Name == category {
+			return s.Key
+		}
+	}
+	return "other"
+}
+
+// stageName is a stage's heading.
+func stageName(key string) string {
+	for _, s := range stages {
+		if s.Key == key {
+			return s.Name
+		}
+	}
+	return "Other tasks"
 }
 
 // retiredTasks are seeded tasks that reseed-tasks deactivates: the products
@@ -49,9 +86,8 @@ type seedTask struct {
 // task's place.
 var retiredTasks = []string{"seqdex-swap", "cross-chain-swap", "lightning-swap", "report-bug"}
 
-// surfaces are the public testnet's surfaces, in the order the dashboard
-// shows a tester's progress through them. A task belongs to the surface the
-// tester does it on. Emissio is not one of them: every task is submitted
+// surfaces are the public testnet's surfaces. A task belongs to the surface
+// the tester does it on, which its page shows as a label. Emissio is not one of them: every task is submitted
 // here, and the ones in which Emissio's own wallet pays or is paid are done
 // in a wallet or on the explorer like any other.
 var surfaces = []struct{ Key, Name string }{
@@ -75,7 +111,7 @@ func surfaceTitle(key string) string {
 var seedTasks = []seedTask{
 	{
 		slug: "link-web-wallet", title: "Link your web wallet", category: "Web wallet", surface: "webwallet", check: "wallet-link",
-		reward: 10, cap: 5000, needsTxid: false, sort: 5,
+		reward: 10, cap: 5000, needsTxid: false, sort: 10,
 		body: `Open the web wallet at sequentiatestnet.com/wallet/, make a wallet, and link it to this account with a signed message.
 
 The web wallet holds BTC and every Sequentia asset side by side under one twelve-word phrase. A signature proves the wallet is yours without moving anything.
@@ -88,7 +124,7 @@ The check is automatic: the signature must be by the key of your receive address
 	},
 	{
 		slug: "web-wallet-pay", title: "Pay Emissio from your web wallet", category: "Web wallet", surface: "webwallet", check: "arca-pay-code",
-		reward: 15, cap: 3000, needsTxid: false, sort: 6,
+		reward: 15, cap: 3000, needsTxid: false, sort: 20, needs: []string{"link-web-wallet"},
 		body: `Pay a receive code: the way web wallets pay each other in seconds.
 
 - Press the button below: Emissio makes a receive code of its own for your account.
@@ -99,7 +135,7 @@ The check is automatic: the code is yours alone, so a payment reaching it is kno
 	},
 	{
 		slug: "web-wallet-roundtrip", title: "Receive from Emissio and send back what arrived", category: "Web wallet", surface: "webwallet", check: "arca-roundtrip",
-		reward: 25, cap: 2000, needsTxid: false, sort: 7,
+		reward: 25, cap: 2000, needsTxid: false, sort: 30, needs: []string{"link-web-wallet"},
 		body: `Emissio pays your receive code an amount it does not tell you. Send it back.
 
 - In the web wallet, open Receive and copy your receive code. Paste it below and ask Emissio to pay you.
@@ -110,7 +146,7 @@ The check is automatic: only a wallet that received the payment knows what to se
 	},
 	{
 		slug: "web-wallet-btc", title: "Pay Emissio in BTC", category: "Web wallet", surface: "webwallet", check: "arca-pay-btc",
-		reward: 20, cap: 2000, needsTxid: false, sort: 8,
+		reward: 20, cap: 2000, needsTxid: false, sort: 70, needs: []string{"link-web-wallet"},
 		body: `The web wallet holds native BTC beside every Sequentia asset, and pays it in seconds to another wallet's receive code.
 
 - Get some testnet4 BTC into the web wallet: its Receive code takes BTC too, from any Bitcoin testnet4 faucet.
@@ -122,7 +158,7 @@ The check is automatic: the BTC part of the code is your account's alone.`,
 	},
 	{
 		slug: "web-wallet-invoice", title: "Get paid an invoice by Emissio", category: "Web wallet", surface: "webwallet", check: "arca-invoice",
-		reward: 20, cap: 1000, needsTxid: false, sort: 9,
+		reward: 20, cap: 1000, needsTxid: false, sort: 60, needs: []string{"link-web-wallet"},
 		body: `A receive code with an amount also carries an invoice, which wallets on the Bitcoin network can pay too. Let Emissio pay yours.
 
 - In the web wallet, open Receive, choose BTC or an asset, type an amount up to the most Emissio pays in it (shown below), wait a few seconds for the code to be drawn again with its invoice, and copy the whole code. An address, transparent or confidential, carries no invoice and does not work here.
@@ -133,7 +169,7 @@ The check is automatic: Emissio's own record of the payment.`,
 	},
 	{
 		slug: "web-wallet-swap", title: "Swap, then pay Emissio in what you got", category: "Web wallet", surface: "webwallet", check: "arca-swap",
-		reward: 25, cap: 2000, needsTxid: false, sort: 11,
+		reward: 25, cap: 2000, needsTxid: false, sort: 40, needs: []string{"link-web-wallet"},
 		body: `Trade one asset for another in the web wallet, then use what you got.
 
 - Open Swap, choose what you pay and what you receive, enter an amount, then press Review and Trade.
@@ -145,7 +181,7 @@ The check is automatic: the payment must reach your code with your proof decimal
 	},
 	{
 		slug: "web-wallet-name", title: "Get paid at your payment name", category: "Web wallet", surface: "webwallet", check: "arca-name",
-		reward: 20, cap: 1000, needsTxid: false, sort: 12,
+		reward: 20, cap: 1000, needsTxid: false, sort: 50, needs: []string{"link-web-wallet"},
 		body: `A payment name lets other wallets pay you at name@sequentiatestnet.com, in any amount they choose. Choose one, let Emissio pay you at it, and send back what arrived.
 
 - In the web wallet, open Receive, press Choose a name under Your payment name, and save a name.
@@ -156,11 +192,11 @@ The check is automatic: the payment must reach your code with your proof decimal
 The check is automatic: only the wallet that holds the name knows what Emissio sent.`,
 	},
 	{
-		slug: "first-transaction", title: "Make your first testnet transaction", category: "Getting started", surface: "core", check: "first-transaction",
-		reward: 10, cap: 5000, needsTxid: true, sort: 10,
-		body: `Install Sequentia Core, claim tSEQ from the faucet, and send an amount that proves the transaction is yours.
+		slug: "first-transaction", title: "Make your first testnet transaction", category: "Sequentia Core", surface: "core", check: "first-transaction",
+		reward: 10, cap: 5000, needsTxid: true, sort: 220, needs: []string{"install-release"},
+		body: `Claim tSEQ from the faucet with the Sequentia Core you installed, and send an amount that proves the transaction is yours.
 
-- Download Sequentia Core from sequentiatestnet.com/download/core/ (Linux or Windows) and start it. It connects to the testnet on its own; let it sync.
+- Start Sequentia Core (the previous task installs it from sequentiatestnet.com/download/core/). It connects to the testnet on its own; let it sync.
 - In the wallet, choose Receive and create an address (it starts with tb1). From a node, sequentia-cli getnewaddress does the same.
 - Claim tSEQ at sequentiatestnet.com/faucet/ to that address.
 - Send exactly 1.{PROOF} tSEQ to another address. A second address of your own is fine. The eight decimals are your proof decimals: they are how we know the transaction is yours, and every transaction you submit for any task must carry them in one of its outputs. Pay the fee on top: a wallet told to take the fee out of the amount sends a little less, and the decimals no longer match.
@@ -170,8 +206,8 @@ The check is automatic: only the wallet that holds the name knows what Emissio s
 The check is automatic: a confirmed transaction with your proof decimals is credited on the spot.`,
 	},
 	{
-		slug: "anchor-lookup", title: "Find the Bitcoin anchor of your transaction", category: "Getting started", surface: "explorer", check: "anchor-lookup",
-		reward: 10, cap: 3000, needsTxid: true, sort: 15,
+		slug: "anchor-lookup", title: "Find the Bitcoin anchor of your transaction", category: "Sequentia Core", surface: "explorer", check: "anchor-lookup",
+		reward: 10, cap: 3000, needsTxid: true, sort: 230, needs: []string{"first-transaction"},
 		body: `Every Sequentia block commits to a Bitcoin testnet4 block header, and Sequentia reorganises whenever Bitcoin does. Trace that link for one of your own transactions.
 
 - Take a confirmed transaction with an output of 1.{PROOF} tSEQ (your first-transaction send qualifies).
@@ -181,8 +217,8 @@ The check is automatic: a confirmed transaction with your proof decimals is cred
 The hash in your notes is compared with the anchor recorded for that block. If the explorer makes this hard to find, file a bug report: that is exactly the feedback the testnet is for.`,
 	},
 	{
-		slug: "faucet-consolidate", title: "Combine two faucet payments in one transaction", category: "Getting started", surface: "faucet", check: "faucet-consolidate",
-		reward: 15, cap: 2000, needsTxid: true, sort: 18,
+		slug: "faucet-consolidate", title: "Combine two faucet payments in one transaction", category: "Sequentia Core", surface: "faucet", check: "faucet-consolidate",
+		reward: 15, cap: 2000, needsTxid: true, sort: 240, needs: []string{"first-transaction"},
 		body: `Claim tSEQ from the faucet twice, then spend both coins together.
 
 The faucet pays tSEQ from a covenant that allows one payment at a time and a fresh claim only after a wait of about nine minutes, shared by everyone who claims, so the second claim takes patience. If the faucet refuses a claim, it says why and when to try again: note anything about that message that is unclear.
@@ -197,7 +233,7 @@ The check is automatic: the transaction must carry your proof decimals and spend
 	},
 	{
 		slug: "issue-asset", title: "Issue your own asset", category: "Assets", surface: "core", check: "issue-asset",
-		reward: 20, cap: 2500, needsTxid: true, sort: 20,
+		reward: 20, cap: 2500, needsTxid: true, sort: 310, needs: []string{"first-transaction"},
 		body: `Issue a new asset on the Sequentia testnet.
 
 On Sequentia, anyone can issue an asset, and every issued asset has equal standing on the chain. Issue one of your own: a point system, a voucher, a test stablecoin, anything.
@@ -209,7 +245,7 @@ The check is automatic: a new issuance with your proof decimals on the issued am
 	},
 	{
 		slug: "reissue-asset", title: "Reissue an asset you created", category: "Assets", surface: "core", check: "reissue-asset",
-		reward: 20, cap: 1000, needsTxid: true, sort: 25,
+		reward: 20, cap: 1000, needsTxid: true, sort: 320, needs: []string{"issue-asset"},
 		body: `Increase the supply of an asset you issued, using its reissuance token.
 
 - Take the asset you issued in the previous task; the reissuance is matched against that issuance.
@@ -220,7 +256,7 @@ The check is automatic: a reissuance, with your proof decimals, of an asset whos
 	},
 	{
 		slug: "burn-asset", title: "Burn part of an asset you issued", category: "Assets", surface: "core", check: "burn-asset",
-		reward: 15, cap: 1000, needsTxid: true, sort: 27,
+		reward: 15, cap: 1000, needsTxid: true, sort: 330, needs: []string{"issue-asset"},
 		body: `Destroy part of the supply of your own asset, provably and for good.
 
 A burn sends an amount to an output nobody can ever spend, and the explorer counts it out of the asset's supply.
@@ -232,11 +268,13 @@ A burn sends an amount to an output nobody can ever spend, and the explorer coun
 The check is automatic: a burn of an asset your account issued, of an amount ending in your proof decimals.`,
 	},
 	{
-		slug: "any-asset-fee", title: "Pay a fee in an asset other than tSEQ", category: "Assets", surface: "core", check: "any-asset-fee",
-		reward: 15, cap: 2500, needsTxid: true, sort: 30,
+		slug: "any-asset-fee", title: "Pay a fee in an asset other than tSEQ", category: "Fees", surface: "core", check: "any-asset-fee",
+		reward: 15, cap: 2500, needsTxid: true, sort: 420, needs: []string{"fee-whitelist"},
 		body: `Send a transaction whose fee is paid in an issued asset instead of tSEQ.
 
 Sequentia has an open fee market: fees can be paid in any accepted asset, and tSEQ has no special status beyond staking. Claim USDX, GOLD or another asset from the faucet, then send a transaction and choose that asset as the fee asset.
+
+Your node pays a fee only in an asset on its own fee list, and a fresh node lists tSEQ alone: list the asset first, as the task "List an asset for fees on your node" shows.
 
 - In the desktop wallet the fee asset is a choice on the send screen; from a node, pass fee_asset_label to sendtoaddress.
 - Make one output an amount ending in your proof decimals, for example 1.{PROOF} of whatever you send.
@@ -245,8 +283,8 @@ Sequentia has an open fee market: fees can be paid in any accepted asset, and tS
 The check is automatic: the proof decimals, and a fee output in an asset other than tSEQ.`,
 	},
 	{
-		slug: "multi-asset-send", title: "Send two assets in one transaction", category: "Assets", surface: "core", check: "multi-asset-send",
-		reward: 15, cap: 2000, needsTxid: true, sort: 35,
+		slug: "multi-asset-send", title: "Send two assets in one transaction", category: "Sequentia Core", surface: "core", check: "multi-asset-send",
+		reward: 15, cap: 2000, needsTxid: true, sort: 250, needs: []string{"first-transaction"},
 		body: `Send two different assets to another address in a single transaction.
 
 - Hold at least two assets, for example tSEQ and USDX from the faucet, or an asset you issued.
@@ -256,8 +294,8 @@ The check is automatic: the proof decimals, and a fee output in an asset other t
 The check is automatic: outputs in two assets, and your proof decimals.`,
 	},
 	{
-		slug: "confidential-tx", title: "Send an opt-in confidential transaction", category: "Assets", surface: "core", check: "confidential-tx",
-		reward: 15, cap: 2000, needsTxid: true, sort: 40,
+		slug: "confidential-tx", title: "Send an opt-in confidential transaction", category: "Sequentia Core", surface: "core", check: "confidential-tx",
+		reward: 15, cap: 2000, needsTxid: true, sort: 260, needs: []string{"first-transaction"},
 		body: `Sequentia is transparent by default, and confidentiality is opt-in. Generate a confidential address (it starts with tsqb) and send funds to it, so the amount is blinded on-chain.
 
 - Generate a confidential address, for example with getnewaddress "" blech32 on your node.
@@ -267,22 +305,22 @@ The check is automatic: outputs in two assets, and your proof decimals.`,
 The check is automatic: a blinded output, and your proof decimals.`,
 	},
 	{
-		slug: "emissio-return", title: "Return a payment to Emissio", category: "Assets", surface: "core", check: "emissio-return",
-		reward: 25, cap: 1000, needsTxid: true, sort: 45,
+		slug: "emissio-return", title: "Return a payment to Emissio", category: "Fees", surface: "core", check: "emissio-return",
+		reward: 25, cap: 1000, needsTxid: true, sort: 430, needs: []string{"fee-whitelist", "first-transaction"},
 		body: `Emissio pays you, and you pay it back exactly, with the fee in the asset you return.
 
 Emissio holds a testnet wallet of its own. Ask it for a payment below: it sends an amount nobody can predict, of whichever asset it picks, to a transparent address of yours (tb1). Then return it.
 
 - Give Emissio a tb1 address of your wallet and wait for the payment to arrive.
 - Send exactly the amount you received, of the same asset, back to Emissio's address shown below, in a transaction that spends the coin Emissio sent you. In Sequentia Core, coin control selects it.
-- Pay the fee in that same asset. You will need a little more of it than Emissio sent: the faucet hands out every asset Emissio pays in.
+- Pay the fee in that same asset. You will need a little more of it than Emissio sent: the faucet hands out every asset Emissio pays in. Your node pays a fee only in an asset on its own fee list, and a fresh node lists tSEQ alone: list that asset first, as the task "List an asset for fees on your node" shows.
 - Once it has confirmed, submit the txid below.
 
 The check is automatic: the transaction spends Emissio's payment, returns the exact amount of that asset, and pays its fee in it.`,
 	},
 	{
-		slug: "emissio-unblind", title: "Receive a confidential payment and unblind it", category: "Assets", surface: "explorer", check: "emissio-unblind",
-		reward: 25, cap: 1000, needsTxid: false, sort: 47,
+		slug: "emissio-unblind", title: "Receive a confidential payment and unblind it", category: "Sequentia Core", surface: "explorer", check: "emissio-unblind",
+		reward: 25, cap: 1000, needsTxid: false, sort: 270, needs: []string{"first-transaction"},
 		body: `Emissio pays you an amount that only you can see, and you prove you can see it.
 
 A payment to a confidential address hides its amount from everyone except the holder of the address's blinding key. Your wallet unblinds it for you, and so can the explorer, when you give it the blinding data.
@@ -295,8 +333,37 @@ A payment to a confidential address hides its amount from everyone except the ho
 The check is automatic. A wrong amount counts as a try; after five, ask for a new payment.`,
 	},
 	{
+		slug: "fee-whitelist", title: "List an asset for fees on your node", category: "Fees", surface: "core", check: "whitelist-fee",
+		reward: 25, cap: 1000, needsTxid: true, sort: 410, needs: []string{"first-transaction"},
+		body: `Your node pays and relays fees only in the assets on its own fee list, and every block producer keeps a list of its own. A fresh testnet node lists tSEQ alone. Add USDX to yours, at a value this task gives your account, and pay a fee in it.
+
+- Claim USDX from the faucet at sequentiatestnet.com/faucet/.
+- Try to send with the fee in USDX: sequentia-cli -named sendtoaddress address=<an address of yours> amount=1.{PROOF} assetlabel=USDX fee_asset_label=USDX. Your node refuses: USDX is not on its list.
+- List USDX at the rate for your account, and keep tSEQ: sequentia-cli setfeeexchangerates '{"tSEQ": 100000000, "USDX": {RATE_A}}'. The list is the whole table: an asset you leave out is no longer accepted, tSEQ included. sequentia-cli getfeeassetinfo USDX now shows it listed and accepted at that rate.
+- A rate is the value of one whole unit in reference units, times 100000000. Yours values USDX at {PRICE_A}, below the 1 the network's producers give it. A lower rate means your node values the asset less, so it pays more of it for the same fee.
+- Send again with fee_rate=2 added: sequentia-cli -named sendtoaddress address=<an address of yours> amount=1.{PROOF} assetlabel=USDX fee_asset_label=USDX fee_rate=2. The fee rate is in reference atoms per vByte, and your node turns it into USDX at its own rate. A producer values the fee by its own list, never by yours, and includes the transaction.
+- Once it has confirmed, submit the txid. The rate stays on your node's list until you change it; the price-server task replaces it.
+
+The check is automatic: the USDX fee your node paid follows from the rate you listed and the transaction's size. It sees the fee, not your node, so it cannot tell how the rate came to be there.`,
+	},
+	{
+		slug: "price-server", title: "Run the price server", category: "Fees", surface: "core", check: "price-server-fee",
+		reward: 30, cap: 500, needsTxid: true, sort: 440, needs: []string{"fee-whitelist"},
+		body: `The price server keeps your node's fee list fresh from market prices, by rules you choose. Run it once, price one asset by hand, and pay a fee at that price.
+
+- Get contrib/price-server/ from the Sequentia Core source (github.com/ConcatenaLabs/Sequentia), and copy config.example.json to config.json.
+- In node_rpc, point it at your node: its RPC port, and the .cookie file in your node's data directory.
+- In source, add "mode": "except", "assets": ["USDX"], and set "manual_prices": {"USDX": {PRICE_B}}. The market feed prices every other asset, and you price USDX by hand, in reference units.
+- Run python3 price_server.py --config config.json --once --dry-run. It logs how many assets it admits and the whole table it would publish, by asset id, and publishes nothing. A rate is round(price × 100000000 × 10^(8 − decimals)), so yours for USDX, which has 8 decimals, is {RATE_B}: find it in the table. Its web page (--ui-port 8090) shows every asset's decision and why.
+- Run it again without --dry-run. It logs "published N rate(s) to 1/1 node(s)". sequentia-cli getfeeexchangerates now shows the server's table: it replaced your list whole, the tSEQ rate included. A restart of the node brings back the list you wrote yourself, until the server runs again.
+- Send 1.{PROOF} of any asset you hold with the fee in USDX: add fee_asset_label=USDX fee_rate=2 to sendtoaddress.
+- Once it has confirmed, submit the txid.
+
+The check is automatic: the USDX fee your node paid follows from your manual price. It sees the fee, not the server, so a rate set by hand at the same price passes too.`,
+	},
+	{
 		slug: "bridge-in", title: "Bridge an asset into Sequentia with Compages", category: "Bridge", surface: "compages", check: "bridge-in",
-		reward: 30, cap: 1000, needsTxid: true, sort: 50,
+		reward: 30, cap: 1000, needsTxid: true, sort: 510, needs: []string{"first-transaction"},
 		body: `Lock an asset on Ethereum Sepolia or Solana devnet and receive the bridged asset on Sequentia. The bridge page also offers Bitcoin testnet4; that leg is not part of these tasks.
 
 Compages, at sequentiatestnet.com/bridge/, locks the original in a vault and mints a Sequentia asset for it; later deposits of the same token reissue the same asset.
@@ -310,7 +377,7 @@ The check is automatic: the bridge's own records name the delivery for that depo
 	},
 	{
 		slug: "bridge-both", title: "Bridge from the other source chain", category: "Bridge", surface: "compages", check: "bridge-both",
-		reward: 30, cap: 500, needsTxid: true, sort: 55,
+		reward: 30, cap: 500, needsTxid: true, sort: 520, needs: []string{"bridge-in"},
 		body: `Bridge in from the chain your first bridge did not use: Solana devnet if you started on Sepolia, Sepolia if you started on Solana.
 
 The two legs work differently: the Ethereum leg is a deposit into a vault contract from your browser wallet, and the Solana leg a transfer to a deposit address the bridge gives you. Each has its own ways to go wrong; tell us about any you meet.
@@ -322,7 +389,7 @@ The check is automatic, as for the first bridge, and also checks that this depos
 	},
 	{
 		slug: "bridge-out", title: "Bridge an asset back out with Compages", category: "Bridge", surface: "compages", check: "bridge-out",
-		reward: 40, cap: 500, needsTxid: true, sort: 60,
+		reward: 40, cap: 500, needsTxid: true, sort: 530, needs: []string{"bridge-in"},
 		body: `Return a bridged asset to its original chain.
 
 The vault releases the original only after the return transaction's Bitcoin anchor is buried deep enough that a Bitcoin reorganisation cannot undo it. That wait is deliberate, and this task exercises it end to end.
@@ -335,8 +402,8 @@ The vault releases the original only after the return transaction's Bitcoin anch
 The check is automatic: the bridge's own records show your transaction at that redemption address, released.`,
 	},
 	{
-		slug: "install-release", title: "Install the release and check its checksum", category: "Infrastructure", surface: "core", check: "install-release",
-		reward: 15, cap: 2000, needsTxid: false, sort: 65,
+		slug: "install-release", title: "Install the release and check its checksum", category: "Sequentia Core", surface: "core", check: "install-release",
+		reward: 15, cap: 2000, needsTxid: false, sort: 210,
 		body: `Download Sequentia Core, verify the file before you run it, and connect it to the network.
 
 - Download the release for your system from sequentiatestnet.com/download/core/, and the SHA256SUMS file next to it.
@@ -348,7 +415,7 @@ The check is automatic: the checksum must match a file on the download page, and
 	},
 	{
 		slug: "build-from-source", title: "Build Sequentia Core from source", category: "Infrastructure", surface: "core", check: "build-from-source",
-		reward: 30, cap: 500, needsTxid: false, sort: 70,
+		reward: 30, cap: 500, needsTxid: false, sort: 630, needs: []string{"install-release"},
 		body: `Build the node from the source repository on your own machine and prove it by what the build announces to the network.
 
 - Before building github.com/ConcatenaLabs/Sequentia, open src/clientversion.cpp and change the client name from "Sequentia Core" to "Emissio-{CODE}" (your account code). A release binary can add a comment to its user agent, but only a rebuild can change the name itself, so the name is the proof.
@@ -360,7 +427,7 @@ The check is automatic: the public node's peer list must show a peer announcing 
 	},
 	{
 		slug: "run-node", title: "Run a full node for a week", category: "Infrastructure", surface: "core", check: "run-node",
-		reward: 50, cap: 1000, needsTxid: false, sort: 80,
+		reward: 50, cap: 1000, needsTxid: false, sort: 620, needs: []string{"install-release"},
 		body: `Run a Sequentia testnet full node continuously for seven days, and let the network see it.
 
 Full-node sovereignty is a core Sequentia principle: block producers cannot force rule changes on nodes that validate everything themselves.
@@ -373,7 +440,7 @@ The check is automatic: it counts the ten-minute slots of the last week in which
 	},
 	{
 		slug: "stake", title: "Stake tSEQ", category: "Staking", surface: "webwallet", check: "stake",
-		reward: 40, cap: 500, needsTxid: true, sort: 85,
+		reward: 40, cap: 500, needsTxid: true, sort: 110,
 		body: `Lock a stake and register as a potential block producer.
 
 Only the Sequence token can stake, and the minimum is 40,000 tSEQ, which one faucet claim covers. A staking output keeps its weight for as long as it is unspent; the lock only gates withdrawal.
@@ -386,7 +453,7 @@ The check is automatic: a staking output of at least 40,000 tSEQ carrying your p
 	},
 	{
 		slug: "delegate-stake", title: "Delegate your stake to a staking pool", category: "Staking", surface: "pools", check: "delegate-stake",
-		reward: 30, cap: 500, needsTxid: true, sort: 87,
+		reward: 30, cap: 500, needsTxid: true, sort: 120, needs: []string{"stake"},
 		body: `Lend your stake's block-signing rights to a pool without moving your coins.
 
 A delegation is a separate record on the chain that points your staking output's key at a pool's signer. The coins never leave your wallet, the pool can never spend them, and you can re-point or withdraw the delegation at any time.
@@ -399,7 +466,7 @@ The check is automatic: the record must name your stake's key (or the key of a n
 	},
 	{
 		slug: "redelegate", title: "Move your delegation to another pool", category: "Staking", surface: "pools", check: "redelegate",
-		reward: 20, cap: 500, needsTxid: true, sort: 88,
+		reward: 20, cap: 500, needsTxid: true, sort: 130, needs: []string{"delegate-stake"},
 		body: `Change your mind about a pool, the way a delegator should be able to: unilaterally, at once, without touching the stake.
 
 - Pick a different pool on sequentiatestnet.com/pools/.
@@ -410,7 +477,7 @@ The check is automatic: the transaction must spend your delegation record and cr
 	},
 	{
 		slug: "unbond-stake", title: "Unbond your stake", category: "Staking", surface: "core", check: "unbond-stake",
-		reward: 25, cap: 500, needsTxid: true, sort: 90,
+		reward: 25, cap: 500, needsTxid: true, sort: 140, needs: []string{"stake"},
 		body: `Start withdrawing your stake.
 
 A stake leaves in two steps: first it moves into an unbonding output of the same key, where it stops counting as weight, and only after the parent chain has moved on far enough can the coins be spent freely. Try it.

@@ -79,6 +79,7 @@ func explorerShim(n regNode) *httptest.Server {
 			} `json:"issuance"`
 		} `json:"vin"`
 		Vout          []rawOut `json:"vout"`
+		Weight        int64    `json:"weight"`
 		Confirmations int      `json:"confirmations"`
 		Blockhash     string   `json:"blockhash"`
 	}
@@ -145,7 +146,7 @@ func explorerShim(n regNode) *httptest.Server {
 			json.Unmarshal(out, &hdr)
 			status["block_height"], status["block_hash"] = hdr.Height, tx.Blockhash
 		}
-		json.NewEncoder(w).Encode(map[string]any{"txid": tx.Txid, "vin": vin, "vout": vout, "status": status})
+		json.NewEncoder(w).Encode(map[string]any{"txid": tx.Txid, "vin": vin, "vout": vout, "weight": tx.Weight, "status": status})
 	}))
 }
 

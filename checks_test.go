@@ -371,7 +371,7 @@ func TestSubmitVerdicts(t *testing.T) {
 	// The dashboard shows the progress, the open tasks, the earnings and the reports.
 	postBug(t, client, srv.URL, csrf, map[string]string{"surface": "faucet", "title": "Claim page hangs", "steps": "claim twice", "actual": "spinner"}, nil)
 	acct := get(t, client, srv.URL+"/account")
-	for _, want := range []string{"1 of 28 tasks done", "<strong>Sequentia Core</strong>", "1 of 12 tasks done", "1 waiting for review",
+	for _, want := range []string{"1 of 30 tasks done", "<strong>Sequentia Core</strong>", "1 of 7 tasks done", "1 waiting for review",
 		"What you earned from", "Open tasks", "Combine two faucet payments", "Claim page hangs", "progress"} {
 		if !strings.Contains(acct, want) {
 			t.Errorf("dashboard lacks %q", want)
