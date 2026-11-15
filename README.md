@@ -34,7 +34,7 @@ All amounts below are whole SEQ, credited to your ledger. On the testnet you wor
 
 ### Testnet tasks
 
-Each task pays a fixed reward, most have a first-come cap, and you can have one submission per task (you may resubmit after a rejection). A txid can only ever be evidence for one account, also when two accounts submit it at the same moment: a submission's claim queries, its check and its insert run as one step for that txid and that account's task. Every task belongs to one surface of the public testnet (Sequentia Core, the block explorer, the faucet, Compages, the staking pools, the web wallet): the one the tester does it on, which is how the tasks are grouped and how the dashboard counts a tester's progress.
+Each task pays a fixed reward, most have a first-come cap, and you can have one submission per task (you may resubmit after a rejection). A txid can only ever be evidence for one account, also when two accounts submit it at the same moment: a submission's claim queries, its check and its insert run as one step for that txid and that account's task. Every task belongs to one stage of a single path (web wallet, staking, Sequentia Core, assets, fees, bridge, infrastructure), named by its category, and is done on one surface of the public testnet (Sequentia Core, the block explorer, the faucet, Compages, the staking pools, the web wallet), which its page shows as a label. The stages are how the tasks are grouped and how the dashboard counts a tester's progress; see [The order of the tasks](#the-order-of-the-tasks).
 
 Each task runs a check on its evidence (`evidenceCheck` in `checks.go`; a task's check kind, which admins pick in the task editor, says which). The check answers one of three ways:
 
@@ -54,7 +54,8 @@ On top of that, each task checks the property it is about, from the explorer's v
 - the faucet: the transaction spends coins from two payments the faucet made, known by an input from one of the faucet's addresses (`EMISSIO_FAUCET_ADDRESSES`);
 - staking: the proof output is a staking script (read from its bytes as the node reads it, every form: height or time lock, a committee BLS registration, a vesting lock) of at least 40,000 tSEQ; a delegation record names that stake's key as controller and a pool on the pool board's feed (`EMISSIO_POOLS`) as signer; a re-delegation spends that record into one for another pool; an unbonding spends the stake into an unbonding output of the same key;
 - Compages (`EMISSIO_COMPAGES`): bridging in, the bridge's record of the deposit named in the notes (an Ethereum transaction hash or a Solana deposit address) names its delivery, which the tester's transaction spends; bridging out, the bridge's record of the redemption address shows the tester's transaction released;
-- the release: the checksum in the notes matches a file in the download page's `SHA256SUMS` (`EMISSIO_SUMS`), and the public node sees a peer announcing the account code that runs that release.
+- the release: the checksum in the notes matches a file in the download page's `SHA256SUMS` (`EMISSIO_SUMS`), and the public node sees a peer announcing the account code that runs that release;
+- the fee list (`feetasks.go`): the fee is paid in USDX (`EMISSIO_USDX_ASSET`) and follows from the USDX value the account was given. A node pays `ceil(fee_rate × vsize × 1e8 / rate)` atoms of the fee asset, where the fee rate is in reference atoms per vbyte and the rate is that asset's on the sending node, so the fee of a transaction sent at the tasks' `fee_rate=2` shows the rate the tester's node held. Each account gets a USDX price from its proof decimals: 0.30 to 0.45 for the whitelist task (listed by hand with `setfeeexchangerates`), 0.55 to 0.70 for the price-server task (a manual price in the price server's config). The ranges do not overlap and both are below the network's 1, so a producer always values the fee at least as highly as the tester's node. The check allows the vsize a byte below or two above the explorer's, since a wallet prices the size it estimates before signing. A refusal says what the fee shows instead: USDX at the network's rate, the other task's price, or the rate the fee implies at that fee rate. A wallet that would leave change too small to keep drops the change output and adds it to the fee; a transaction with nothing but the proof output and the fee, and a fee above the rate's, is refused for that reason with what to do instead (send again from a larger coin, so the transaction keeps change), since its fee no longer shows the rate. The texts ask the tester to hold well more USDX than they send, so it rarely happens. The check sees the fee and nothing of the node, so a rate set by hand, the price server's push and a fee output written by hand look alike.
 
 The verdict is written into the submission's check note; an admin can re-run it from the queue.
 
@@ -84,48 +85,56 @@ The web wallet's tasks are worded as its default mode speaks: receive codes, Sen
 
   Emissio pays only linked accounts, three times per task for one account and three times a day for one network address. Every arca call is serialised: the wallet's store is not safe for two processes at once.
 
-Task instructions carry the user's own values where `{PROOF}` (proof decimals) and `{CODE}` (account code) appear in the seeded text.
+Task instructions carry the user's own values where `{PROOF}` (proof decimals) and `{CODE}` (account code) appear in the seeded text, and `{PRICE_A}`, `{RATE_A}`, `{PRICE_B}` and `{RATE_B}` (the account's USDX price and node rate for the whitelist and price-server tasks).
 
 The same binding applies outside tasks. A **competition entry** must carry the account code on the work or its page; the app looks for it in the link and in the linked page's text, notes what it found for the judges, and refuses a link another account already entered. A **security report** must start with the account code, inside the encrypted block when encrypted, so a report read long after it was sent still names its account; identical bodies from two accounts are flagged.
 
 The seeded catalog (`seed.go`; the live instance's admins can adjust rewards, caps, active flags and checks, and add tasks, from the task editor):
 
-| Task | Surface | Reward | Cap |
-|---|---|---|---|
-| Link your web wallet | Web wallet | 10 | 5,000 |
-| Pay Emissio from your web wallet | Web wallet | 15 | 3,000 |
-| Receive from Emissio and send back what arrived | Web wallet | 25 | 2,000 |
-| Pay Emissio in BTC | Web wallet | 20 | 2,000 |
-| Get paid an invoice by Emissio | Web wallet | 20 | 1,000 |
-| Swap, then pay Emissio in what you got | Web wallet | 25 | 2,000 |
-| Get paid at your payment name | Web wallet | 20 | 1,000 |
-| Make your first testnet transaction | Sequentia Core | 10 | 5,000 |
-| Find the Bitcoin anchor of your transaction | Block explorer | 10 | 3,000 |
-| Combine two faucet payments in one transaction | Faucet | 15 | 2,000 |
-| Issue your own asset | Sequentia Core | 20 | 2,500 |
-| Reissue an asset you created | Sequentia Core | 20 | 1,000 |
-| Burn part of an asset you issued | Sequentia Core | 15 | 1,000 |
-| Pay a fee in an asset other than tSEQ | Sequentia Core | 15 | 2,500 |
-| Send two assets in one transaction | Sequentia Core | 15 | 2,000 |
-| Send an opt-in confidential transaction | Sequentia Core | 15 | 2,000 |
-| Return a payment to Emissio | Sequentia Core | 25 | 1,000 |
-| Receive a confidential payment and unblind it | Block explorer | 25 | 1,000 |
-| Bridge an asset into Sequentia with Compages | Compages | 30 | 1,000 |
-| Bridge from the other source chain | Compages | 30 | 500 |
-| Bridge an asset back out with Compages | Compages | 40 | 500 |
-| Install the release and check its checksum | Sequentia Core | 15 | 2,000 |
-| Build Sequentia Core from source | Sequentia Core | 30 | 500 |
-| Run a full node for a week | Sequentia Core | 50 | 1,000 |
-| Stake tSEQ | Web wallet | 40 | 500 |
-| Delegate your stake to a staking pool | Staking pools | 30 | 500 |
-| Move your delegation to another pool | Staking pools | 20 | 500 |
-| Unbond your stake | Sequentia Core | 25 | 500 |
+| Task | Stage | Done on | Builds on | Reward | Cap |
+|---|---|---|---|---|---|
+| Link your web wallet | Web wallet | Web wallet | | 10 | 5,000 |
+| Pay Emissio from your web wallet | Web wallet | Web wallet | Link your web wallet | 15 | 3,000 |
+| Receive from Emissio and send back what arrived | Web wallet | Web wallet | Link your web wallet | 25 | 2,000 |
+| Swap, then pay Emissio in what you got | Web wallet | Web wallet | Link your web wallet | 25 | 2,000 |
+| Get paid at your payment name | Web wallet | Web wallet | Link your web wallet | 20 | 1,000 |
+| Get paid an invoice by Emissio | Web wallet | Web wallet | Link your web wallet | 20 | 1,000 |
+| Pay Emissio in BTC | Web wallet | Web wallet | Link your web wallet | 20 | 2,000 |
+| Stake tSEQ | Staking | Web wallet | | 40 | 500 |
+| Delegate your stake to a staking pool | Staking | Staking pools | Stake tSEQ | 30 | 500 |
+| Move your delegation to another pool | Staking | Staking pools | Delegate your stake to a staking pool | 20 | 500 |
+| Unbond your stake | Staking | Sequentia Core | Stake tSEQ | 25 | 500 |
+| Install the release and check its checksum | Sequentia Core | Sequentia Core | | 15 | 2,000 |
+| Make your first testnet transaction | Sequentia Core | Sequentia Core | Install the release and check its checksum | 10 | 5,000 |
+| Find the Bitcoin anchor of your transaction | Sequentia Core | Block explorer | Make your first testnet transaction | 10 | 3,000 |
+| Combine two faucet payments in one transaction | Sequentia Core | Faucet | Make your first testnet transaction | 15 | 2,000 |
+| Send two assets in one transaction | Sequentia Core | Sequentia Core | Make your first testnet transaction | 15 | 2,000 |
+| Send an opt-in confidential transaction | Sequentia Core | Sequentia Core | Make your first testnet transaction | 15 | 2,000 |
+| Receive a confidential payment and unblind it | Sequentia Core | Block explorer | Make your first testnet transaction | 25 | 1,000 |
+| Issue your own asset | Assets | Sequentia Core | Make your first testnet transaction | 20 | 2,500 |
+| Reissue an asset you created | Assets | Sequentia Core | Issue your own asset | 20 | 1,000 |
+| Burn part of an asset you issued | Assets | Sequentia Core | Issue your own asset | 15 | 1,000 |
+| List an asset for fees on your node | Fees | Sequentia Core | Make your first testnet transaction | 25 | 1,000 |
+| Pay a fee in an asset other than tSEQ | Fees | Sequentia Core | List an asset for fees on your node | 15 | 2,500 |
+| Return a payment to Emissio | Fees | Sequentia Core | List an asset for fees on your node, Make your first testnet transaction | 25 | 1,000 |
+| Run the price server | Fees | Sequentia Core | List an asset for fees on your node | 30 | 500 |
+| Bridge an asset into Sequentia with Compages | Bridge | Compages | Make your first testnet transaction | 30 | 1,000 |
+| Bridge from the other source chain | Bridge | Compages | Bridge an asset into Sequentia with Compages | 30 | 500 |
+| Bridge an asset back out with Compages | Bridge | Compages | Bridge an asset into Sequentia with Compages | 40 | 500 |
+| Run a full node for a week | Infrastructure | Sequentia Core | Install the release and check its checksum | 50 | 1,000 |
+| Build Sequentia Core from source | Infrastructure | Sequentia Core | Install the release and check its checksum | 30 | 500 |
 
-Completing every task pays 630 SEQ; total task exposure across all users is 835,000 SEQ. Caps pay the first accounts whose evidence is approved, so the pool stays bounded.
+Completing every task pays 685 SEQ; total task exposure across all users is 875,000 SEQ. Caps pay the first accounts whose evidence is approved, so the pool stays bounded.
+
+### The order of the tasks
+
+The task page is one path, in the order a tester does things, and each stage goes from easiest to hardest: the web wallet, which needs no install; staking, from the web wallet; Sequentia Core, installed and verified first; assets; fees, where the node's own fee list comes before the tasks that pay a fee in another asset (a fresh node lists tSEQ alone and refuses any other fee asset); the bridge; and infrastructure. The stages are the list `stages` in `seed.go`, and a task's category names its stage. A task filed under any other category is listed last, under Other tasks.
+
+Each seeded task names the tasks it builds on (`needs` in `seed.go`, shown in the table above), and its `sort` places it on the path. `TestSeededTasksFollowThePath` fails if a task comes before one it needs, names a task that does not exist, sits under no stage, or if `sort` does not rise along the path, and if a stage has no task.
 
 ### The front page
 
-The front page is written for someone arriving from an announcement who has never heard of Sequentia. It says in one line what Sequentia is, then gives two steps side by side. The first, start testing, needs no account: open the web wallet (`EMISSIO_WALLET_URL`), make a wallet, and take test coins from its faucet card. The second invites the visitor to join and earn, and says what earning means: Sequence tokens (SEQ) credited for tasks, bug reports, competitions, vulnerability reports and referrals, paid at mainnet launch. Signed in, the second step shows the tester's balance, how many tasks are done, and the next open task. The web wallet's tasks come first, as tiles; every other task is summed up by the place it is done (its count, its total reward and, signed in, how many are done), linking to that place's section of the task page, which groups the tasks the same way. The dashboard's open tasks put the web wallet's first too. The page shows no counts of accounts or of tokens credited.
+The front page is written for someone arriving from an announcement who has never heard of Sequentia. It says in one line what Sequentia is, then gives two steps side by side. The first, start testing, needs no account: open the web wallet (`EMISSIO_WALLET_URL`), make a wallet, and take test coins from its faucet card. The second invites the visitor to join and earn, and says what earning means: Sequence tokens (SEQ) credited for tasks, bug reports, competitions, vulnerability reports and referrals, paid at mainnet launch. Signed in, the second step shows the tester's balance, how many tasks are done, and the next open task. The web wallet's stage comes first, as tiles; every other stage is summed up (its count, its total reward and, signed in, how many are done), linking to that stage's section of the task page, which groups the tasks the same way. The next task, here and on the dashboard, is the first open one on the path. The page shows no counts of accounts or of tokens credited.
 
 ### Connecting a wallet
 
@@ -133,7 +142,7 @@ The link task's **Connect** button goes through the same connector layer as SeqD
 
 ### The dashboard
 
-The account page opens with the tester's progress: for each surface, how many of its tasks are done and how many wait for review; the tasks still open, with their rewards; what was earned from what (tasks, bug reports, security reports, competitions, verified accounts, referrals, adjustments); and every bug and security report filed, with its status.
+The account page opens with the tester's progress: for each stage of the path, how many of its tasks are done and how many wait for review; the tasks still open, with their rewards; what was earned from what (tasks, bug reports, security reports, competitions, verified accounts, referrals, adjustments); and every bug and security report filed, with its status.
 
 ### Bug reports
 
@@ -225,7 +234,7 @@ Every issue the project already knows of is a GitHub issue labelled `known-issue
 
 `/admin/users` searches accounts by email, account code, network address, payout address, a chain address their evidence touched, a txid they submitted or the account id; each account's page shows its balance, signals and linked accounts (and what they share), where it was seen, its submissions (approved ones revocable), bug reports, ledger with an adjustment form, the hold, a password reset link, and the log of admin actions on it.
 
-The task editor (`/admin/tasks`) changes a task's copy, reward, cap, surface, check and active flag, or adds a task, with no deploy. Exports: `/admin/allocations.csv` (the launch allocation: `user_id, email, mainnet_address, balance_seq, verified_platforms`) and `/admin/export/users.csv`, `submissions.csv`, `ledger.csv`, `bugs.csv`; a cell a spreadsheet would run as a formula is written as text.
+The task editor (`/admin/tasks`) changes a task's copy, stage (its category), reward, cap, surface, check, sort and active flag, or adds a task, with no deploy. Exports: `/admin/allocations.csv` (the launch allocation: `user_id, email, mainnet_address, balance_seq, verified_platforms`) and `/admin/export/users.csv`, `submissions.csv`, `ledger.csv`, `bugs.csv`; a cell a spreadsheet would run as a formula is written as text.
 
 ## For integrators
 
@@ -301,7 +310,7 @@ First run creates the schema and seeds the task catalog and the opening competit
 echo 'a-strong-password' | EMISSIO_DB=/tmp/emissio.db ./emissio createadmin you@example.com
 ```
 
-Running `createadmin` for an existing email resets that account's password and makes it an admin; a new admin's address counts as confirmed. The other subcommand, `./emissio reseed-tasks`, refreshes the title, category, and body of the seeded tasks from the current `seed.go` copy in an existing database, inserts any seeded task the database does not have yet, and deactivates the tasks listed as retired in `seed.go`, leaving admin-tuned rewards, caps, and active flags of the other existing tasks alone. An inactive task, whether an admin switched it off or it was retired, is left out of the task page, and its own address shows only its title and that it is closed, with no instructions and no form; a submission to it is refused.
+Running `createadmin` for an existing email resets that account's password and makes it an admin; a new admin's address counts as confirmed. The other subcommand, `./emissio reseed-tasks`, refreshes the title, category (its stage), body, surface, check and place on the path (`sort`) of the seeded tasks from the current `seed.go` in an existing database, inserts any seeded task the database does not have yet, and deactivates the tasks listed as retired in `seed.go`, leaving admin-tuned rewards, caps, and active flags of the other existing tasks alone. An inactive task, whether an admin switched it off or it was retired, is left out of the task page, and its own address shows only its title and that it is closed, with no instructions and no form; a submission to it is refused. The path's order is the seed's, so a sort an admin set on a seeded task is replaced; a task an admin added keeps its own.
 
 Tests:
 
@@ -309,7 +318,7 @@ Tests:
 go test ./...
 ```
 
-`app_test.go` drives the full HTTP surface against a temporary database: registration, submission and review lifecycle, prize and report awards, referral qualification, verifications (with stubbed Reddit/Telegram servers), duplicate-txid rejection, base-path handling, CSRF, and anonymous-access denial. `bugs_test.go` covers the bug page (refusals, the screenshot's privacy, acceptance by severity paying once, duplicate merging) and the wallet intake (every answer of its contract, the limits, attribution by account code). `checks_test.go` covers every check's verdicts against a stand-in explorer and stand-in services (the staking-script parsers against scripts the node itself built, in every form), the release check against a stand-in peer list, the submission form's three outcomes and the dashboard. `regtest_tasks_test.go` runs the counterparty tasks against a real node on a private chain: Emissio's wallet pays, a tester's wallet returns or unblinds, and the checks read the transactions back, the wrong-coin and wrong-fee-asset returns and a wrong amount refused; it is skipped unless `EMISSIO_REGTEST_TASKS_CLI` and `EMISSIO_REGTEST_TASKS_DATADIR` name the node (the test's header says what it must hold). `closedtask_test.go` covers an inactive and a retired task on their own addresses: closed, with no instructions and no form, signed in or not, and a submission refused and not stored. `walletlink_test.go` recovers the key from signatures a Sequentia node made, and covers the link task's refusals and the one-account rule. `arcawallet_test.go` drives every web wallet task against a stand-in `arca` (`testdata/fake-arca.py`, answering in the command line's shapes): attribution by a coin's record, a stray coin, the round trip's wrong amounts, a return short by a transfer's margins, the exact one, the submission form staying closed until a check passes, the Bitcoin ark address, invoice limits, the swap's proof decimals. `desk_test.go` covers the registration limits by network and by browser and the signals they leave, the queue across every kind, approving and revoking (once, with a reason the tester sees), reasoned adjustments, holds, account search, and the exports. `mail_test.go` covers confirming the address (the gate, resend limits, only the newest link working), password reset (the same answer for unknown addresses, a link that works once, sessions ended), admin reset links, and the SMTP exchange itself against a stand-in server, credentials only after STARTTLS. `bech32_test.go` covers address validation and formatting helpers. `walletkey_test.go` covers reading a wallet's key from its account key (BIP84's own vector) and from an address that has spent, and that the rehearsal shows only when asked. `payout_test.go` covers payout keys, a rehearsal run against a stand-in payment service (left-out reasons, every refusal of a reference, collected and returned allocations, no balance moved) and the launch's single debit. `regtest_payout_test.go` runs the rehearsal end to end against a real payment service: an Arca operator from arca's `arca_operator_for_browsers` harness, named by `EMISSIO_REGTEST_CONTROL`, with `EMISSIO_REGTEST_ARCA` the `arca` binary; it is skipped without them.
+`app_test.go` drives the full HTTP surface against a temporary database: registration, submission and review lifecycle, prize and report awards, referral qualification, verifications (with stubbed Reddit/Telegram servers), duplicate-txid rejection, base-path handling, CSRF, and anonymous-access denial. `bugs_test.go` covers the bug page (refusals, the screenshot's privacy, acceptance by severity paying once, duplicate merging) and the wallet intake (every answer of its contract, the limits, attribution by account code). `checks_test.go` covers every check's verdicts against a stand-in explorer and stand-in services (the staking-script parsers against scripts the node itself built, in every form), the release check against a stand-in peer list, the submission form's three outcomes and the dashboard. `regtest_tasks_test.go` runs the counterparty tasks against a real node on a private chain: Emissio's wallet pays, a tester's wallet returns or unblinds, and the checks read the transactions back, the wrong-coin and wrong-fee-asset returns and a wrong amount refused; it is skipped unless `EMISSIO_REGTEST_TASKS_CLI` and `EMISSIO_REGTEST_TASKS_DATADIR` name the node (the test's header says what it must hold). `feetasks_test.go` covers the fee-list checks' account values, every verdict and the task pages' values. `home_test.go` covers the front page, the path's order (`TestSeededTasksFollowThePath`) and `reseed-tasks` putting an existing database on it. `regtest_feelist_test.go` runs the fee-list tasks on two private-chain nodes, a tester's and a producer's: a fresh node refusing an unlisted fee asset, USDX listed by hand and then by the real price server (`--once --dry-run`, then `--once`), each transaction relayed and mined by the producer, and the checks reading them back, a fee at the wrong fee rate, at the network's rate and at the other task's price refused; it is skipped unless the variables its header names are set. `closedtask_test.go` covers an inactive and a retired task on their own addresses: closed, with no instructions and no form, signed in or not, and a submission refused and not stored. `walletlink_test.go` recovers the key from signatures a Sequentia node made, and covers the link task's refusals and the one-account rule. `arcawallet_test.go` drives every web wallet task against a stand-in `arca` (`testdata/fake-arca.py`, answering in the command line's shapes): attribution by a coin's record, a stray coin, the round trip's wrong amounts, a return short by a transfer's margins, the exact one, the submission form staying closed until a check passes, the Bitcoin ark address, invoice limits, the swap's proof decimals. `desk_test.go` covers the registration limits by network and by browser and the signals they leave, the queue across every kind, approving and revoking (once, with a reason the tester sees), reasoned adjustments, holds, account search, and the exports. `mail_test.go` covers confirming the address (the gate, resend limits, only the newest link working), password reset (the same answer for unknown addresses, a link that works once, sessions ended), admin reset links, and the SMTP exchange itself against a stand-in server, credentials only after STARTTLS. `bech32_test.go` covers address validation and formatting helpers. `walletkey_test.go` covers reading a wallet's key from its account key (BIP84's own vector) and from an address that has spent, and that the rehearsal shows only when asked. `payout_test.go` covers payout keys, a rehearsal run against a stand-in payment service (left-out reasons, every refusal of a reference, collected and returned allocations, no balance moved) and the launch's single debit. `regtest_payout_test.go` runs the rehearsal end to end against a real payment service: an Arca operator from arca's `arca_operator_for_browsers` harness, named by `EMISSIO_REGTEST_CONTROL`, with `EMISSIO_REGTEST_ARCA` the `arca` binary; it is skipped without them.
 
 ### Configuration
 
@@ -322,6 +331,7 @@ All configuration is environment variables (`loadConfig` in `main.go`):
 | `EMISSIO_BASEPATH` | empty | Path prefix when served under one, e.g. `/emissio` |
 | `EMISSIO_ESPLORA` | empty | Esplora API base URL for the transaction checks, e.g. `https://sequentiatestnet.com/api` (empty disables them; submissions then go to manual review) |
 | `EMISSIO_POLICY_ASSET` | the testnet's tSEQ id | Asset id of tSEQ, for the fee and stake checks |
+| `EMISSIO_USDX_ASSET` | the testnet's USDX id | Asset id of USDX, the fee asset of the fee-list tasks |
 | `EMISSIO_CLI`, `EMISSIO_DATADIR` | empty | `sequentia-cli` path and the public node's data directory; enables the peer-based checks, the ten-minute sighting poller and Emissio's wallet |
 | `EMISSIO_COMPAGES` | empty | Compages' API base, for the bridge checks (empty sends bridge evidence to review) |
 | `EMISSIO_POOLS` | empty | The pool board's feed, for the delegation checks (empty sends them to review) |

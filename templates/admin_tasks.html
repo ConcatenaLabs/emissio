@@ -19,8 +19,9 @@
   {{if .Task}}<input type="hidden" name="id" value="{{.Task.ID}}">{{end}}
   <label>Slug</label><input class="mono" type="text" name="slug" required value="{{if .Task}}{{.Task.Slug}}{{end}}">
   <label>Title</label><input type="text" name="title" required value="{{if .Task}}{{.Task.Title}}{{end}}">
-  <label>Category</label><input type="text" name="category" value="{{if .Task}}{{.Task.Category}}{{else}}Testnet{{end}}">
-  <label>Surface (where the dashboard counts it)</label>
+  <label>Category (the stage of the task page it is listed in; any other category is listed last, under Other tasks)</label><input type="text" name="category" list="stages" value="{{if .Task}}{{.Task.Category}}{{end}}">
+  <datalist id="stages">{{range .Stages}}<option value="{{.Name}}">{{end}}</datalist>
+  <label>Surface (where the task is done, shown as its label)</label>
   <select name="surface">{{$cur := ""}}{{if .Task}}{{$cur = .Task.Surface}}{{end}}
     {{range .Surfaces}}<option value="{{.Key}}"{{if eq .Key $cur}} selected{{end}}>{{.Name}}</option>{{end}}
   </select>
@@ -28,7 +29,7 @@
   <select name="check_kind">{{$ck := "none"}}{{if .Task}}{{$ck = .Task.CheckKind}}{{end}}
     {{range .Checks}}<option value="{{.Key}}"{{if eq .Key $ck}} selected{{end}}>{{.Key}}: {{.Desc}}</option>{{end}}
   </select>
-  <label>Body (blank line = paragraph, "- " = list item, "## " = heading; {PROOF} and {CODE} become the reader's proof decimals and account code)</label>
+  <label>Body (blank line = paragraph, "- " = list item, "## " = heading; {PROOF} and {CODE} become the reader's proof decimals and account code; {PRICE_A}, {RATE_A}, {PRICE_B} and {RATE_B} the account's USDX price and rate for the whitelist and price-server tasks)</label>
   <textarea class="u-min-height-12rem" name="body">{{if .Task}}{{.Task.Body}}{{end}}</textarea>
   <div class="u-display-flex-gap-1rem-flex-wrap-wrap">
     <div><label>Reward (SEQ)</label><input type="number" name="reward" required min="1" value="{{if .Task}}{{.Task.Reward}}{{end}}"></div>

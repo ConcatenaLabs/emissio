@@ -1,6 +1,6 @@
 {{define "content"}}
-<p class="back"><a href="{{base}}/tasks{{if .Data.Task.Surface}}#s-{{.Data.Task.Surface}}{{end}}">&larr; All tasks</a></p>
-<div class="eyebrow">{{surfacetitle .Data.Task.Surface}}{{if ne (surfacetitle .Data.Task.Surface) .Data.Task.Category}} · {{.Data.Task.Category}}{{end}}</div>
+<p class="back"><a href="{{base}}/tasks#s-{{stageof .Data.Task.Category}}">&larr; All tasks</a></p>
+<div class="eyebrow">{{.Data.Task.Category}}{{if and .Data.Task.Surface (ne (surfacetitle .Data.Task.Surface) .Data.Task.Category)}} · {{surfacetitle .Data.Task.Surface}}{{end}}</div>
 <h1>{{.Data.Task.Title}}</h1>
 {{if .Data.Closed}}
 <div class="section">

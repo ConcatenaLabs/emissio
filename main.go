@@ -36,6 +36,7 @@ type Config struct {
 	RedditSecret  string
 	RedditToken   string // secret shared with the Reddit app that issues signed ownership tokens
 	PolicyAsset   string // asset id of tSEQ on this chain, for the fee and stake checks
+	USDXAsset     string // asset id of USDX, the fee asset of the fee-list tasks
 	NodeCLI       string // sequentia-cli path; with NodeDatadir, enables peer-based checks
 	NodeDatadir   string
 	TgBotToken    string // BotFather token; enables ID-based Telegram age checks
@@ -114,6 +115,7 @@ func loadConfig() Config {
 		RedditSecret:  envOr("EMISSIO_REDDIT_CLIENT_SECRET", ""),
 		RedditToken:   envOr("EMISSIO_REDDIT_TOKEN_SECRET", ""),
 		PolicyAsset:   envOr("EMISSIO_POLICY_ASSET", "c8eccacf0953e1931cd31e434d8319101cc36e6c38b0e2104d8687552fae3e40"),
+		USDXAsset:     envOr("EMISSIO_USDX_ASSET", "2a515539da5e6a60caa7766ecd65bac0c10d15717ddd2088844ba58f4d04b9de"),
 		NodeCLI:       envOr("EMISSIO_CLI", ""),
 		NodeDatadir:   envOr("EMISSIO_DATADIR", ""),
 		TgBotToken:    envOr("EMISSIO_TG_BOT_TOKEN", ""),
@@ -254,11 +256,12 @@ func parseTemplates(cfg Config) map[string]*template.Template {
 		"add":      func(a, b int) int { return a + b },
 		"tmap": func(t any, csrf string) map[string]any {
 			task, _ := t.(*Task)
-			return map[string]any{"Task": task, "CSRF": csrf, "Checks": checkKinds, "Surfaces": surfaces}
+			return map[string]any{"Task": task, "CSRF": csrf, "Checks": checkKinds, "Surfaces": surfaces, "Stages": stages}
 		},
 		"surfacename":  surfaceName,
 		"list":         func(v ...string) []string { return v },
 		"surfacetitle": surfaceTitle,
+		"stageof":      stageOf,
 		"amounttext":   amountText,
 		"short": func(s string) string {
 			if len(s) <= 16 {
@@ -426,48 +429,7 @@ func runCommand(db *sql.DB, args []string) {
 		}
 		fmt.Printf("created admin %s (id %d)\n", email, id)
 	case "reseed-tasks":
-		// Refresh title, category and body of the seeded tasks from the
-		// current seed copy, and insert any seeded task the database does
-		// not have yet. Rewards, caps and active flags of existing tasks are
-		// left alone so admin tuning survives.
-		updated, inserted := 0, 0
-		for _, t := range seedTasks {
-			res, err := db.Exec("UPDATE tasks SET title = ?, category = ?, body = ?, surface = ?, check_kind = ?, needs_txid = ? WHERE slug = ?",
-				t.title, t.category, t.body, t.surface, t.check, t.needsTxid, t.slug)
-			if err != nil {
-				log.Fatal(err)
-			}
-			if c, _ := res.RowsAffected(); c > 0 {
-				updated++
-				continue
-			}
-			if _, err := db.Exec(`INSERT INTO tasks (slug, title, category, body, surface, check_kind, reward, cap, needs_txid, active, sort)
-				VALUES (?,?,?,?,?,?,?,?,?,1,?)`,
-				t.slug, t.title, t.category, t.body, t.surface, t.check, t.reward, t.cap, t.needsTxid, t.sort); err != nil {
-				log.Fatal(err)
-			}
-			inserted++
-		}
-		comps := 0
-		for _, c := range seedComps {
-			res, err := db.Exec("UPDATE competitions SET title = ?, body = ? WHERE slug = ?", c.title, c.body, c.slug)
-			if err != nil {
-				log.Fatal(err)
-			}
-			if n, _ := res.RowsAffected(); n > 0 {
-				comps++
-			}
-		}
-		retired := 0
-		for _, slug := range retiredTasks {
-			res, err := db.Exec("UPDATE tasks SET active = 0 WHERE slug = ? AND active = 1", slug)
-			if err != nil {
-				log.Fatal(err)
-			}
-			if c, _ := res.RowsAffected(); c > 0 {
-				retired++
-			}
-		}
+		updated, inserted, retired, comps := reseedTasks(db)
 		fmt.Printf("updated copy of %d seeded tasks, inserted %d, retired %d; refreshed %d seeded competitions\n", updated, inserted, retired, comps)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n", args[0])
@@ -582,4 +544,51 @@ func (a *App) securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("Content-Security-Policy", contentSecurityPolicy(a.cfg.Connectors))
 		next.ServeHTTP(w, r)
 	})
+}
+
+// reseedTasks is reseed-tasks: it brings the seeded tasks and competitions
+// of an existing database in line with the seed.
+func reseedTasks(db *sql.DB) (updated, inserted, retired, comps int) {
+	// Refresh the copy, stage, surface, check and place on the path of
+	// the seeded tasks from the current seed, and insert any seeded task
+	// the database does not have yet. The path's order is the seed's, so
+	// a sort an admin set on a seeded task is replaced; tasks an admin
+	// added keep theirs. Rewards, caps and active flags of existing
+	// tasks are left alone so admin tuning survives.
+	for _, t := range seedTasks {
+		res, err := db.Exec("UPDATE tasks SET title = ?, category = ?, body = ?, surface = ?, check_kind = ?, needs_txid = ?, sort = ? WHERE slug = ?",
+			t.title, t.category, t.body, t.surface, t.check, t.needsTxid, t.sort, t.slug)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if c, _ := res.RowsAffected(); c > 0 {
+			updated++
+			continue
+		}
+		if _, err := db.Exec(`INSERT INTO tasks (slug, title, category, body, surface, check_kind, reward, cap, needs_txid, active, sort)
+			VALUES (?,?,?,?,?,?,?,?,?,1,?)`,
+			t.slug, t.title, t.category, t.body, t.surface, t.check, t.reward, t.cap, t.needsTxid, t.sort); err != nil {
+			log.Fatal(err)
+		}
+		inserted++
+	}
+	for _, c := range seedComps {
+		res, err := db.Exec("UPDATE competitions SET title = ?, body = ? WHERE slug = ?", c.title, c.body, c.slug)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			comps++
+		}
+	}
+	for _, slug := range retiredTasks {
+		res, err := db.Exec("UPDATE tasks SET active = 0 WHERE slug = ? AND active = 1", slug)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if c, _ := res.RowsAffected(); c > 0 {
+			retired++
+		}
+	}
+	return
 }

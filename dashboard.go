@@ -1,12 +1,12 @@
 package main
 
 // The tester's dashboard, at the top of the account page: progress through
-// each public surface, the tasks still open, what was earned from what, and
+// each stage of the path, the tasks still open, what was earned from what, and
 // every report filed with its status.
 
 import "database/sql"
 
-type surfaceProgress struct {
+type stageProgress struct {
 	Key, Name   string
 	Done, Total int
 	Pending     int
@@ -25,7 +25,7 @@ type earning struct {
 }
 
 type dashboard struct {
-	Surfaces []surfaceProgress
+	Stages   []stageProgress
 	Open     []openTask
 	Earnings []earning
 	Bugs     []*Bug
@@ -46,7 +46,12 @@ func loadDashboard(db *sql.DB, userID int64) (*dashboard, error) {
 	if err != nil {
 		return nil, err
 	}
-	tasks = webWalletFirst(tasks)
+	// The path's order, so the next task is the next one on the path.
+	var ordered []*Task
+	for _, g := range taskGroupsFull(tasks) {
+		ordered = append(ordered, g.Tasks...)
+	}
+	tasks = ordered
 	status := map[int64]string{}
 	rows, err := db.Query(`SELECT task_id, status FROM submissions WHERE user_id = ? ORDER BY id`, userID)
 	if err != nil {
@@ -63,20 +68,20 @@ func loadDashboard(db *sql.DB, userID int64) (*dashboard, error) {
 	rows.Close()
 	d := &dashboard{Status: status}
 	idx := map[string]int{}
-	for _, s := range surfaces {
-		idx[s.Key] = len(d.Surfaces)
-		d.Surfaces = append(d.Surfaces, surfaceProgress{Key: s.Key, Name: s.Name})
+	for _, g := range taskGroupsFull(tasks) {
+		idx[g.Key] = len(d.Stages)
+		d.Stages = append(d.Stages, stageProgress{Key: g.Key, Name: g.Name})
 	}
 	for _, t := range tasks {
-		i, ok := idx[t.Surface]
+		i, ok := idx[stageOf(t.Category)]
 		st := status[t.ID]
 		if ok {
-			d.Surfaces[i].Total++
+			d.Stages[i].Total++
 			switch st {
 			case "approved":
-				d.Surfaces[i].Done++
+				d.Stages[i].Done++
 			case "pending":
-				d.Surfaces[i].Pending++
+				d.Stages[i].Pending++
 			}
 		}
 		d.Total++
@@ -89,10 +94,10 @@ func loadDashboard(db *sql.DB, userID int64) (*dashboard, error) {
 		}
 		d.Open = append(d.Open, openTask{Task: t, Status: st})
 	}
-	for i := range d.Surfaces {
-		if d.Surfaces[i].Total > 0 {
-			d.Surfaces[i].Percent = d.Surfaces[i].Done * 100 / d.Surfaces[i].Total
-			d.Surfaces[i].Bar = d.Surfaces[i].Percent / 10 * 10
+	for i := range d.Stages {
+		if d.Stages[i].Total > 0 {
+			d.Stages[i].Percent = d.Stages[i].Done * 100 / d.Stages[i].Total
+			d.Stages[i].Bar = d.Stages[i].Percent / 10 * 10
 		}
 	}
 	erows, err := db.Query("SELECT kind, SUM(amount) FROM ledger WHERE user_id = ? GROUP BY kind", userID)
