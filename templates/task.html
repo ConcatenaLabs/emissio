@@ -45,7 +45,7 @@
           <p class="small muted">Not yet: {{.Next}}. <a href="{{base}}/tasks/{{$.Data.Task.Slug}}">Check again</a></p>
         </div>
         {{end}}
-        {{if and (not .Ready) (or (not $.Data.Mine) (eq $.Data.Mine.Status "rejected"))}}
+        {{if and (not .Ready) (or (not $.Data.Mine) (eq $.Data.Mine.Status "rejected") (eq $.Data.Mine.Status "waiting"))}}
         <details>
           <summary>{{if eq .Kind "arca-invoice"}}The payment never arrived?{{else}}Nothing arrived in your wallet?{{end}}</summary>
           <div class="inner">
@@ -54,7 +54,7 @@
           </div>
         </details>
         {{end}}
-      {{else if or (not $.Data.Mine) (eq $.Data.Mine.Status "rejected")}}
+      {{else if or (not $.Data.Mine) (eq $.Data.Mine.Status "rejected") (eq $.Data.Mine.Status "waiting")}}
         {{template "arcaask" $}}
       {{end}}
     {{else}}
@@ -108,7 +108,7 @@
       <p class="small muted">Send exactly {{.Amount}} {{.AssetName}} to Emissio's address and choose {{.AssetName}} as the fee asset. The fee needs a little more {{.AssetName}} than Emissio sent: the faucet hands it out.</p>
     </div>
     {{end}}
-    {{if or (not $.Data.Mine) (eq $.Data.Mine.Status "rejected")}}
+    {{if or (not $.Data.Mine) (eq $.Data.Mine.Status "rejected") (eq $.Data.Mine.Status "waiting")}}
     <form class="stack wide u-margin-top-1rem" method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/request">
       <input type="hidden" name="csrf" value="{{$.CSRF}}">
       <label for="address">{{if .Confidential}}A confidential address of your wallet (tsqb...){{else}}A transparent address of your wallet (tb1...){{end}}</label>
@@ -135,8 +135,10 @@
       <p><span class="pill {{.Data.Mine.Status}}">{{.Data.Mine.Status}}</span>
       {{if .Data.Mine.Txid}}<span class="mono small muted"> txid {{short .Data.Mine.Txid}}</span>{{end}}</p>
       {{if eq .Data.Mine.Status "pending"}}<p class="muted small">A reviewer will check your evidence. Approved rewards appear on your <a href="{{base}}/account">account</a>.</p>{{end}}
+      {{if eq .Data.Mine.Status "waiting"}}<p class="muted small">The evidence has not arrived yet. Emissio checks again every few minutes and credits it the moment it passes; you need not submit again.{{if not .Data.Wallet}} Submitting other evidence below replaces this submission.{{end}}</p>{{end}}
       {{if .Data.Mine.ChainNote}}<p class="muted small">Check: {{.Data.Mine.ChainNote}}</p>{{end}}
       {{if eq .Data.Mine.Status "approved"}}<p class="muted small">Approved and credited to your <a href="{{base}}/account">ledger</a>.</p>{{end}}
+      {{if and (eq .Data.Mine.Status "waiting") (not .Data.Wallet)}}{{template "gatedform" .}}{{end}}
     {{end}}
   {{else if .Data.Full}}
     <p class="muted">All {{seq .Data.Task.Cap}} rewards for this task have been claimed. The task stays open for practice, but no further rewards are paid.</p>
@@ -180,8 +182,7 @@
   <div class="field-note">Optional: you can leave this empty and submit.</div>
   {{end}}
   {{if .Data.Auto}}
-  <div class="field-note">Evidence that passes the check is credited at once; evidence that does not is returned with the reason.</div>
-  <label class="small"><input type="checkbox" name="review" value="1"> Optional: if the check refuses evidence you are sure is right, send it to a reviewer instead</label>
+  <div class="field-note">Evidence that passes the check is credited at once, and evidence that does not is returned with the reason. Evidence that has not arrived yet (a transaction not yet confirmed, a payment or a node not yet seen) waits: Emissio checks it again every few minutes and credits it the moment it passes.</div>
   {{end}}
   <div class="actions"><button class="btn" type="submit">Submit evidence</button></div>
 </form>
@@ -203,18 +204,20 @@
 {{$w := .Data.Wallet}}
 {{if and $w $w.Available (not $w.Ready)}}
 <p class="muted">The task can be submitted once Emissio sees the step above done. Not yet: {{if $w.Linked}}{{$w.Next}}{{else}}link your web wallet first{{end}}.</p>
+{{if $w.Linked}}
 <details>
-  <summary>Sure you did it, and Emissio still does not see it after fifteen minutes?</summary>
+  <summary>Sure you did it, and Emissio still does not see it?</summary>
   <div class="inner">
+    <p class="small">Submit it now: Emissio keeps checking every few minutes and credits it the moment the payment shows, for up to three days.</p>
     <form class="stack wide" method="post" action="{{base}}/tasks/{{.Data.Task.Slug}}/submit">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
-      <input type="hidden" name="review" value="1">
-      <label for="notes">What you did</label>
-      <textarea id="notes" name="notes" required placeholder="What you sent, when, and from which wallet."></textarea>
-      <div class="actions"><button class="btn ghost" type="submit">Send it to a reviewer</button></div>
+      <label for="notes">What you did <span class="muted">(optional)</span></label>
+      <textarea id="notes" name="notes" placeholder="What you sent, when, and from which wallet."></textarea>
+      <div class="actions"><button class="btn ghost" type="submit">Submit and keep checking</button></div>
     </form>
   </div>
 </details>
+{{end}}
 {{else}}
 {{template "taskform" .}}
 {{end}}

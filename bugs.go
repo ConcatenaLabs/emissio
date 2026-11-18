@@ -3,7 +3,11 @@ package main
 // Bug reports. A tester files one from the bug page (surface, steps,
 // expected and actual behaviour, an optional screenshot); a wallet files one
 // through the JSON intake when its user reports a problem from inside it.
-// Both land in the same table and the same review queue. A report earns
+// Both land in the same table and the same review queue, except a test
+// report: one our own automated checks file to prove the path works end to
+// end, marked by the intake's "test" field or by a description or title that
+// starts with testMarker. It is stored with the status "test", never reaches
+// the queue, and can earn nothing (reviewBug takes only new reports). A report earns
 // nothing until an admin accepts it, at a severity whose reward is fixed
 // below; a later report of the same bug is merged into the first as a
 // duplicate and earns nothing.
@@ -185,7 +189,21 @@ func bugHash(steps, expected, actual string) string {
 	return fmt.Sprintf("%x", sum[:])
 }
 
+// testMarker starts the description (intake) or the title (form) of a test
+// report, for an automated drive that can only type into the wallet's or the
+// form's own fields.
+const testMarker = "EMISSIO-TEST"
+
+// testMarkerRe matches the marker as a whole word at the start: a title
+// such as "Emissio-testnet faucet" is a real report.
+var testMarkerRe = regexp.MustCompile(`^(?i:` + regexp.QuoteMeta(testMarker) + `)(?:$|[^A-Za-z0-9_-])`)
+
+func isTestText(s string) bool {
+	return testMarkerRe.MatchString(strings.TrimSpace(s))
+}
+
 type newBug struct {
+	Test                          bool // filed by our own automated check
 	UserID                        int64
 	Source, Surface, Title        string
 	Steps, Expected, Actual, Meta string
@@ -200,9 +218,13 @@ func createBug(db *sql.DB, b newBug) (int64, error) {
 		return 0, err
 	}
 	defer tx.Rollback()
-	res, err := tx.Exec(`INSERT INTO bugs (user_id, source, surface, title, steps, expected, actual, meta, ip, body_hash, created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-		b.UserID, b.Source, b.Surface, b.Title, b.Steps, b.Expected, b.Actual, b.Meta, b.IP, bugHash(b.Steps, b.Expected, b.Actual), now())
+	status := "new"
+	if b.Test {
+		status = "test"
+	}
+	res, err := tx.Exec(`INSERT INTO bugs (status, user_id, source, surface, title, steps, expected, actual, meta, ip, body_hash, created_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+		status, b.UserID, b.Source, b.Surface, b.Title, b.Steps, b.Expected, b.Actual, b.Meta, b.IP, bugHash(b.Steps, b.Expected, b.Actual), now())
 	if err != nil {
 		return 0, err
 	}
@@ -357,7 +379,7 @@ func (a *App) handleBugSubmit(w http.ResponseWriter, r *http.Request) {
 		a.redirect(w, r, "/bugs", "", fmt.Sprintf("You have filed %d reports today, the daily limit. File the rest tomorrow.", bugsPerDay))
 		return
 	}
-	nb := newBug{UserID: user.ID, Source: "form", Surface: surface, Title: title, Steps: steps, Expected: expected, Actual: actual, IP: clientIP(r)}
+	nb := newBug{Test: isTestText(title), UserID: user.ID, Source: "form", Surface: surface, Title: title, Steps: steps, Expected: expected, Actual: actual, IP: clientIP(r)}
 	if f, _, err := r.FormFile("screenshot"); err == nil {
 		data, _ := io.ReadAll(io.LimitReader(f, maxScreenshot+1))
 		f.Close()
@@ -376,6 +398,10 @@ func (a *App) handleBugSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := createBug(a.db, nb); err != nil {
 		a.serverError(w, err)
+		return
+	}
+	if nb.Test {
+		a.redirect(w, r, "/bugs", "Test report received. It is kept out of the review queue and earns nothing.", "")
 		return
 	}
 	a.redirect(w, r, "/bugs", "Report received. It earns its reward once a reviewer confirms the bug; you can follow it below.", "")
@@ -422,6 +448,7 @@ type intakeReport struct {
 	Mode        string `json:"mode"`
 	Description string `json:"description"`
 	AccountCode string `json:"account_code"`
+	Test        bool   `json:"test"` // filed by an automated check: kept out of the queue and of rewards
 	Errors      []struct {
 		At      string `json:"at"`
 		Message string `json:"message"`
@@ -621,12 +648,17 @@ func (a *App) handleIntake(w http.ResponseWriter, r *http.Request) {
 	if len(title) > 80 {
 		title = title[:80] + "…"
 	}
-	id, err := createBug(a.db, newBug{UserID: userID, Source: "wallet", Surface: in.Wallet, Title: title, Steps: desc, Meta: string(mb), IP: ip})
+	test := in.Test || isTestText(desc)
+	id, err := createBug(a.db, newBug{Test: test, UserID: userID, Source: "wallet", Surface: in.Wallet, Title: title, Steps: desc, Meta: string(mb), IP: ip})
 	if err != nil {
 		a.intakeJSON(w, http.StatusInternalServerError, map[string]string{"error": "The report could not be stored. Try again in a moment."})
 		return
 	}
-	a.intakeJSON(w, http.StatusCreated, map[string]any{"id": id, "account": account})
+	reply := map[string]any{"id": id, "account": account}
+	if test {
+		reply["test"] = true
+	}
+	a.intakeJSON(w, http.StatusCreated, reply)
 }
 
 // bugMeta unpacks a wallet report's context for the admin view.

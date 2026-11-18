@@ -191,7 +191,7 @@ func TestChecks(t *testing.T) {
 		{"first-transaction", "first", "", vPass, "proof amount found (output 0"},
 		{"first-transaction", "notag", "", vFail, "proof amount .86718345 NOT found"},
 		{"first-transaction", "feeonly", "", vFail, "NOT found"},
-		{"first-transaction", "mempool", "", vFail, "not yet confirmed"},
+		{"first-transaction", "mempool", "", vWait, "not yet confirmed"},
 		{"first-transaction", "missing", "", vFail, "txid NOT FOUND"},
 		{"first-transaction", "", "", vFail, "no txid submitted"},
 		{"anchor-lookup", "first", "anchor is 00000000abcdef00000000000000000000000000000000000000000000000000", vPass, "matches the block's Bitcoin anchor (OK)"},
@@ -228,7 +228,7 @@ func TestChecks(t *testing.T) {
 		{"bridge-in", "first", "0x" + strings.Repeat("ab", 32), vFail, "does not spend the bridge's delivery"},
 		{"bridge-both", "solbridged", "So1anaDepositAddress1111111111111111111", vFail, "complete the first bridge task"},
 		{"bridge-out", "returned", "", vPass, "released on the source chain (OK)"},
-		{"bridge-out", "waiting", "", vFail, "the redemption is awaiting finality"},
+		{"bridge-out", "waiting", "", vWait, "the redemption is awaiting finality"},
 		{"bridge-out", "elsewhere", "", vFail, "not a Compages redemption address"},
 		{"none", "first", "", vReview, "reviewed by hand"},
 	})
@@ -290,7 +290,7 @@ func TestReleaseCheck(t *testing.T) {
 	}{
 		{`[{"addr":"1.2.3.4:5","subver":"/Sequentia Core:25.2.4(emissio-0123456789)/"}]`, "sha256: " + sum, vPass, "runs it: /Sequentia Core:25.2.4(emissio-0123456789)/ (OK)"},
 		{`[{"addr":"1.2.3.4:5","subver":"/Sequentia Core:25.2.3(emissio-0123456789)/"}]`, sum, vFail, "not release 25.2.4"},
-		{`[]`, sum, vFail, "no connected node announces emissio-0123456789"},
+		{`[]`, sum, vWait, "no connected node announces emissio-0123456789"},
 		{`[]`, strings.Repeat("ee", 32), vFail, "no checksum in the notes matches"},
 	}
 	for i, c := range cases {
@@ -303,7 +303,8 @@ func TestReleaseCheck(t *testing.T) {
 }
 
 // TestSubmitVerdicts drives the submission form: a pass is credited at once,
-// a fail is refused unless sent to a reviewer, a held account always waits.
+// a fail is refused and never reaches a reviewer, a held account's pass
+// waits for one.
 func TestSubmitVerdicts(t *testing.T) {
 	code := "0123456789"
 	tag := int64(86718345)
@@ -342,14 +343,19 @@ func TestSubmitVerdicts(t *testing.T) {
 	if n != 0 {
 		t.Fatal("a refused submission was stored")
 	}
-	// Sent to a reviewer anyway, it waits as pending with the check's note.
-	submit("first-transaction", bad, url.Values{"review": {"1"}})
-	var status, note string
-	app.db.QueryRow("SELECT status, chain_note FROM submissions ORDER BY id DESC LIMIT 1").Scan(&status, &note)
-	if status != "pending" || !strings.Contains(note, "NOT found") {
-		t.Fatalf("for review: %s %q", status, note)
+	// The box that sent a refusal to a reviewer is gone: asking for one
+	// changes nothing, and the page no longer offers it.
+	if q := submit("first-transaction", bad, url.Values{"review": {"1"}}); !strings.Contains(q, "Not+accepted") {
+		t.Fatalf("a failing check was sent to a reviewer: %s", q)
 	}
-	app.db.Exec("UPDATE submissions SET status = 'rejected'")
+	app.db.QueryRow("SELECT COUNT(*) FROM submissions").Scan(&n)
+	if n != 0 {
+		t.Fatal("a refused submission was stored")
+	}
+	if p := get(t, client, srv.URL+"/tasks/first-transaction"); strings.Contains(p, `name="review"`) {
+		t.Fatal("the form still offers to send a refusal to a reviewer")
+	}
+	var status string
 	// A pass is approved and credited at once.
 	if q := submit("first-transaction", good, nil); !strings.Contains(q, "Checked+and+credited") {
 		t.Fatalf("pass not credited: %s", q)
@@ -363,7 +369,8 @@ func TestSubmitVerdicts(t *testing.T) {
 	}
 	// A held account's passing evidence waits for a reviewer.
 	app.db.Exec("UPDATE users SET held = 1")
-	submit("anchor-lookup", good, url.Values{"notes": {"x"}, "review": {"1"}})
+	app.db.Exec("UPDATE tasks SET check_kind = 'first-transaction' WHERE slug = 'anchor-lookup'")
+	submit("anchor-lookup", good, url.Values{"notes": {"x"}})
 	app.db.QueryRow("SELECT status FROM submissions ORDER BY id DESC LIMIT 1").Scan(&status)
 	if status != "pending" {
 		t.Fatalf("held account: %s", status)
@@ -371,7 +378,7 @@ func TestSubmitVerdicts(t *testing.T) {
 	// The dashboard shows the progress, the open tasks, the earnings and the reports.
 	postBug(t, client, srv.URL, csrf, map[string]string{"surface": "faucet", "title": "Claim page hangs", "steps": "claim twice", "actual": "spinner"}, nil)
 	acct := get(t, client, srv.URL+"/account")
-	for _, want := range []string{"1 of 30 tasks done", "<strong>Sequentia Core</strong>", "1 of 7 tasks done", "1 waiting for review",
+	for _, want := range []string{"1 of 30 tasks done", "<strong>Sequentia Core</strong>", "1 of 7 tasks done", "1 waiting",
 		"What you earned from", "Open tasks", "Combine two faucet payments", "Claim page hangs", "progress"} {
 		if !strings.Contains(acct, want) {
 			t.Errorf("dashboard lacks %q", want)

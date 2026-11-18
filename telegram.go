@@ -64,12 +64,14 @@ func tgEstimateCreation(id int64) (time.Time, bool) {
 // their account code as a message to our bot, and the Bot API hands us their
 // authenticated numeric ID and username. Pending updates are retained for 24
 // hours, and we never advance the offset, so the message stays visible to
-// checks and re-checks.
-func (a *App) checkTelegramBot(handle, claimCode string) string {
-	url := "https://api.telegram.org/bot" + a.cfg.TgBotToken + "/getUpdates?limit=100"
+// checks and re-checks. An age from an ID beyond the newest anchor is only
+// a bound (the account is younger than the anchor), so it never passes on
+// its own.
+func (a *App) checkTelegramBot(handle, claimCode string) checkResult {
+	url := a.tgAPI() + "/bot" + a.cfg.TgBotToken + "/getUpdates?limit=100"
 	resp, err := verifClient.Get(url)
 	if err != nil {
-		return "telegram API unreachable; re-check later"
+		return unavailable("telegram API unreachable; manual review")
 	}
 	defer resp.Body.Close()
 	var out struct {
@@ -85,7 +87,7 @@ func (a *App) checkTelegramBot(handle, claimCode string) string {
 		} `json:"result"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&out); err != nil || !out.OK {
-		return "telegram API response unreadable; re-check later"
+		return unavailable("telegram API response unreadable; manual review")
 	}
 	for _, u := range out.Result {
 		if !strings.EqualFold(u.Message.From.Username, handle) || !strings.Contains(u.Message.Text, claimCode) {
@@ -94,16 +96,52 @@ func (a *App) checkTelegramBot(handle, claimCode string) string {
 		created, weak := tgEstimateCreation(u.Message.From.ID)
 		age := time.Since(created)
 		years := age.Hours() / 24 / 365
+		ageOK := oldEnough(created, time.Now())
 		verdict := "age OK"
-		if age < time.Duration(verifMinAgeYears)*365*24*time.Hour {
+		if !ageOK {
 			verdict = fmt.Sprintf("UNDER %d YEARS", verifMinAgeYears)
 		}
 		note := fmt.Sprintf("message verified from @%s (id %d); account created ~%s, about %.1f years old (%s)",
 			u.Message.From.Username, u.Message.From.ID, created.Format("Jan 2006"), years, verdict)
-		if weak {
-			note += "; id beyond the newest anchor, estimate is a lower bound on recency"
+		switch {
+		case !ageOK:
+			return fail("%s", note)
+		case weak:
+			return review("%s; id beyond the newest anchor, so the account is younger than this estimate: manual review", note)
 		}
-		return note
+		return pass("%s", note)
 	}
-	return "no matching message found: send your account code as a Telegram message to the bot from @" + handle + ", then re-check (messages are visible to the check for 24 hours)"
+	return fail("no message with your account code from @%s reached the bot in the last 24 hours: send your account code as a Telegram message to the bot from that account", handle)
+}
+
+func (a *App) tgAPI() string {
+	if a.cfg.TgAPIBase == "" {
+		return "https://api.telegram.org"
+	}
+	return strings.TrimRight(a.cfg.TgAPIBase, "/")
+}
+
+// tgBotName is the bot's username: the configured one, or the one the Bot
+// API gives for the token, read once.
+func (a *App) tgBotName() string {
+	if a.cfg.TgBotName != "" || a.cfg.TgBotToken == "" {
+		return a.cfg.TgBotName
+	}
+	a.tgNameOnce.Do(func() {
+		resp, err := verifClient.Get(a.tgAPI() + "/bot" + a.cfg.TgBotToken + "/getMe")
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
+		var me struct {
+			OK     bool `json:"ok"`
+			Result struct {
+				Username string `json:"username"`
+			} `json:"result"`
+		}
+		if json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&me) == nil && me.OK {
+			a.tgName = me.Result.Username
+		}
+	})
+	return a.tgName
 }

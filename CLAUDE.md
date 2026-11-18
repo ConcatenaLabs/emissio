@@ -80,9 +80,17 @@ that must not regress:
 Manual ledger adjustments and revocations are always visible to the user, with the admin's reason.
 Keep it that way.
 
-- **A passing check credits at once.** That is what makes the anti-sybil machinery matter: the
-  registration limits, the email gate, the hold (which turns automatic approval off for an
-  account) and the signals on the admin desk are what stand between a farm and the ledger.
+- **A check decides whatever it can; the queue holds only what needs a person.** A failing
+  check refuses at once, evidence that has not arrived waits for the poller in `waiting.go`,
+  and a review verdict that is not "could not run" (`checkResult.Transient`) goes to the queue
+  at once. Never route a check's failure to a reviewer.
+- **A passing check credits through `autocredit.go`, and nothing else credits automatically**
+  (a referral payment included).
+  It reads the hold and the uncleared shared signals inside the approval's transaction, so a
+  hold or a link that lands while a check runs counts. That boundary, the registration limits
+  and the email gate are what stand between a farm and the ledger: a new automatic credit path
+  goes through it, never around it. The database has one connection, so code inside that
+  transaction queries through the transaction, never through `a.db` (it would deadlock).
 
 ## Vendored files
 

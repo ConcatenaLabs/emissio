@@ -7,11 +7,20 @@ package main
 //   - pass: the evidence proves the task, bound to the account. The
 //     submission is approved and credited at once.
 //   - fail: the evidence does not prove it, for a reason the tester can fix
-//     (no proof decimals, not yet confirmed, the wrong asset). The
-//     submission is refused with that reason, unless the tester sends it to
-//     a reviewer anyway.
+//     (no proof decimals, the wrong asset, a node that announces the code
+//     the wrong way). The submission is refused with that reason and never
+//     stored.
+//   - wait: the evidence has not arrived yet, and arrives without the tester
+//     doing anything more (a transaction not yet confirmed, a payment not yet
+//     at Emissio's code, a node not yet connected or not yet seen for a
+//     week). The submission is stored as waiting; the poller in waiting.go
+//     runs the same check again and credits it the moment it passes, and it
+//     lapses after waitLimit with the check's last note.
 //   - review: nothing automatic can decide (a service is unreachable, the
 //     check needs a human). The submission waits in the review queue.
+//
+// No failure goes to a reviewer: a reviewer sees only what a check cannot
+// decide.
 //
 // Which check a task runs is the task's check kind, so an admin can add a
 // task that reuses a check without a deploy.
@@ -33,15 +42,23 @@ const (
 	vReview verdict = iota
 	vPass
 	vFail
+	vWait
 )
 
 type checkResult struct {
 	Note    string
 	Verdict verdict
-	// Firm marks a refusal no reviewer could overturn: the transaction is
-	// unconfirmed, missing, or lacks the proof decimals. The page then does
-	// not suggest sending it to a reviewer.
+	// Firm marks a refusal the tester cannot fix by explaining: the
+	// transaction is missing or lacks the proof decimals.
 	Firm bool
+	// Transient marks a review verdict that means the check could not run
+	// (a service unreachable or its answer unreadable), as against one a
+	// person must judge. The waiting poller keeps trying the first kind and
+	// sends the second to the queue at once.
+	Transient bool
+	// Tx is the transaction the check judged, when it read one: the credit
+	// takes the evidence's funding from it rather than reading it again.
+	Tx *chainTx
 }
 
 func pass(format string, args ...any) checkResult {
@@ -53,8 +70,16 @@ func fail(format string, args ...any) checkResult {
 func firmFail(format string, args ...any) checkResult {
 	return checkResult{Note: fmt.Sprintf(format, args...), Verdict: vFail, Firm: true}
 }
+func wait(format string, args ...any) checkResult {
+	return checkResult{Note: fmt.Sprintf(format, args...), Verdict: vWait}
+}
 func review(format string, args ...any) checkResult {
 	return checkResult{Note: fmt.Sprintf(format, args...), Verdict: vReview}
+}
+
+// unavailable is the review verdict of a check that could not run.
+func unavailable(format string, args ...any) checkResult {
+	return checkResult{Note: fmt.Sprintf(format, args...), Verdict: vReview, Transient: true}
 }
 
 // checkKinds names every check, for the admin's task editor.
@@ -102,6 +127,16 @@ func knownCheck(k string) bool {
 	return false
 }
 
+// waitLimit is how long a waiting submission is checked again before it
+// lapses: a week and a week's grace for the week of uptime, three days for
+// anything else that arrives by itself.
+func waitLimit(kind string) time.Duration {
+	if kind == "run-node" {
+		return 2 * uptimeDays * 24 * time.Hour
+	}
+	return 3 * 24 * time.Hour
+}
+
 // evidenceCheck runs the task's check on a submission.
 // needsNotes is whether a task's evidence is read from the notes: by its
 // check, or by the reviewer of a task with no check. Elsewhere the notes are
@@ -124,6 +159,18 @@ func proofRule(kind string) string {
 		return "optional"
 	}
 	return "required"
+}
+
+// readsTx says whether a check's evidence is a transaction it reads: every
+// kind but those whose evidence is elsewhere (notes, peers, Emissio's own
+// wallet).
+func readsTx(kind string) bool {
+	switch kind {
+	case "none", "", "build-from-source", "run-node", "install-release", "own-bitcoin-node", "emissio-unblind", "wallet-link",
+		"arca-pay-code", "arca-pay-btc", "arca-roundtrip", "arca-invoice", "arca-swap", "arca-name":
+		return false
+	}
+	return true
 }
 
 func (a *App) evidenceCheck(kind, txid, notes string, user *User) checkResult {
@@ -153,10 +200,19 @@ func (a *App) evidenceCheck(kind, txid, notes string, user *User) checkResult {
 		if strings.Contains(note, "NOT FOUND") {
 			return firmFail("%s", note)
 		}
-		return review("%s", note)
+		return unavailable("%s", note)
 	}
 	if !tx.Status.Confirmed {
-		return firmFail("the transaction is in the mempool and not yet confirmed: wait about a minute for the next block, then submit it again")
+		// Bound to the account before it waits: a waiting submission of a
+		// transaction without this account's proof decimals would only park
+		// someone else's.
+		if proofRule(kind) == "required" && kind != "burn-asset" {
+			tag := proofTag(user.ClaimCode)
+			if _, po := proofOutput(tx, tag); po == nil {
+				return firmFail("proof amount .%s NOT found in any transparent output%s", tag, a.proofMissHint(tx, tag))
+			}
+		}
+		return wait("the transaction is in the mempool and not yet confirmed")
 	}
 	where := fmt.Sprintf("confirmed at height %d", tx.Status.BlockHeight)
 	var r checkResult
@@ -175,6 +231,7 @@ func (a *App) evidenceCheck(kind, txid, notes string, user *User) checkResult {
 		r = a.taggedCheck(kind, tx, notes, user)
 	}
 	r.Note += "; " + where
+	r.Tx = tx
 	return r
 }
 
@@ -248,6 +305,8 @@ func (a *App) taggedCheck(kind string, tx *chainTx, notes string, user *User) ch
 			return pass("%s; reissues asset %s; %s", found, short(iss.AssetID), note)
 		case vFail:
 			return fail("%s; reissues asset %s; %s", found, short(iss.AssetID), note)
+		case vWait:
+			return unavailable("%s; reissues asset %s; %s", found, short(iss.AssetID), note)
 		}
 		return review("%s; reissues asset %s; %s", found, short(iss.AssetID), note)
 	case "stake":
@@ -323,7 +382,10 @@ func (a *App) ownsIssuance(userID int64, assetID string) (verdict, string) {
 			Txid string `json:"txid"`
 		} `json:"issuance_txin"`
 	}
-	if err := a.fetchJSON("/asset/"+assetID, &info); err != nil || info.IssuanceTxin.Txid == "" {
+	if err := a.fetchJSON("/asset/"+assetID, &info); err != nil {
+		return vWait, "the explorer did not answer for the asset's issuer; checked again shortly"
+	}
+	if info.IssuanceTxin.Txid == "" {
 		return vReview, "issuer unknown; manual review"
 	}
 	for _, t := range a.priorTxids(userID, "issue-asset") {
@@ -593,7 +655,7 @@ func (a *App) delegationCheck(user *User, tx *chainTx) checkResult {
 	}
 	pools, err := a.poolSigners()
 	if err != nil {
-		return review("delegates stake key %s to %s; pool board unavailable, manual review", short(key), short(signer))
+		return unavailable("delegates stake key %s to %s; pool board unavailable, manual review", short(key), short(signer))
 	}
 	if !pools[signer] {
 		return fail("delegates to %s, which is not a pool on the board", short(signer))
@@ -636,7 +698,7 @@ func (a *App) redelegationCheck(user *User, tx *chainTx) checkResult {
 	}
 	pools, err := a.poolSigners()
 	if err != nil {
-		return review("moves the delegation from %s to %s; pool board unavailable, manual review", short(old), short(signer))
+		return unavailable("moves the delegation from %s to %s; pool board unavailable, manual review", short(old), short(signer))
 	}
 	if !pools[signer] {
 		return fail("moves the delegation to %s, which is not a pool on the board", short(signer))
@@ -804,10 +866,10 @@ func (a *App) bridgeInCheck(kind string, tx *chainTx, notes string, user *User, 
 		return fail("%s; the notes name no Ethereum deposit hash (0x...) or Solana deposit address", found)
 	}
 	if err != nil {
-		return review("%s; bridge unavailable (%v), manual review", found, err)
+		return unavailable("%s; bridge unavailable (%v), manual review", found, err)
 	}
 	if len(txids) == 0 {
-		return fail("%s; the bridge has delivered nothing for that %s deposit yet", found, chain)
+		return wait("%s; the bridge has delivered nothing for that %s deposit yet", found, chain)
 	}
 	spent := false
 	for _, in := range tx.Vin {
@@ -855,17 +917,17 @@ func (a *App) bridgeOutCheck(tx *chainTx, po *chainVout, found string) checkResu
 		return fail("%s; %s is not a Compages redemption address", found, short(po.Address))
 	}
 	if err != nil {
-		return review("%s; bridge unavailable (%v), manual review", found, err)
+		return unavailable("%s; bridge unavailable (%v), manual review", found, err)
 	}
 	for _, r := range st.Redemptions {
 		if strings.EqualFold(r.Txid, tx.Txid) {
 			if releasedRed[r.Status] {
 				return pass("%s; redemption released on the source chain (OK)", found)
 			}
-			return fail("%s; the redemption is %s: submit once the bridge has released it", found, strings.ReplaceAll(r.Status, "_", " "))
+			return wait("%s; the redemption is %s, not yet released", found, strings.ReplaceAll(r.Status, "_", " "))
 		}
 	}
-	return fail("%s; the bridge has not seen this transaction at that redemption address yet", found)
+	return wait("%s; the bridge has not seen this transaction at that redemption address yet", found)
 }
 
 // ---- the release from the download page ----
@@ -885,7 +947,7 @@ func (a *App) releaseCheck(notes, code string) checkResult {
 	}
 	resp, err := proofClient.Get(a.cfg.SumsURL)
 	if err != nil {
-		return review("checksum list unreachable; manual review")
+		return unavailable("checksum list unreachable; manual review")
 	}
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	resp.Body.Close()
@@ -908,11 +970,11 @@ func (a *App) releaseCheck(notes, code string) checkResult {
 	}
 	ps, err := a.peers()
 	if err != nil {
-		return review("checksum of %s matches (OK); public node unreachable, manual review", file)
+		return unavailable("checksum of %s matches (OK); public node unreachable, manual review", file)
 	}
 	sv, seen := peerCodes(ps)[strings.ToLower(code)]
 	if !seen {
-		return fail("checksum of %s matches; no connected node announces emissio-%s: run it with -uacomment=emissio-%s and submit while it is connected", file, code, code)
+		return wait("checksum of %s matches; no connected node announces emissio-%s yet: run it with -uacomment=emissio-%s, connected to the public node", file, code, code)
 	}
 	m := subverRe.FindStringSubmatch(sv)
 	if m == nil || (ver != "" && m[1] != ver) {

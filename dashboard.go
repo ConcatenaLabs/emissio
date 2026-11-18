@@ -80,7 +80,7 @@ func loadDashboard(db *sql.DB, userID int64) (*dashboard, error) {
 			switch st {
 			case "approved":
 				d.Stages[i].Done++
-			case "pending":
+			case "pending", "waiting":
 				d.Stages[i].Pending++
 			}
 		}

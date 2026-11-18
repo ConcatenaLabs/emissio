@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -165,6 +166,17 @@ func mustOpenDB(path string) *sql.DB {
 	}
 	if _, err := db.Exec(bugSchema); err != nil {
 		panic(err)
+	}
+	if _, err := db.Exec(clearedSchema + referralSchema); err != nil {
+		panic(err)
+	}
+	// One live verification per account and platform. A database that
+	// already holds two cannot take the index; it is then left without it,
+	// loudly, and the per-account lock in handleVerify still serialises
+	// every new request.
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS verifications_one_live
+		ON verifications(user_id, platform) WHERE status != 'rejected'`); err != nil {
+		log.Printf("WARNING: verifications_one_live not created (%v): an account holds two live verifications of one platform; reject one and restart", err)
 	}
 	return db
 }
@@ -397,6 +409,15 @@ func reviewSubmission(db *sql.DB, subID int64, approve bool, note string) error 
 		return err
 	}
 	defer tx.Rollback()
+	if err := reviewSubmissionTx(tx, subID, approve, note); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// reviewSubmissionTx is reviewSubmission inside a caller's transaction.
+func reviewSubmissionTx(tx *sql.Tx, subID int64, approve bool, note string) error {
+	var err error
 	var userID, taskID int64
 	var status string
 	err = tx.QueryRow("SELECT user_id, task_id, status FROM submissions WHERE id = ?", subID).
@@ -423,10 +444,7 @@ func reviewSubmission(db *sql.DB, subID int64, approve bool, note string) error 
 	}
 	_, err = tx.Exec("UPDATE submissions SET status = ?, review_note = ?, reviewed_at = ? WHERE id = ?",
 		newStatus, note, now(), subID)
-	if err != nil {
-		return err
-	}
-	return tx.Commit()
+	return err
 }
 
 type Competition struct {

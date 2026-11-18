@@ -168,20 +168,20 @@ func TestCheckX(t *testing.T) {
 		w.Write([]byte(body))
 	}))
 	defer srv.Close()
-	cases := map[string]string{
-		"1": "post by @Alice_X contains the code; account id predates 2016 (age OK)",
-		"2": "post is by @mallory, NOT @alice_x: someone else's post",
-		"3": "code NOT found in the post; account created " + time.Now().AddDate(-1, 0, 0).Format("Jan 2006") + " (age UNDER 2 YEARS)",
-		"4": "post by @alice_x contains the code; account created " + time.Now().AddDate(-3, 0, 0).Format("Jan 2006") + " (age OK)",
-		"5": "post unavailable (deleted, protected account, or wrong link)",
-		"6": "post by @alice_x contains the code; account id predates 2016 (age OK)",
-		"7": "post by @alice_x contains the code; account id predates 2016 (age OK)",
-		"8": "code NOT found in the post; account id predates 2016 (age OK)",
-		"9": "post NOT FOUND (deleted, protected account, or wrong link)",
+	cases := map[string]checkResult{
+		"1": pass("%s", "post by @Alice_X contains the code; account id predates 2016 (age OK)"),
+		"2": fail("%s", "post is by @mallory, NOT @alice_x: someone else's post"),
+		"3": fail("%s", "code NOT found in the post; account created "+time.Now().AddDate(-1, 0, 0).Format("Jan 2006")+" (age UNDER 2 YEARS)"),
+		"4": pass("%s", "post by @alice_x contains the code; account created "+time.Now().AddDate(-3, 0, 0).Format("Jan 2006")+" (age OK)"),
+		"5": fail("%s", "post unavailable (deleted, protected account, or wrong link)"),
+		"6": pass("%s", "post by @alice_x contains the code; account id predates 2016 (age OK)"),
+		"7": pass("%s", "post by @alice_x contains the code; account id predates 2016 (age OK)"),
+		"8": fail("%s", "code NOT found in the post; account id predates 2016 (age OK)"),
+		"9": fail("%s", "post NOT FOUND (deleted, protected account, or wrong link)"),
 	}
 	for id, want := range cases {
 		if got := checkX(srv.URL, "alice_x", id, "CODE123"); got != want {
-			t.Errorf("checkX(%s) = %q, want %q", id, got, want)
+			t.Errorf("checkX(%s) = %+v, want %+v", id, got, want)
 		}
 	}
 }
@@ -208,14 +208,14 @@ func TestCheckReddit(t *testing.T) {
 	}))
 	defer srv.Close()
 	want := "code found in profile description; account created " + time.Now().AddDate(-3, 0, 0).Format("Jan 2006") + " (age OK)"
-	if got := checkReddit(srv.URL, srv.URL, "id", "secret", "old_account", "CODE123"); got != want {
-		t.Errorf("checkReddit = %q, want %q", got, want)
+	if got := checkReddit(srv.URL, srv.URL, "id", "secret", "old_account", "CODE123"); got != pass("%s", want) {
+		t.Errorf("checkReddit = %+v, want %q", got, want)
 	}
-	if got := checkReddit(srv.URL, srv.URL, "id", "wrong", "old_account", "CODE123"); !strings.HasPrefix(got, "reddit token failed") {
-		t.Errorf("bad credentials: %q", got)
+	if got := checkReddit(srv.URL, srv.URL, "id", "wrong", "old_account", "CODE123"); !strings.HasPrefix(got.Note, "reddit token failed") || got.Verdict != vReview {
+		t.Errorf("bad credentials: %+v", got)
 	}
-	if got := checkReddit(srv.URL, srv.URL, "id", "secret", "nobody", "CODE123"); got != "reddit user NOT FOUND" {
-		t.Errorf("missing user: %q", got)
+	if got := checkReddit(srv.URL, srv.URL, "id", "secret", "nobody", "CODE123"); got != fail("reddit user NOT FOUND") {
+		t.Errorf("missing user: %+v", got)
 	}
 }
 
@@ -231,8 +231,9 @@ func TestRedditToken(t *testing.T) {
 	if p.Username != "Alice_X" || p.Code != "0123456789" || p.Created != 1556964000 {
 		t.Fatalf("claims %+v", p)
 	}
-	handle, note, ok := redditTokenCheck(p, "0123456789")
-	if !ok || handle != "alice_x" || !strings.HasPrefix(note, "signed by the r/sequentia app for u/Alice_X; account created May 2019 (age OK)") {
+	handle, res, ok := redditTokenCheck(p, "0123456789")
+	note := res.Note
+	if !ok || handle != "alice_x" || res.Verdict != vPass || !strings.HasPrefix(note, "signed by the r/sequentia app for u/Alice_X; account created May 2019 (age OK)") {
 		t.Fatalf("check = %q %q %v", handle, note, ok)
 	}
 	if _, _, ok := redditTokenCheck(p, "ffffffffff"); ok {

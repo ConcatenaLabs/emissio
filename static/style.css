@@ -182,7 +182,7 @@ form .actions { margin-top: 1.2rem; }
 }
 .pill.approved, .pill.accepted, .pill.awarded, .pill.open { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
 .pill.rejected, .pill.duplicate { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
-.pill.pending, .pill.new, .pill.judging { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 40%, var(--line)); }
+.pill.pending, .pill.waiting, .pill.new, .pill.judging { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 40%, var(--line)); }
 
 /* tables */
 .table { width: 100%; border-collapse: collapse; font-size: .92rem; }

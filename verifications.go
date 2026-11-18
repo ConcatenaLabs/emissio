@@ -35,7 +35,7 @@ var verifPlatforms = []struct {
 	Hint   string
 	URLFmt string
 }{
-	{"telegram", "Telegram", "Add your account code to your Telegram bio (Settings, Bio), then submit your public @username. The bio is checked automatically; account age is assessed by the reviewer.", "https://t.me/%s"},
+	{"telegram", "Telegram", "", "https://t.me/%s"},
 	{"x", "X", "Publish any post from your own X profile that contains your account code, then submit the link to that post. Any such post is valid, whatever else it says: a post in your own words, a reply or a quote. No particular text is required. Ownership and account age are checked automatically from the post; you can delete it once verified.", "https://x.com/%s"},
 	{"reddit", "Reddit", "", "https://www.reddit.com/user/%s"},
 }
@@ -120,6 +120,15 @@ func reviewVerification(db *sql.DB, verifID int64, approve bool, note string) er
 		return err
 	}
 	defer tx.Rollback()
+	if err := reviewVerificationTx(tx, verifID, approve, note); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// reviewVerificationTx is reviewVerification inside a caller's transaction.
+func reviewVerificationTx(tx *sql.Tx, verifID int64, approve bool, note string) error {
+	var err error
 	var userID int64
 	var status, platform string
 	if err := tx.QueryRow("SELECT user_id, status, platform FROM verifications WHERE id = ?", verifID).
@@ -140,10 +149,7 @@ func reviewVerification(db *sql.DB, verifID int64, approve bool, note string) er
 	}
 	_, err = tx.Exec("UPDATE verifications SET status = ?, review_note = ?, reviewed_at = ? WHERE id = ?",
 		newStatus, note, now(), verifID)
-	if err != nil {
-		return err
-	}
-	return tx.Commit()
+	return err
 }
 
 func platformName(key string) string {
@@ -164,13 +170,33 @@ func platformProfileURL(key, handle string) string {
 	return ""
 }
 
-// ---------- automatic checks (advisory; the reviewer decides) ----------
+// ---------- automatic checks ----------
+//
+// Each check returns a verdict with its note: pass when the code is where
+// only the owner could put it and the account is old enough, fail when the
+// evidence shows either is not so (the request is then refused with the
+// note and never stored), review when the check could not run or cannot
+// judge (Telegram's age without the bot, an X account id that encodes no
+// date). A pass is approved at once unless the account shares a signal with
+// another account (handleVerify).
 
-func (a *App) verifCheck(platform, handle, evidence, claimCode string) string {
+// ageWord is the age verdict a note carries.
+func ageWord(ok bool) string {
+	if ok {
+		return "OK"
+	}
+	return "UNDER " + fmt.Sprint(verifMinAgeYears) + " YEARS"
+}
+
+func oldEnough(created, at time.Time) bool {
+	return at.Sub(created) >= time.Duration(verifMinAgeYears)*365*24*time.Hour
+}
+
+func (a *App) verifCheck(platform, handle, evidence, claimCode string) checkResult {
 	switch platform {
 	case "reddit":
 		if a.cfg.RedditID == "" || a.cfg.RedditSecret == "" {
-			return "reddit blocks unauthenticated checks and no API credentials are configured; manual review"
+			return review("reddit blocks unauthenticated checks and no API credentials are configured; manual review")
 		}
 		return checkReddit(a.cfg.RedditBase, a.cfg.RedditOAuth, a.cfg.RedditID, a.cfg.RedditSecret, handle, claimCode)
 	case "telegram":
@@ -181,7 +207,7 @@ func (a *App) verifCheck(platform, handle, evidence, claimCode string) string {
 	case "x":
 		return checkX(a.cfg.XBase, handle, xPostID(evidence), claimCode)
 	default:
-		return "no automatic check; manual review"
+		return review("no automatic check; manual review")
 	}
 }
 
@@ -200,11 +226,11 @@ func (a *App) redditHint() string {
 // telegramHint describes the flow that is actually active.
 func (a *App) telegramHint() string {
 	if a.cfg.TgBotToken != "" {
-		name := a.cfg.TgBotName
-		if name == "" {
-			name = "our verification bot"
+		bot := "Emissio's verification bot"
+		if name := a.tgBotName(); name != "" {
+			bot = "@" + name
 		}
-		return "Send your account code as a Telegram message to @" + name + ", then submit your public @username. Ownership and account age (estimated from your Telegram ID) are checked automatically."
+		return "Send your account code as a Telegram message to " + bot + " from your own Telegram account, then, within a day, submit that account's @username here. The check reads your message to the bot, not your profile or bio: it confirms the message came from that account and estimates the account's age from its Telegram ID."
 	}
 	return "Add your account code to your Telegram bio (Settings, Bio), then submit your public @username. The bio is checked automatically; account age is assessed by the reviewer."
 }
@@ -243,27 +269,27 @@ func redditToken(base, id, secret string) (string, error) {
 // checkReddit verifies ownership (account code in the profile's public
 // description) and age (created_utc) in one about fetch through the API.
 // base is where tokens are issued, api where the profile is read.
-func checkReddit(base, api, id, secret, handle, claimCode string) string {
+func checkReddit(base, api, id, secret, handle, claimCode string) checkResult {
 	token, err := redditToken(base, id, secret)
 	if err != nil {
-		return "reddit token failed (" + err.Error() + "); manual review"
+		return unavailable("reddit token failed (%s); manual review", err)
 	}
 	req, err := http.NewRequest("GET", strings.TrimRight(api, "/")+"/user/"+handle+"/about", nil)
 	if err != nil {
-		return "check failed; manual review"
+		return unavailable("check failed; manual review")
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("User-Agent", "emissio-verifier/1.0 (sequentiatestnet.com)")
 	resp, err := verifClient.Do(req)
 	if err != nil {
-		return "reddit unreachable; manual review"
+		return unavailable("reddit unreachable; manual review")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
-		return "reddit user NOT FOUND"
+		return fail("reddit user NOT FOUND")
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Sprintf("reddit returned HTTP %d; manual review", resp.StatusCode)
+		return unavailable("reddit returned HTTP %d; manual review", resp.StatusCode)
 	}
 	var about struct {
 		Data struct {
@@ -274,42 +300,45 @@ func checkReddit(base, api, id, secret, handle, claimCode string) string {
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&about); err != nil {
-		return "reddit response unreadable; manual review"
+		return unavailable("reddit response unreadable; manual review")
 	}
 	created := time.Unix(int64(about.Data.CreatedUTC), 0)
-	ageOK := time.Since(created) >= time.Duration(verifMinAgeYears)*365*24*time.Hour
+	ageOK := oldEnough(created, time.Now())
 	owned := strings.Contains(about.Data.Subreddit.PublicDescription, claimCode)
-	note := fmt.Sprintf("account created %s (age %s)", created.Format("Jan 2006"), map[bool]string{true: "OK", false: "UNDER " + fmt.Sprint(verifMinAgeYears) + " YEARS"}[ageOK])
-	if owned {
-		return "code found in profile description; " + note
+	note := fmt.Sprintf("account created %s (age %s)", created.Format("Jan 2006"), ageWord(ageOK))
+	switch {
+	case !owned:
+		return fail("code NOT found in profile description; %s", note)
+	case !ageOK:
+		return fail("code found in profile description; %s", note)
 	}
-	return "code NOT found in profile description; " + note
+	return pass("code found in profile description; %s", note)
 }
 
 // checkTelegram verifies ownership via the public t.me profile page, which
 // renders the bio server-side. Telegram does not expose account age.
-func checkTelegram(base, handle, claimCode string) string {
+func checkTelegram(base, handle, claimCode string) checkResult {
 	req, err := http.NewRequest("GET", strings.TrimRight(base, "/")+"/"+handle, nil)
 	if err != nil {
-		return "check failed; manual review"
+		return unavailable("check failed; manual review")
 	}
 	req.Header.Set("User-Agent", "emissio-verifier/1.0 (sequentiatestnet.com)")
 	resp, err := verifClient.Do(req)
 	if err != nil {
-		return "t.me unreachable; manual review"
+		return unavailable("t.me unreachable; manual review")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Sprintf("t.me returned HTTP %d; manual review", resp.StatusCode)
+		return unavailable("t.me returned HTTP %d; manual review", resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return "t.me response unreadable; manual review"
+		return unavailable("t.me response unreadable; manual review")
 	}
 	if strings.Contains(string(body), claimCode) {
-		return "code found in the public profile page; age at reviewer discretion (Telegram does not publish it)"
+		return review("code found in the public profile page; age at reviewer discretion (Telegram does not publish it)")
 	}
-	return "code NOT found on the public profile page (bio not set, not public, or username wrong)"
+	return fail("code NOT found on the public profile page (bio not set, not public, or username wrong)")
 }
 
 // xSnowflakeEpoch is the millisecond epoch of X's snowflake ids. Post ids
@@ -362,22 +391,22 @@ func xToken(postID string) string {
 // shows a post under any handle in the URL, so this is the check that
 // stops someone claiming another person's account), the text must contain
 // the account code, and the author's id gives the account age.
-func checkX(base, handle, postID, claimCode string) string {
+func checkX(base, handle, postID, claimCode string) checkResult {
 	req, err := http.NewRequest("GET", strings.TrimRight(base, "/")+"/tweet-result?id="+postID+"&token="+xToken(postID)+"&lang=en", nil)
 	if err != nil {
-		return "check failed; manual review"
+		return unavailable("check failed; manual review")
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; emissio-verifier/1.0; sequentiatestnet.com)")
 	resp, err := verifClient.Do(req)
 	if err != nil {
-		return "x unreachable; manual review"
+		return unavailable("x unreachable; manual review")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
-		return "post NOT FOUND (deleted, protected account, or wrong link)"
+		return fail("post NOT FOUND (deleted, protected account, or wrong link)")
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Sprintf("x returned HTTP %d; manual review", resp.StatusCode)
+		return unavailable("x returned HTTP %d; manual review", resp.StatusCode)
 	}
 	var post struct {
 		Type string `json:"__typename"`
@@ -388,28 +417,32 @@ func checkX(base, handle, postID, claimCode string) string {
 		} `json:"user"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&post); err != nil {
-		return "x response unreadable; manual review"
+		return unavailable("x response unreadable; manual review")
 	}
 	if post.Type != "Tweet" || post.User.ScreenName == "" {
-		return "post unavailable (deleted, protected account, or wrong link)"
+		return fail("post unavailable (deleted, protected account, or wrong link)")
 	}
 	if !strings.EqualFold(post.User.ScreenName, handle) {
-		return "post is by @" + post.User.ScreenName + ", NOT @" + handle + ": someone else's post"
+		return fail("post is by @%s, NOT @%s: someone else's post", post.User.ScreenName, handle)
 	}
 	var note string
+	age := vPass
 	id, err := strconv.ParseUint(post.User.ID, 10, 64)
 	if err != nil {
-		note = "account age unknown; manual review"
+		note, age = "account age unknown; manual review", vReview
 	} else if created, ok := xAccountCreated(id); !ok {
 		note = "account id predates 2016 (age OK)"
 	} else {
-		ageOK := time.Since(created) >= time.Duration(verifMinAgeYears)*365*24*time.Hour
-		note = fmt.Sprintf("account created %s (age %s)", created.Format("Jan 2006"), map[bool]string{true: "OK", false: "UNDER " + fmt.Sprint(verifMinAgeYears) + " YEARS"}[ageOK])
+		ageOK := oldEnough(created, time.Now())
+		note = fmt.Sprintf("account created %s (age %s)", created.Format("Jan 2006"), ageWord(ageOK))
+		if !ageOK {
+			age = vFail
+		}
 	}
-	if strings.Contains(post.Text, claimCode) {
-		return "post by @" + post.User.ScreenName + " contains the code; " + note
+	if !strings.Contains(post.Text, claimCode) {
+		return fail("code NOT found in the post; %s", note)
 	}
-	return "code NOT found in the post; " + note
+	return checkResult{Note: "post by @" + post.User.ScreenName + " contains the code; " + note, Verdict: age}
 }
 
 // Reddit ownership tokens. Reddit blocks unauthenticated reads and will not
@@ -458,13 +491,15 @@ func parseRedditToken(secret, token string, now time.Time) (*redditAppToken, err
 
 // redditTokenCheck turns a verified token into the handle, evidence and
 // check note the verification row stores.
-func redditTokenCheck(t *redditAppToken, claimCode string) (handle, note string, ok bool) {
+func redditTokenCheck(t *redditAppToken, claimCode string) (handle string, res checkResult, ok bool) {
 	if t.Code != claimCode {
-		return "", "", false
+		return "", checkResult{}, false
 	}
 	created := time.Unix(t.Created, 0)
-	ageOK := time.Since(created) >= time.Duration(verifMinAgeYears)*365*24*time.Hour
-	note = fmt.Sprintf("signed by the r/sequentia app for u/%s; account created %s (age %s)", t.Username, created.Format("Jan 2006"),
-		map[bool]string{true: "OK", false: "UNDER " + fmt.Sprint(verifMinAgeYears) + " YEARS"}[ageOK])
-	return strings.ToLower(t.Username), note, true
+	ageOK := oldEnough(created, time.Now())
+	res = pass("signed by the r/sequentia app for u/%s; account created %s (age %s)", t.Username, created.Format("Jan 2006"), ageWord(ageOK))
+	if !ageOK {
+		res.Verdict = vFail
+	}
+	return strings.ToLower(t.Username), res, true
 }

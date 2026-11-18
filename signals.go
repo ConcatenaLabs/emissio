@@ -2,7 +2,8 @@ package main
 
 // Clustering signals for the admin desk: addresses an account's evidence
 // touched. A farm of accounts tends to be funded from one wallet, so the
-// funding addresses of each account's approved transactions are recorded,
+// funding addresses of each account's passing evidence are recorded (at the
+// automatic credit, or when a reviewer approves),
 // and an address shared by several accounts is shown beside each of them.
 // The faucet's own addresses and Emissio's are left out: everyone shares
 // those.

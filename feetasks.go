@@ -148,7 +148,7 @@ func (a *App) feeListCheck(kind string, tx *chainTx, tag, found string) checkRes
 	}
 	sizes := txSizes(tx)
 	if len(sizes) == 0 {
-		return review("%s; the explorer gives no size for this transaction; manual review", found)
+		return unavailable("%s; the explorer gives no size for this transaction; manual review", found)
 	}
 	rate := feeTaskRateFor(kind, tag)
 	cents := feeTaskCents(kind, tag)

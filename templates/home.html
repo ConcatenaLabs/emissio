@@ -27,7 +27,7 @@
     <p class="next">Next: <a href="{{base}}/tasks/{{.Next.Task.Slug}}">{{.Next.Task.Title}}</a>, <span class="gold">{{seq .Next.Task.Reward}} SEQ</span>{{if eq .Next.Status "rejected"}}<span class="small muted"> (submit it again)</span>{{end}}</p>
     <p class="step-action"><a class="btn" href="{{base}}/tasks/{{.Next.Task.Slug}}">Open the task</a> <a class="btn ghost" href="{{base}}/account">Your account</a></p>
     {{else}}
-    <p class="next">Every task is done or waiting for review. Bug reports and competitions still pay.</p>
+    <p class="next">Every task is done or waiting. Bug reports and competitions still pay.</p>
     <p class="step-action"><a class="btn ghost" href="{{base}}/account">Your account</a></p>
     {{end}}
     {{if or (not .Verified) (not .HasAddress)}}

@@ -5,7 +5,7 @@
 <p class="small muted">Before accepting a bug or security report, look for it among the <a href="https://github.com/search?q=org%3AConcatenaLabs+label%3Aknown-issue&amp;type=issues" target="_blank" rel="noopener">known issues</a>: an issue already on a ConcatenaLabs tracker, open or closed, is known, so a report of it is a duplicate.</p>
 <p>
   <a class="btn ghost small" href="{{base}}/admin/queue">All</a>
-  {{range $k := list "task" "bug" "security" "verification" "entry"}}<a class="btn ghost small" href="{{base}}/admin/queue?kind={{$k}}">{{$k}} · {{index $.Data.Counts $k}}</a> {{end}}
+  {{range $k := list "task" "bug" "security" "verification" "referral" "entry"}}<a class="btn ghost small" href="{{base}}/admin/queue?kind={{$k}}">{{$k}} · {{index $.Data.Counts $k}}</a> {{end}}
 </p>
 {{if not .Data.Items}}<p class="muted">Nothing waiting.</p>{{end}}
 {{range .Data.Items}}
@@ -13,7 +13,14 @@
   <summary><span class="pill">{{.Kind}}</span> <strong>{{.Title}}</strong> · <a href="{{base}}/admin/users/{{.UserID}}">{{if .Email}}{{.Email}}{{else}}unattributed{{end}}</a>{{if .Held}} <span class="pill rejected">held</span>{{end}}{{if .Signals.Any}} <span class="pill rejected">{{.Signals.Words}}</span>{{end}} · {{datetime .At}}</summary>
   <div class="inner">
     {{if .Detail}}<p class="small">{{.Detail}}</p>{{end}}
-    {{with .Sub}}
+    {{if eq .Kind "referral"}}
+      <form method="post" action="{{base}}/admin/referrals/{{.ID}}/review" class="inline-form">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="text" name="note" placeholder="Note">
+        <button class="btn small" name="action" value="approve" type="submit">Approve and pay</button>
+        <button class="btn danger small" name="action" value="reject" type="submit">Reject</button>
+      </form>
+    {{else}}{{with .Sub}}
       {{if .Txid}}<p class="mono small">txid: <a href="https://sequentiatestnet.com/explorer/tx/{{.Txid}}" target="_blank" rel="noopener">{{.Txid}}</a></p>{{end}}
       <p class="small">account code <code>{{.ClaimCode}}</code> · proof decimals <code>.{{prooftag .ClaimCode}}</code> · reward {{seq .TaskReward}} SEQ</p>
       {{if .Notes}}<p class="small u-white-space-pre-wrap">{{.Notes}}</p>{{end}}
@@ -27,7 +34,7 @@
       </form>
     {{else}}
       <p><a class="btn ghost small" href="{{base}}{{.Link}}">Open</a></p>
-    {{end}}
+    {{end}}{{end}}
   </div>
 </details>
 {{end}}

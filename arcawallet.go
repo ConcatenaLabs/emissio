@@ -827,7 +827,7 @@ func (a *App) arcaCheck(kind string, user *User) checkResult {
 		case "paid":
 			return pass("Emissio paid this account's invoice (OK)")
 		}
-		return fail("Emissio's payment of your invoice is %s, not paid: keep your wallet open and submit again", state)
+		return wait("Emissio's payment of your invoice is %s, not yet paid: keep your wallet open", state)
 	case "arca-roundtrip", "arca-name":
 		var asset string
 		var atoms int64
@@ -837,7 +837,7 @@ func (a *App) arcaCheck(kind string, user *User) checkResult {
 		c := a.codeOf(user.ID, purpose)
 		switch {
 		case c == nil || c.PaidAt == 0:
-			return fail("nothing has reached Emissio's code yet; Emissio checks every few minutes")
+			return wait("nothing has reached Emissio's code yet; Emissio checks every few minutes")
 		case c.PaidAsset != asset || c.PaidAtoms > atoms || atoms-c.PaidAtoms > returnShortAtoms:
 			return fail("Emissio's code received %s of %s, not what Emissio sent you (a return may fall short by up to %s, what a wallet keeps back for its transfer's fees)",
 				amountText(c.PaidAtoms), short(c.PaidAsset), amountText(returnShortAtoms))
@@ -852,7 +852,7 @@ func (a *App) arcaCheck(kind string, user *User) checkResult {
 		case c == nil:
 			return fail("ask Emissio for your receive code above first")
 		case c.BtcSats == 0:
-			return fail("no BTC has reached your code's Bitcoin part yet; Emissio checks every few minutes")
+			return wait("no BTC has reached your code's Bitcoin part yet; Emissio checks every few minutes")
 		}
 		return pass("%d sats reached this account's own Bitcoin ark address at Emissio (OK)", c.BtcSats)
 	case "arca-pay-code", "arca-swap":
@@ -861,7 +861,7 @@ func (a *App) arcaCheck(kind string, user *User) checkResult {
 		case c == nil:
 			return fail("ask Emissio for your receive code above first")
 		case c.PaidAt == 0:
-			return fail("nothing has reached your Emissio code yet; Emissio checks every few minutes")
+			return wait("nothing has reached your Emissio code yet; Emissio checks every few minutes")
 		}
 		if kind == "arca-swap" {
 			want, _ := strconv.ParseInt(proofTag(user.ClaimCode), 10, 64)

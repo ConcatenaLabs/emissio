@@ -47,7 +47,9 @@ type tester struct {
 
 func newTester(t *testing.T, app *App, base, email, code string) tester {
 	jar, _ := cookiejar.New(nil)
-	c := &http.Client{Jar: jar}
+	// Each tester on a network of its own: two accounts on one address
+	// share a signal, which holds back their automatic credits.
+	c := &http.Client{Jar: jar, Transport: fromIP(ipFor(email))}
 	register(t, c, base, email)
 	app.db.Exec("UPDATE users SET claim_code = ? WHERE email = ?", code, email)
 	return tester{c, csrfOf(t, c, base+"/account")}

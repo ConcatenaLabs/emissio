@@ -2,7 +2,9 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
+	"strings"
 )
 
 // Referral program. Both sides of a referral receive referralBonus SEQ, but
@@ -66,10 +68,40 @@ func (a *App) processReferrals(userID int64) {
 	}
 }
 
+// referralSchema holds the referrals the automatic credit sent to a
+// reviewer, and what the reviewer decided. A referral with a row here is
+// never paid automatically again: it is paid when a reviewer approves it.
+const referralSchema = `
+CREATE TABLE IF NOT EXISTS referral_reviews (
+	referee_id INTEGER PRIMARY KEY REFERENCES users(id),
+	referrer_id INTEGER NOT NULL REFERENCES users(id),
+	status TEXT NOT NULL DEFAULT 'pending',
+	note TEXT NOT NULL DEFAULT '',
+	review_note TEXT NOT NULL DEFAULT '',
+	created_at INTEGER NOT NULL,
+	reviewed_at INTEGER NOT NULL DEFAULT 0
+);
+`
+
+// tryQualifyReferral pays a referral once both sides qualify. The payment is
+// an automatic credit, so it passes the same boundary as every other
+// (autocredit.go). Inside its transaction it reads again whether the
+// referral has been paid or has a review row (pending, approved or
+// rejected: then this check stops, so a check that began before a payment
+// or a reviewer's decision can neither pay nor queue it again), whether
+// either side is held (then nothing is paid, as for any held account), and
+// whether either shares a signal no reviewer has cleared (then the referral
+// waits in the queue for a reviewer). The database has one connection, so
+// nothing writes between those reads and the payment. The same reads before
+// the transaction only spare the work of a check that has nothing to do.
 func (a *App) tryQualifyReferral(referrerID, refereeID int64) {
-	var already int64
+	var already, reviewed int64
 	if err := a.db.QueryRow("SELECT COUNT(*) FROM ledger WHERE kind = 'referral-welcome' AND ref_id = ?", refereeID).
 		Scan(&already); err != nil || already > 0 {
+		return
+	}
+	if err := a.db.QueryRow("SELECT COUNT(*) FROM referral_reviews WHERE referee_id = ?", refereeID).
+		Scan(&reviewed); err != nil || reviewed > 0 {
 		return
 	}
 	// Both sides must hold a verified social account, and neither may be
@@ -100,17 +132,121 @@ func (a *App) tryQualifyReferral(referrerID, refereeID int64) {
 		return
 	}
 	defer tx.Rollback()
-	_, err = tx.Exec("INSERT INTO ledger (user_id, amount, kind, ref_id, note, created_at) VALUES (?,?,?,?,?,?)",
-		referrerID, referralBonus, "referral", refereeID, "Referral reward: a user you referred qualified", now())
-	if err != nil {
+	if tx.QueryRow(`SELECT (SELECT COUNT(*) FROM ledger WHERE kind = 'referral-welcome' AND ref_id = ?)
+		+ (SELECT COUNT(*) FROM referral_reviews WHERE referee_id = ?)`, refereeID, refereeID).Scan(&already) != nil || already > 0 {
 		return
 	}
-	_, err = tx.Exec("INSERT INTO ledger (user_id, amount, kind, ref_id, note, created_at) VALUES (?,?,?,?,?,?)",
-		refereeID, referralBonus, "referral-welcome", refereeID, "Referral reward: you and your referrer both qualified", now())
-	if err != nil {
+	if tx.QueryRow("SELECT COUNT(*) FROM ledger WHERE user_id = ? AND kind = 'referral'", referrerID).Scan(&n) != nil || n >= referralCap {
+		return
+	}
+	var held bool
+	for _, id := range []int64{referrerID, refereeID} {
+		var h bool
+		if tx.QueryRow("SELECT held FROM users WHERE id = ?", id).Scan(&h) != nil {
+			return
+		}
+		held = held || h
+	}
+	if held {
+		return
+	}
+	var why string
+	for _, side := range []struct {
+		id   int64
+		name string
+	}{{refereeID, "the referee"}, {referrerID, "the referrer"}} {
+		if sig := unclearedSignals(tx, side.id, nil); sig.Any() {
+			if why != "" {
+				why += "; "
+			}
+			why += side.name + " " + sig.Words()
+		}
+	}
+	if why != "" {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO referral_reviews (referee_id, referrer_id, status, note, created_at)
+			VALUES (?,?,'pending',?,?)`, refereeID, referrerID, "waiting for a reviewer: "+why, now()); err != nil {
+			return
+		}
+		if tx.Commit() == nil {
+			log.Printf("referral sent to a reviewer: referrer %d, referee %d: %s", referrerID, refereeID, why)
+		}
+		return
+	}
+	if err := payReferralTx(tx, referrerID, refereeID); err != nil {
 		return
 	}
 	if err := tx.Commit(); err == nil {
 		log.Printf("referral qualified: referrer %d, referee %d, %d SEQ each", referrerID, refereeID, referralBonus)
 	}
+}
+
+// payReferralTx credits both sides of a referral inside a transaction.
+func payReferralTx(tx *sql.Tx, referrerID, refereeID int64) error {
+	if _, err := tx.Exec("INSERT INTO ledger (user_id, amount, kind, ref_id, note, created_at) VALUES (?,?,?,?,?,?)",
+		referrerID, referralBonus, "referral", refereeID, "Referral reward: a user you referred qualified", now()); err != nil {
+		return err
+	}
+	_, err := tx.Exec("INSERT INTO ledger (user_id, amount, kind, ref_id, note, created_at) VALUES (?,?,?,?,?,?)",
+		refereeID, referralBonus, "referral-welcome", refereeID, "Referral reward: you and your referrer both qualified", now())
+	return err
+}
+
+// reviewReferral records a reviewer's decision on a referral the automatic
+// credit held back. Approving pays both sides, once (the ledger's unique
+// index), within the referrer's cap, and never while either side is held. A
+// referral the ledger already holds as paid is closed as approved, whatever
+// the decision: it cannot be paid again, nor be marked rejected.
+func reviewReferral(db *sql.DB, refereeID int64, approve bool, note string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var referrerID int64
+	var status string
+	if err := tx.QueryRow("SELECT referrer_id, status FROM referral_reviews WHERE referee_id = ?", refereeID).Scan(&referrerID, &status); err != nil {
+		return fmt.Errorf("no referral of account %d waits for review", refereeID)
+	}
+	if status != "pending" {
+		return fmt.Errorf("the referral of account %d is already %s", refereeID, status)
+	}
+	var paid int64
+	if err := tx.QueryRow("SELECT COUNT(*) FROM ledger WHERE kind = 'referral-welcome' AND ref_id = ?", refereeID).Scan(&paid); err != nil {
+		return err
+	}
+	if paid > 0 {
+		if _, err := tx.Exec("UPDATE referral_reviews SET status = 'approved', review_note = ?, reviewed_at = ? WHERE referee_id = ?",
+			strings.TrimSpace("already paid automatically. "+note), now(), refereeID); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+	newStatus := "rejected"
+	if approve {
+		for _, id := range []int64{refereeID, referrerID} {
+			var held bool
+			if err := tx.QueryRow("SELECT held FROM users WHERE id = ?", id).Scan(&held); err != nil {
+				return err
+			}
+			if held {
+				return fmt.Errorf("account %d is held: release it before paying this referral, or reject the referral", id)
+			}
+		}
+		var n int64
+		if err := tx.QueryRow("SELECT COUNT(*) FROM ledger WHERE user_id = ? AND kind = 'referral'", referrerID).Scan(&n); err != nil {
+			return err
+		}
+		if n >= referralCap {
+			return fmt.Errorf("the referrer has been paid for %d referrals, the cap", referralCap)
+		}
+		if err := payReferralTx(tx, referrerID, refereeID); err != nil {
+			return err
+		}
+		newStatus = "approved"
+	}
+	if _, err := tx.Exec("UPDATE referral_reviews SET status = ?, review_note = ?, reviewed_at = ? WHERE referee_id = ?",
+		newStatus, note, now(), refereeID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

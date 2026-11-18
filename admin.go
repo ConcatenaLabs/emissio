@@ -373,7 +373,7 @@ func (a *App) handleAdminVerifyReview(w http.ResponseWriter, r *http.Request) {
 			a.redirect(w, r, "/admin/verifications", "", "A Reddit app token was verified at submission; there is nothing to re-check.")
 			return
 		}
-		note := a.verifCheck(platform, handle, evidence, code)
+		note := a.verifCheck(platform, handle, evidence, code).Note
 		if _, err := a.db.Exec("UPDATE verifications SET check_note = ? WHERE id = ?", note, id); err != nil {
 			a.serverError(w, err)
 			return

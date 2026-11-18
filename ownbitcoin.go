@@ -217,20 +217,20 @@ func btcPeerVerdict(p btcPeer, code string, now time.Time) (string, int) {
 		return fmt.Sprintf("your Bitcoin node announces several account codes (%s): announce only yours, with one -uacomment=emissio-%s", p.Subver, code), 0
 	}
 	if p.BestHeaders < p.FirstHeight-btcSyncSlack || p.BestBlocks < p.FirstHeight-btcSyncSlack {
-		return fmt.Sprintf("your Bitcoin node is seen (%s), but the public Bitcoin node does not count it as synced: on this connection it knows its headers to %d and its blocks to %d, and its own height was %d when the connection was first listed. Let your node finish syncing; once it has, restart it so that it connects afresh, and submit again after %d minutes", p.Subver, p.BestHeaders, p.BestBlocks, p.FirstHeight, int(btcMinConn.Minutes())), 1
+		return fmt.Sprintf("your Bitcoin node is seen (%s), but the public Bitcoin node does not count it as synced: on this connection it knows its headers to %d and its blocks to %d, and its own height was %d when the connection was first listed. Let your node finish syncing; once it has, restart it so that it connects afresh: it can pass %d minutes later", p.Subver, p.BestHeaders, p.BestBlocks, p.FirstHeight, int(btcMinConn.Minutes())), 1
 	}
 	if up := now.Sub(time.Unix(p.Conntime, 0)); up < btcMinConn {
-		return fmt.Sprintf("your Bitcoin node is seen (%s), connected %s ago: the check wants one connection of %d minutes. Keep it running and submit again in %s", p.Subver, up.Round(time.Second), int(btcMinConn.Minutes()), minutesUntil(btcMinConn-up)), 2
+		return fmt.Sprintf("your Bitcoin node is seen (%s), connected %s ago: the check wants one connection of %d minutes. Keep it running: it can pass in %s", p.Subver, up.Round(time.Second), int(btcMinConn.Minutes()), minutesUntil(btcMinConn-up)), 2
 	}
 	if p.Listed < 2 {
-		return fmt.Sprintf("your Bitcoin node is seen (%s) in the latest peer list but not on the same connection in the one before: keep it connected and submit again in two minutes", p.Subver), 3
+		return fmt.Sprintf("your Bitcoin node is seen (%s) in the latest peer list but not on the same connection in the one before: keep it connected: it can pass in two minutes", p.Subver), 3
 	}
 	return "", 4
 }
 
 func (a *App) ownBitcoinCheck(notes string, user *User, now time.Time) checkResult {
 	res := a.ownBitcoinObserved(user, now)
-	if res.Verdict == vFail {
+	if res.Verdict == vFail || res.Verdict == vWait {
 		if d := anchorDiagnosis(notes); d != "" {
 			res.Note = d + ". What the public side sees: " + res.Note
 		}
@@ -247,10 +247,10 @@ func (a *App) ownBitcoinObserved(user *User, now time.Time) checkResult {
 	raw, err := os.ReadFile(a.cfg.BtcPeersFile)
 	var list btcPeerList
 	if err != nil || json.Unmarshal(raw, &list) != nil || list.Height == nil {
-		return review("the public Bitcoin node's peer list is unavailable; manual review")
+		return unavailable("the public Bitcoin node's peer list is unavailable; manual review")
 	}
 	if now.Sub(time.Unix(list.Updated, 0)) > btcPeersMaxAge {
-		return review("the public Bitcoin node's peer list is out of date; manual review")
+		return unavailable("the public Bitcoin node's peer list is out of date; manual review")
 	}
 	var btc *btcPeer
 	why, best := "", -1
@@ -272,15 +272,15 @@ func (a *App) ownBitcoinObserved(user *User, now time.Time) checkResult {
 			return firmFail("%s", why)
 		}
 		if why != "" {
-			return fail("%s", why)
+			return wait("%s", why)
 		}
-		return fail("the public Bitcoin node sees no peer announcing emissio-%s: start Bitcoin Core with -testnet4 -uacomment=emissio-%s -addnode=159.195.15.140:48333, let it sync, and submit while it is connected", code, code)
+		return wait("the public Bitcoin node sees no peer announcing emissio-%s yet: start Bitcoin Core with -testnet4 -uacomment=emissio-%s -addnode=159.195.15.140:48333 and let it sync", code, code)
 	}
 	btcHost, btcAgent := peerHost(btc.Addr), btc.Subver
 	// 2. The tester's Sequentia node, from the same address.
 	ps, err := a.peers()
 	if err != nil {
-		return review("Bitcoin node seen (%s); public Sequentia node unreachable, manual review", btcAgent)
+		return unavailable("Bitcoin node seen (%s); public Sequentia node unreachable, manual review", btcAgent)
 	}
 	seqHost := ""
 	for _, p := range ps {
@@ -296,18 +296,18 @@ func (a *App) ownBitcoinObserved(user *User, now time.Time) checkResult {
 		}
 	}
 	if seqHost == "" {
-		return fail("your Bitcoin node is seen (%s), but no Sequentia node announcing emissio-%s is connected to the public node: run it with -uacomment=emissio-%s -addnode=159.195.15.140:18444 and submit while it is connected", btcAgent, code, code)
+		return wait("your Bitcoin node is seen (%s), but no Sequentia node announcing emissio-%s is connected to the public node yet: run it with -uacomment=emissio-%s -addnode=159.195.15.140:18444", btcAgent, code, code)
 	}
 	if seqHost != btcHost {
-		return fail("your Bitcoin node connects from %s and your Sequentia node from %s: the check needs both on one address. If they run on one machine and reach the internet by different addresses (IPv6 for one and IPv4 for the other, a VPN), connect both with the IPv4 addnode the task gives, or send this to a reviewer", btcHost, seqHost)
+		return review("your Bitcoin node connects from %s and your Sequentia node from %s: the check needs both on one address. If they run on one machine and reach the internet by different addresses (IPv6 for one and IPv4 for the other, a VPN), connect both with the IPv4 addnode the task gives. A reviewer looks at this one", btcHost, seqHost)
 	}
 	// 3. Not the shared endpoint, by a record that covers the whole interval.
 	rec, err := a.sharedLastCall(btcHost)
 	if err != nil {
-		return review("both nodes are seen from %s; the shared endpoint's record is unavailable, manual review", btcHost)
+		return unavailable("both nodes are seen from %s; the shared endpoint's record is unavailable, manual review", btcHost)
 	}
 	if !rec.Last.IsZero() && now.Sub(rec.Last) < sharedQuiet {
-		return fail("the shared Bitcoin endpoint was called from %s %s ago: your Sequentia node still checks its anchors there. Set mainchainrpchost, mainchainrpcport and mainchainrpccookiefile to your own Bitcoin node, restart it, and submit again after %d quiet minutes (another node on the same address counts too)", btcHost, now.Sub(rec.Last).Round(time.Second), int(sharedQuiet.Minutes()))
+		return wait("the shared Bitcoin endpoint was called from %s %s ago: your Sequentia node still checks its anchors there. Set mainchainrpchost, mainchainrpcport and mainchainrpccookiefile to your own Bitcoin node, and restart it: it passes after %d quiet minutes (another node on the same address counts too)", btcHost, now.Sub(rec.Last).Round(time.Second), int(sharedQuiet.Minutes()))
 	}
 	// An address the record holds is followed even while the record is
 	// full (the endpoint updates an entry it has), so its silence is known.
@@ -315,16 +315,16 @@ func (a *App) ownBitcoinObserved(user *User, now time.Time) checkResult {
 	// while the record was full, or before it began.
 	known := !rec.Last.IsZero()
 	if !known && !rec.Dropped.IsZero() && now.Sub(rec.Dropped) < sharedQuiet {
-		return review("both nodes are seen from %s; the shared endpoint's record was full %s ago and may have missed a call from that address, manual review", btcHost, now.Sub(rec.Dropped).Round(time.Second))
+		return unavailable("both nodes are seen from %s; the shared endpoint's record was full %s ago and may have missed a call from that address, manual review", btcHost, now.Sub(rec.Dropped).Round(time.Second))
 	}
 	if age := now.Sub(rec.Since); !known && age < sharedQuiet {
-		return fail("both nodes are seen from %s, but the shared endpoint's record began only %s ago and cannot yet show %d quiet minutes: keep both nodes running and submit again in %s", btcHost, age.Round(time.Second), int(sharedQuiet.Minutes()), minutesUntil(sharedQuiet-age))
+		return wait("both nodes are seen from %s, but the shared endpoint's record began only %s ago and cannot yet show %d quiet minutes: keep both nodes running; it can pass in %s", btcHost, age.Round(time.Second), int(sharedQuiet.Minutes()), minutesUntil(sharedQuiet-age))
 	}
 	// 4. One account per Bitcoin node address, ever.
 	a.db.Exec("INSERT OR IGNORE INTO btc_node_hosts (host, user_id, created_at) VALUES (?,?,?)", btcHost, user.ID, now.Unix())
 	var owner int64
 	if err := a.db.QueryRow("SELECT user_id FROM btc_node_hosts WHERE host = ?", btcHost).Scan(&owner); err != nil {
-		return review("both nodes are seen from %s; the record of addresses could not be read, manual review", btcHost)
+		return unavailable("both nodes are seen from %s; the record of addresses could not be read, manual review", btcHost)
 	}
 	if owner != user.ID {
 		return review("a Bitcoin node from %s has already been used for another account; a reviewer decides", btcHost)

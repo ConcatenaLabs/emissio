@@ -363,7 +363,7 @@ func (a *App) returnCheck(user *User, tx *chainTx) checkResult {
 	}
 	ret, err := a.returnAddress()
 	if err != nil {
-		return review("Emissio's return address unavailable; manual review")
+		return unavailable("Emissio's return address unavailable; manual review")
 	}
 	spends := false
 	for _, in := range tx.Vin {

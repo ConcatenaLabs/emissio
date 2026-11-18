@@ -17,6 +17,10 @@
   {{else}}
   <form method="post" action="{{base}}/admin/users/{{$u.ID}}/hold" class="inline-form"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="hold" value="1"><input type="text" name="note" placeholder="why it is held" required><button class="btn danger small" type="submit">Hold for review</button></form>
   {{end}}
+  {{if .Data.Signals.Any}}
+  <form method="post" action="{{base}}/admin/users/{{$u.ID}}/clear-links" class="inline-form u-margin-top-6rem"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="text" name="note" placeholder="why these are not one person farming" required minlength="8"><button class="btn small" type="submit">Clear these links</button></form>
+  <p class="small muted">While an account shares a network address, a browser or a chain address with another that no reviewer has cleared, its passing checks wait in the queue instead of crediting at once. Clearing records your judgment for each network address, browser and chain address it shares now, with each account; anything else they come to share, and any link to another account, sends the next credit to a reviewer again.</p>
+  {{end}}
   <form method="post" action="{{base}}/admin/users/{{$u.ID}}/reset-link" class="inline-form u-margin-top-6rem"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn ghost small" type="submit">Make a password reset link</button></form>
 </div>
 
