@@ -44,7 +44,8 @@ type Config struct {
 	BtcPeersFile  string
 	AnchorSeenURL string
 	TgBotToken    string // BotFather token; enables ID-based Telegram age checks
-	TgBotName     string // bot username shown to users, without @
+	TgBotName     string // bot username shown to users, without @; read from the Bot API when empty
+	TgAPIBase     string // the Bot API; empty: https://api.telegram.org
 
 	// Task checks against the public services (checks.go).
 	CompagesURL string   // the bridge's API base, e.g. https://sequentiatestnet.com/bridge/api
@@ -196,6 +197,8 @@ type App struct {
 	mailLimit       *slidingLimiter
 	mailIPLimit     *slidingLimiter
 	faucetAddr      map[string]bool
+	tgNameOnce      sync.Once // the bot's username, read once (telegram.go)
+	tgName          string
 	arcaMu          sync.Mutex // one arca call at a time
 	capsMu          sync.Mutex // guards caps
 	caps            invoiceCaps
@@ -390,6 +393,7 @@ func main() {
 
 	app := NewApp(cfg, db)
 	app.startPeerPoller()
+	app.startWaitPoller()
 	app.startPayoutFollower()
 	app.startArcaFollower()
 	log.Printf("emissio listening on %s (base path %q, db %s)", cfg.Listen, cfg.BasePath, cfg.DBPath)

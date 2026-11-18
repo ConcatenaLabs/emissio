@@ -100,17 +100,17 @@ func TestOwnBitcoinCheck(t *testing.T) {
 		want     string
 	}{
 		{"pass", fresh, []bp{good("198.51.100.7:51234")}, seq("198.51.100.7:40000"), vPass, false, "has had no call from that address for 15 minutes (OK)"},
-		{"IPv6 for both, shared endpoint used", fresh, []bp{good("[2001:db8::7]:51234")}, seq("[2001:db8::7]:40000"), vFail, false, "was called from 2001:db8::7 2m0s ago"},
-		{"no Bitcoin node", fresh, nil, seq("198.51.100.7:40000"), vFail, false, "the public Bitcoin node sees no peer announcing emissio-0123456789"},
-		{"not synced (a handshake only)", fresh, []bp{unsynced}, seq("198.51.100.7:40000"), vFail, false, "does not count it as synced: on this connection it knows its headers to -1 and its blocks to -1, and its own height was 119998 when the connection was first listed"},
-		{"connected four minutes", fresh, []bp{young}, seq("198.51.100.7:40000"), vFail, false, "connected 4m0s ago: the check wants one connection of 10 minutes. Keep it running and submit again in 6 minutes"},
-		{"in one list only", fresh, []bp{once}, seq("198.51.100.7:40000"), vFail, false, "not on the same connection in the one before"},
+		{"IPv6 for both, shared endpoint used", fresh, []bp{good("[2001:db8::7]:51234")}, seq("[2001:db8::7]:40000"), vWait, false, "was called from 2001:db8::7 2m0s ago"},
+		{"no Bitcoin node", fresh, nil, seq("198.51.100.7:40000"), vWait, false, "the public Bitcoin node sees no peer announcing emissio-0123456789"},
+		{"not synced (a handshake only)", fresh, []bp{unsynced}, seq("198.51.100.7:40000"), vWait, false, "does not count it as synced: on this connection it knows its headers to -1 and its blocks to -1, and its own height was 119998 when the connection was first listed"},
+		{"connected four minutes", fresh, []bp{young}, seq("198.51.100.7:40000"), vWait, false, "connected 4m0s ago: the check wants one connection of 10 minutes. Keep it running: it can pass in 6 minutes"},
+		{"in one list only", fresh, []bp{once}, seq("198.51.100.7:40000"), vWait, false, "not on the same connection in the one before"},
 		{"several codes", fresh, []bp{several}, seq("198.51.100.7:40000"), vFail, true, "announces several account codes"},
-		{"the best of two peers is shown", fresh, []bp{unsynced, young}, seq("198.51.100.7:40000"), vFail, false, "connected 4m0s ago"},
+		{"the best of two peers is shown", fresh, []bp{unsynced, young}, seq("198.51.100.7:40000"), vWait, false, "connected 4m0s ago"},
 		{"a good peer beside a bad one", fresh, []bp{unsynced, good("198.51.100.7:51235")}, seq("198.51.100.7:40000"), vPass, false, "(OK)"},
-		{"no Sequentia node", fresh, []bp{good("198.51.100.7:51234")}, seq(), vFail, false, "no Sequentia node announcing emissio-0123456789 is connected"},
-		{"two addresses", fresh, []bp{good("198.51.100.7:51234")}, seq("198.51.100.8:40000"), vFail, false, "connects from 198.51.100.7 and your Sequentia node from 198.51.100.8"},
-		{"shared endpoint", fresh, []bp{good("198.51.100.9:51234")}, seq("198.51.100.9:40000"), vFail, false, "was called from 198.51.100.9 1m0s ago"},
+		{"no Sequentia node", fresh, []bp{good("198.51.100.7:51234")}, seq(), vWait, false, "no Sequentia node announcing emissio-0123456789 is connected"},
+		{"two addresses", fresh, []bp{good("198.51.100.7:51234")}, seq("198.51.100.8:40000"), vReview, false, "connects from 198.51.100.7 and your Sequentia node from 198.51.100.8"},
+		{"shared endpoint", fresh, []bp{good("198.51.100.9:51234")}, seq("198.51.100.9:40000"), vWait, false, "was called from 198.51.100.9 1m0s ago"},
 		{"stale peer list", now.Unix() - 600, []bp{good("198.51.100.7:51234")}, seq("198.51.100.7:40000"), vReview, false, "out of date"},
 	}
 	for _, c := range cases {
@@ -133,15 +133,16 @@ func TestOwnBitcoinCheck(t *testing.T) {
 		app.cfg.NodeCLI = fakeCLI(t, seq("198.51.100.11:40000"))
 		return app.ownBitcoinCheck("", u, now)
 	}
-	// The address-mismatch refusal is the tester's to send to a reviewer.
+	// Two addresses go to a reviewer: the check cannot tell one machine
+	// from two.
 	btc(fresh, good("198.51.100.7:51234"))
 	app.cfg.NodeCLI = fakeCLI(t, seq("198.51.100.8:40000"))
-	if got := app.ownBitcoinCheck("", user, now); got.Firm || !strings.Contains(got.Note, "send this to a reviewer") {
+	if got := app.ownBitcoinCheck("", user, now); got.Verdict != vReview || !strings.Contains(got.Note, "A reviewer looks at this one") {
 		t.Errorf("two addresses: %+v", got)
 	}
 	// A record that began five minutes ago cannot show 15 quiet minutes.
 	since = now.Unix() - 300
-	if got := unseen(user); got.Verdict != vFail || !strings.Contains(got.Note, "began only 5m0s ago") || !strings.Contains(got.Note, "submit again in 10 minutes") {
+	if got := unseen(user); got.Verdict != vWait || !strings.Contains(got.Note, "began only 5m0s ago") || !strings.Contains(got.Note, "it can pass in 10 minutes") {
 		t.Errorf("young record: %+v", got)
 	}
 	since = now.Unix() - 86400
@@ -187,7 +188,7 @@ func TestOwnBitcoinCheck(t *testing.T) {
 	}
 	btc(fresh)
 	app.cfg.NodeCLI = fakeCLI(t, seq("198.51.100.7:40000"))
-	if got := app.ownBitcoinCheck("mine: "+bad, user, now); got.Verdict != vFail || !strings.HasPrefix(got.Note, `the status you pasted says anchorstatus "no_connection"`) || !strings.Contains(got.Note, "sees no peer announcing") {
+	if got := app.ownBitcoinCheck("mine: "+bad, user, now); got.Verdict != vWait || !strings.HasPrefix(got.Note, `the status you pasted says anchorstatus "no_connection"`) || !strings.Contains(got.Note, "sees no peer announcing") {
 		t.Errorf("diagnosis: %+v", got)
 	}
 	if got := app.ownBitcoinCheck(`{"validateanchor": false, "tipheight": 5, "anchorstatus": "not_validated"}`, user, now); !strings.Contains(got.Note, "validateanchor false") {

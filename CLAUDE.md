@@ -80,6 +80,10 @@ that must not regress:
 Manual ledger adjustments and revocations are always visible to the user, with the admin's reason.
 Keep it that way.
 
+- **A check decides whatever it can; the queue holds only what needs a person.** A failing
+  check refuses at once, evidence that has not arrived waits for the poller in `waiting.go`
+  (which credits through the same path as a submission), and a clean verification is approved
+  at once unless the account shares a signal. Never route a check's failure to a reviewer.
 - **A passing check credits at once.** That is what makes the anti-sybil machinery matter: the
   registration limits, the email gate, the hold (which turns automatic approval off for an
   account) and the signals on the admin desk are what stand between a farm and the ledger.

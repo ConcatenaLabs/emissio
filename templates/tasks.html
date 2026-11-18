@@ -10,7 +10,7 @@
   <p>Next: <a href="{{base}}/tasks/{{.Task.Slug}}">{{.Task.Title}}</a>, <span class="gold">{{seq .Task.Reward}} SEQ</span>{{if eq .Status "rejected"}}<span class="small muted"> (submit it again)</span>{{end}}</p>
   <p class="step-action"><a class="btn" href="{{base}}/tasks/{{.Task.Slug}}">Do the next task</a></p>
   {{else}}
-  <p>Every task is done or waiting for review. Bug reports and competitions still pay.</p>
+  <p>Every task is done or waiting. Bug reports and competitions still pay.</p>
   {{end}}
 </div>
 {{with $d.Share}}<div class="u-margin-top-1-4rem">{{template "sharekit" .}}</div>{{end}}

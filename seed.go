@@ -424,7 +424,7 @@ The check is automatic: the checksum must match a file on the download page, and
 - Install Bitcoin Core (bitcoincore.org) and run it with -testnet4 -uacomment=emissio-{CODE} -addnode=159.195.15.140:48333. Let it sync.
 - Point Sequentia Core at it, in its configuration or on the command line: mainchainrpchost=127.0.0.1, mainchainrpcport=48332 and mainchainrpccookiefile=<your Bitcoin data directory>/testnet4/.cookie. Start it with -uacomment=emissio-{CODE} -addnode=159.195.15.140:18444 too, on the same machine or the same internet address.
 - Check it: sequentia-cli getanchorstatus shows validateanchor true and anchorstatus ok.
-- Leave both running for a quarter of an hour, then submit while both nodes are connected. If your node reports a problem, paste the output of sequentia-cli getanchorstatus in the notes and the check tells you what is wrong.
+- Submit once both are running. The check passes when both nodes have been connected for a quarter of an hour, and until then Emissio keeps checking by itself: leave both running. If your node reports a problem, paste the output of sequentia-cli getanchorstatus in the notes and the check tells you what is wrong.
 
 The check sees a synced Bitcoin node announcing your code, connected to the public one for ten minutes, from the same address as your Sequentia node, and that this address has not called the shared endpoint for 15 minutes; it cannot see your nodes' settings. An address counts for one account only.`,
 	},

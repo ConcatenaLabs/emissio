@@ -94,7 +94,7 @@ func TestArcaTasks(t *testing.T) {
 	if !strings.Contains(page, "Now send it back") || !strings.Contains(page, "nothing has reached Emissio&#39;s code yet") {
 		t.Fatal("the round trip page does not say the return is the next step")
 	}
-	if strings.Contains(page, "Submit evidence") || !strings.Contains(page, "Send it to a reviewer") {
+	if strings.Contains(page, "Submit evidence") || !strings.Contains(page, "Submit and keep checking") || strings.Contains(page, "Send it to a reviewer") {
 		t.Fatal("the submission form is open before anything came back")
 	}
 	if !strings.Contains(page, "Ask for a new payment") || strings.Contains(page, ">Ask again<") {

@@ -244,7 +244,7 @@ func (a *App) buildCheck(code string) checkResult {
 	if sv, ok := peerCodes(ps)[strings.ToLower(code)]; ok {
 		return fail("seen as a peer announcing %s, but only as a user-agent comment: the client name must be Emissio-%s, which needs a rebuild", sv, code)
 	}
-	return fail("no connected peer announces Emissio-%s; the node must be running and connected to the public node when you submit", code)
+	return wait("no connected peer announces Emissio-%s yet: run the rebuilt node connected to the public node", code)
 }
 
 // recordSightings stores one row per code seen, at this moment.
@@ -282,7 +282,7 @@ func (a *App) uptimeCheck(code string, now time.Time) checkResult {
 	if strings.HasSuffix(note, "(OK)") {
 		return pass("%s", note)
 	}
-	return fail("%s", note)
+	return wait("%s", note)
 }
 
 func uptimeVerdict(db *sql.DB, code string, now time.Time) string {
@@ -306,7 +306,7 @@ func uptimeVerdict(db *sql.DB, code string, now time.Time) string {
 		slots[t/int64(uptimeSlot.Seconds())] = true
 	}
 	if first == 0 {
-		return "node never seen: run it with -uacomment=emissio-" + code + " connected to the public node, and submit after a week"
+		return "node never seen: run it with -uacomment=emissio-" + code + " connected to the public node; it qualifies after a week"
 	}
 	total := int64(uptimeDays*24*time.Hour) / int64(uptimeSlot)
 	present := float64(len(slots)) / float64(total)

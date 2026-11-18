@@ -447,13 +447,13 @@ func TestDuplicateTxidRejected(t *testing.T) {
 	}
 }
 
-// A refused submission keeps its txid in the form, and a refusal no
-// reviewer could overturn does not suggest asking one.
+// A refused submission keeps its txid in the form, and no refusal suggests
+// asking a reviewer.
 func TestRefusalKeepsTxid(t *testing.T) {
 	app, srv, client := newTestServer(t)
 	txid := strings.Repeat("cd", 32)
 	explorer := fakeExplorer(t, map[string]string{
-		txid: txJSONid(txid, []map[string]any{{"is_coinbase": false}}, []map[string]any{vout(100000000, policy, "v0_p2wpkh")}, false),
+		txid: txJSONid(txid, []map[string]any{{"is_coinbase": false}}, []map[string]any{vout(100000000, policy, "v0_p2wpkh")}, true),
 	}, nil, nil)
 	defer explorer.Close()
 	app.cfg.EsploraURL = explorer.URL
@@ -468,7 +468,7 @@ func TestRefusalKeepsTxid(t *testing.T) {
 	if q.Get("txid") != txid || !strings.Contains(page, `value="`+txid+`"`) {
 		t.Fatalf("the refused txid is not back in the form: %s", resp.Request.URL)
 	}
-	if e := q.Get("e"); !strings.Contains(e, "not yet confirmed") || strings.Contains(e, "reviewer") {
+	if e := q.Get("e"); !strings.Contains(e, "NOT found") || strings.Contains(e, "reviewer") {
 		t.Fatalf("refusal: %q", e)
 	}
 }
