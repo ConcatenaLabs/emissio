@@ -286,7 +286,7 @@ func TestSignalsAtTheCredit(t *testing.T) {
 			admin := csrfOf(t, client, srv.URL+fmt.Sprintf("/admin/users/%d", me))
 			resp, _ = client.PostForm(srv.URL+fmt.Sprintf("/admin/users/%d/clear-links", me), url.Values{"csrf": {admin}, "note": {"one household, two people"}})
 			resp.Body.Close()
-			if m := resp.Request.URL.Query().Get("m"); !strings.Contains(m, "Cleared the links to 1 accounts") {
+			if m := resp.Request.URL.Query().Get("m"); !strings.Contains(m, "shared signals with 1 accounts") {
 				t.Fatalf("clear links: %q", m)
 			}
 			app.db.Exec("UPDATE tasks SET check_kind = 'first-transaction' WHERE slug = 'confidential-tx'")

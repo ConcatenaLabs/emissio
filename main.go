@@ -495,6 +495,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("GET /admin/users/{id}", a.admin(a.handleAdminUser))
 	mux.HandleFunc("POST /admin/users/{id}/hold", a.admin(a.handleAdminHold))
 	mux.HandleFunc("POST /admin/users/{id}/clear-links", a.admin(a.handleAdminClearLinks))
+	mux.HandleFunc("POST /admin/referrals/{id}/review", a.admin(a.handleAdminReferralReview))
 	mux.HandleFunc("POST /admin/submissions/{id}/revoke", a.admin(a.handleAdminRevoke))
 	mux.HandleFunc("GET /admin/export/{name}", a.admin(a.handleAdminCSV))
 	mux.HandleFunc("GET /admin/submissions", a.admin(a.handleAdminSubmissions))

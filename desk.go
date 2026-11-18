@@ -196,7 +196,7 @@ func (a *App) logAdmin(r *http.Request, action string, userID, refID int64, note
 // ---------- the queue ----------
 
 type queueItem struct {
-	Kind    string // task, bug, security, verification, entry
+	Kind    string // task, bug, security, verification, referral, entry
 	ID      int64
 	Title   string
 	Detail  string
@@ -259,6 +259,24 @@ func (a *App) handleAdminQueue(w http.ResponseWriter, r *http.Request) {
 	verifs, _ := pendingVerifications(a.db)
 	for _, v := range verifs {
 		add(queueItem{Kind: "verification", ID: v.ID, Title: platformName(v.Platform) + " " + v.Handle, Detail: v.CheckNote, Link: "/admin/verifications", UserID: v.UserID, Email: v.UserEmail, Held: held[v.UserID], At: v.CreatedAt})
+	}
+	rrows, err := a.db.Query(`SELECT r.referee_id, r.referrer_id, u.email, r.note, r.created_at FROM referral_reviews r
+		JOIN users u ON u.id = r.referee_id WHERE r.status = 'pending' ORDER BY r.created_at`)
+	if err == nil {
+		var refs []queueItem
+		for rrows.Next() {
+			var it queueItem
+			var referrer int64
+			if rrows.Scan(&it.ID, &referrer, &it.Email, &it.Detail, &it.At) == nil {
+				it.Kind, it.UserID, it.Held = "referral", it.ID, held[it.ID]
+				it.Title = fmt.Sprintf("Referral by account #%d of account #%d, %d SEQ each", referrer, it.ID, referralBonus)
+				refs = append(refs, it)
+			}
+		}
+		rrows.Close()
+		for _, it := range refs {
+			add(it)
+		}
 	}
 	erows, err := a.db.Query(`SELECT e.id, e.user_id, u.email, c.title, c.slug, e.url, e.check_note, e.updated_at FROM entries e
 		JOIN competitions c ON c.id = e.comp_id JOIN users u ON u.id = e.user_id
@@ -415,6 +433,24 @@ func (a *App) handleAdminUser(w http.ResponseWriter, r *http.Request) {
 		lrows.Close()
 	}
 	a.render(w, r, "admin_user", "Account "+u.Email, d)
+}
+
+// handleAdminReferralReview approves or rejects a referral the automatic
+// credit sent to a reviewer.
+func (a *App) handleAdminReferralReview(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	action := r.FormValue("action")
+	note := strings.TrimSpace(r.FormValue("note"))
+	if action != "approve" && action != "reject" {
+		a.redirect(w, r, "/admin/queue", "", "Unknown action.")
+		return
+	}
+	if err := reviewReferral(a.db, id, action == "approve", note); err != nil {
+		a.redirect(w, r, "/admin/queue", "", err.Error())
+		return
+	}
+	a.logAdmin(r, "referral-"+action, id, 0, note)
+	a.redirect(w, r, "/admin/queue", fmt.Sprintf("Referral of account %d %sd.", id, action), "")
 }
 
 func (a *App) handleAdminHold(w http.ResponseWriter, r *http.Request) {

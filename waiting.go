@@ -94,6 +94,16 @@ func (a *App) recheckOne(w waitingSub, at time.Time) {
 	lapsed := at.Sub(time.Unix(w.CreatedAt, 0)) >= waitLimit(w.Kind)
 	switch {
 	case res.Verdict == vPass:
+		funding, ok := a.fundingOf(w.Kind, w.Txid, res)
+		if !ok {
+			// Fail closed: no credit without the evidence's own funding.
+			if lapsed {
+				a.endWaiting(w.ID, "pending", res.Note+"; the transaction's funding could not be read", "")
+			} else {
+				a.db.Exec("UPDATE submissions SET chain_note = ? WHERE id = ? AND status = 'waiting'", res.Note+"; the transaction's funding is not read yet", w.ID)
+			}
+			return
+		}
 		if w.Txid != "" {
 			if claimed, err := txidClaimed(a.db, w.Txid, w.UserID); err != nil {
 				return
@@ -105,7 +115,7 @@ func (a *App) recheckOne(w waitingSub, at time.Time) {
 		if !a.endWaiting(w.ID, "pending", res.Note, "") {
 			return
 		}
-		if _, err := a.autoApproveSubmission(w.ID, w.UserID, a.fundingAddrs(w.Txid)); err != nil {
+		if _, err := a.autoApproveSubmission(w.ID, w.UserID, funding); err != nil {
 			log.Printf("waiting submission %d: %v", w.ID, err)
 		}
 	case res.Verdict == vFail:

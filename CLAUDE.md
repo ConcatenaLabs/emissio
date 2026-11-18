@@ -84,7 +84,8 @@ Keep it that way.
   check refuses at once, evidence that has not arrived waits for the poller in `waiting.go`,
   and a review verdict that is not "could not run" (`checkResult.Transient`) goes to the queue
   at once. Never route a check's failure to a reviewer.
-- **A passing check credits through `autocredit.go`, and nothing else credits automatically.**
+- **A passing check credits through `autocredit.go`, and nothing else credits automatically**
+  (a referral payment included).
   It reads the hold and the uncleared shared signals inside the approval's transaction, so a
   hold or a link that lands while a check runs counts. That boundary, the registration limits
   and the email gate are what stand between a farm and the ledger: a new automatic credit path

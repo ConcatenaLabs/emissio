@@ -216,7 +216,9 @@ func TestReferrals(t *testing.T) {
 
 	// Referee follows the referral link, then registers.
 	jar2, _ := cookiejar.New(nil)
-	referee := &http.Client{Jar: jar2}
+	// On a network of its own: two accounts on one address share a
+	// signal, which sends their referral to a reviewer (referrals_test).
+	referee := &http.Client{Jar: jar2, Transport: fromIP("10.20.0.2")}
 	get(t, referee, srv.URL+"/r/"+refCode) // follows redirect to /register
 	referee.PostForm(srv.URL+"/register", url.Values{
 		"email": {"referee@example.com"}, "password": {"a-long-password"},

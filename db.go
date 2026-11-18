@@ -167,7 +167,7 @@ func mustOpenDB(path string) *sql.DB {
 	if _, err := db.Exec(bugSchema); err != nil {
 		panic(err)
 	}
-	if _, err := db.Exec(clearedSchema); err != nil {
+	if _, err := db.Exec(clearedSchema + referralSchema); err != nil {
 		panic(err)
 	}
 	// One live verification per account and platform. A database that

@@ -474,6 +474,15 @@ func (a *App) handleTaskSubmit(w http.ResponseWriter, r *http.Request) {
 		a.db.Exec(`UPDATE submissions SET status = 'rejected', review_note = 'Replaced by a newer submission.', reviewed_at = ?
 			WHERE id = ? AND status = 'waiting'`, now(), waiting)
 	}
+	// A pass is credited only with the funding of the very transaction the
+	// check judged; without it the submission waits for the poller.
+	var funding []string
+	if res.Verdict == vPass {
+		var ok bool
+		if funding, ok = a.fundingOf(task.CheckKind, txid, res); !ok {
+			res = wait("%s; the transaction's funding is not read yet", res.Note)
+		}
+	}
 	status := "pending"
 	if res.Verdict == vWait {
 		status = "waiting"
@@ -489,7 +498,7 @@ func (a *App) handleTaskSubmit(w http.ResponseWriter, r *http.Request) {
 	case res.Verdict == vPass:
 		// A pass is credited at once, unless the account is held or shares
 		// a signal no reviewer has cleared (autocredit.go).
-		why, err := a.autoApproveSubmission(subID, user.ID, a.fundingAddrs(txid))
+		why, err := a.autoApproveSubmission(subID, user.ID, funding)
 		if err != nil {
 			a.serverError(w, err)
 			return

@@ -7,7 +7,10 @@ package main
 // transaction: whether an admin holds the account, and whether it shares a
 // network address, a browser or a chain address with another account that
 // no reviewer has cleared. Either one leaves the item pending, in the
-// queue. The database has one connection (mustOpenDB), so nothing else can
+// queue. A clearance is of one signal, between one pair of accounts: this
+// network address, this browser, this chain address. Any other value they
+// come to share is weighed again. The database has one connection
+// (mustOpenDB), so nothing else can
 // write between that read and the approval: a hold or a shared signal that
 // landed while the check was running is honoured.
 
@@ -20,14 +23,29 @@ import (
 )
 
 const clearedSchema = `
-CREATE TABLE IF NOT EXISTS cleared_links (
+CREATE TABLE IF NOT EXISTS cleared_signals (
 	user_id INTEGER NOT NULL REFERENCES users(id),
 	other_id INTEGER NOT NULL REFERENCES users(id),
+	kind TEXT NOT NULL,
+	value TEXT NOT NULL,
 	admin_id INTEGER NOT NULL,
 	created_at INTEGER NOT NULL,
-	PRIMARY KEY (user_id, other_id)
+	PRIMARY KEY (user_id, other_id, kind, value)
 );
 `
+
+// The kinds of shared signal, as cleared_signals names them.
+const (
+	sigIP     = "ip"
+	sigDevice = "device"
+	sigChain  = "chain"
+)
+
+// sharedSignal is one value an account shares with another.
+type sharedSignal struct {
+	Other       int64
+	Kind, Value string
+}
 
 // rowsQuerier is what both a database and a transaction answer.
 type rowsQuerier interface {
@@ -35,64 +53,75 @@ type rowsQuerier interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 }
 
-// ids collects the first column of a query.
-func ids(q rowsQuerier, query string, args ...any) map[int64]bool {
-	out := map[int64]bool{}
-	rows, err := q.Query(query, args...)
-	if err != nil {
-		return out
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id int64
-		if rows.Scan(&id) == nil {
-			out[id] = true
+// sharedSignals lists every value this account shares with another
+// account: each network address, browser and chain address, the chain
+// addresses including those that funded the evidence being credited
+// (funding).
+func sharedSignals(q rowsQuerier, userID int64, funding []string) []sharedSignal {
+	var out []sharedSignal
+	seen := map[sharedSignal]bool{}
+	collect := func(kind, query string, args ...any) {
+		rows, err := q.Query(query, args...)
+		if err != nil {
+			return
 		}
+		defer rows.Close()
+		for rows.Next() {
+			sg := sharedSignal{Kind: kind}
+			if rows.Scan(&sg.Other, &sg.Value) == nil && sg.Other != userID && !seen[sg] {
+				seen[sg] = true
+				out = append(out, sg)
+			}
+		}
+	}
+	collect(sigIP, `SELECT b.user_id, a.ip FROM user_ips a JOIN user_ips b ON a.ip = b.ip WHERE a.user_id = ? AND b.user_id != ?`, userID, userID)
+	collect(sigDevice, `SELECT b.user_id, a.device FROM user_devices a JOIN user_devices b ON a.device = b.device WHERE a.user_id = ? AND b.user_id != ?`, userID, userID)
+	collect(sigChain, `SELECT b.user_id, a.address FROM chain_links a JOIN chain_links b ON a.address = b.address WHERE a.user_id = ? AND b.user_id != ?`, userID, userID)
+	for _, ad := range funding {
+		collect(sigChain, "SELECT user_id, address FROM chain_links WHERE address = ? AND user_id != ?", ad, userID)
 	}
 	return out
 }
 
 // unclearedSignals is what an automatic credit weighs: the accounts this one
-// shares a network address, a browser or a chain address with, the chain
-// addresses including those that funded the evidence being credited
-// (funding), less the accounts a reviewer has cleared for this one.
+// shares a value with that no reviewer has cleared for this pair, counted
+// by kind.
 func unclearedSignals(q rowsQuerier, userID int64, funding []string) signals {
-	cleared := ids(q, "SELECT other_id FROM cleared_links WHERE user_id = ?", userID)
-	count := func(set map[int64]bool) int64 {
-		var n int64
-		for id := range set {
-			if id != userID && !cleared[id] {
-				n++
+	cleared := map[sharedSignal]bool{}
+	if rows, err := q.Query("SELECT other_id, kind, value FROM cleared_signals WHERE user_id = ?", userID); err == nil {
+		for rows.Next() {
+			var sg sharedSignal
+			if rows.Scan(&sg.Other, &sg.Kind, &sg.Value) == nil {
+				cleared[sg] = true
 			}
 		}
-		return n
+		rows.Close()
 	}
-	ipsOf := ids(q, `SELECT DISTINCT b.user_id FROM user_ips a JOIN user_ips b ON a.ip = b.ip WHERE a.user_id = ?`, userID)
-	devs := ids(q, `SELECT DISTINCT b.user_id FROM user_devices a JOIN user_devices b ON a.device = b.device WHERE a.user_id = ?`, userID)
-	chain := ids(q, `SELECT DISTINCT b.user_id FROM chain_links a JOIN chain_links b ON a.address = b.address WHERE a.user_id = ?`, userID)
-	for _, ad := range funding {
-		for id := range ids(q, "SELECT DISTINCT user_id FROM chain_links WHERE address = ?", ad) {
-			chain[id] = true
+	by := map[string]map[int64]bool{sigIP: {}, sigDevice: {}, sigChain: {}}
+	for _, sg := range sharedSignals(q, userID, funding) {
+		if !cleared[sg] {
+			by[sg.Kind][sg.Other] = true
 		}
 	}
-	return signals{SharedIPs: count(ipsOf), SharedDevices: count(devs), SharedFunding: count(chain)}
+	return signals{SharedIPs: int64(len(by[sigIP])), SharedDevices: int64(len(by[sigDevice])), SharedFunding: int64(len(by[sigChain]))}
 }
 
-// fundingAddrs are the addresses that funded a transaction, less those
-// everyone shares (the faucet's and Emissio's own), as recordFunding keeps
-// them.
-func (a *App) fundingAddrs(txid string) []string {
-	if txid == "" {
-		return nil
+// fundingOf gives the addresses that funded the transaction a check read,
+// less those everyone shares (the faucet's and Emissio's own), as
+// recordFunding keeps them. They come from the very transaction the check
+// judged, never from a second read. ok is false when the evidence is a
+// transaction the check did not hand over: the funding is then unknown, and
+// the credit must not go ahead on what is known so far.
+func (a *App) fundingOf(kind, txid string, res checkResult) (addrs []string, ok bool) {
+	if txid == "" || !readsTx(kind) {
+		return nil, true
 	}
-	tx, _ := a.fetchTx(txid)
-	if tx == nil {
-		return nil
+	if res.Tx == nil {
+		return nil, false
 	}
 	ret := ""
 	a.db.QueryRow("SELECT value FROM kv WHERE key = 'return_address'").Scan(&ret)
-	var out []string
-	for _, in := range tx.Vin {
+	for _, in := range res.Tx.Vin {
 		if in.Prevout == nil || in.Prevout.Address == "" {
 			continue
 		}
@@ -100,9 +129,9 @@ func (a *App) fundingAddrs(txid string) []string {
 		if a.faucetAddr[ad] || ad == strings.ToLower(ret) {
 			continue
 		}
-		out = append(out, ad)
+		addrs = append(addrs, ad)
 	}
-	return out
+	return addrs, true
 }
 
 // whyNotAuto says, inside the approval's transaction, why an automatic
@@ -183,10 +212,12 @@ func (a *App) autoApproveVerification(verifID, userID int64) (string, error) {
 	return "", nil
 }
 
-// handleAdminClearLinks records a reviewer's judgment that the accounts
-// this one currently shares a signal with are not one person farming:
-// automatic credits stop weighing those links, for both accounts. A link
-// to an account not cleared here still sends the next credit to a reviewer.
+// handleAdminClearLinks records a reviewer's judgment that what this
+// account shares with others now is not one person farming: each network
+// address, browser and chain address it shares with each account, for both
+// accounts of each pair. Automatic credits stop weighing exactly those; a
+// value the pair comes to share later, or any value shared with another
+// account, sends the next credit to a reviewer again.
 func (a *App) handleAdminClearLinks(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	back := fmt.Sprintf("/admin/users/%d", id)
@@ -200,19 +231,15 @@ func (a *App) handleAdminClearLinks(w http.ResponseWriter, r *http.Request) {
 	if admin != nil {
 		adminID = admin.ID
 	}
-	others := ids(a.db, `SELECT b.user_id FROM user_ips a JOIN user_ips b ON a.ip = b.ip WHERE a.user_id = ?
-		UNION SELECT b.user_id FROM user_devices a JOIN user_devices b ON a.device = b.device WHERE a.user_id = ?
-		UNION SELECT b.user_id FROM chain_links a JOIN chain_links b ON a.address = b.address WHERE a.user_id = ?`, id, id, id)
-	n := 0
-	for other := range others {
-		if other == id {
-			continue
+	shared := sharedSignals(a.db, id, nil)
+	others := map[int64]bool{}
+	for _, sg := range shared {
+		for _, pair := range [][2]int64{{id, sg.Other}, {sg.Other, id}} {
+			a.db.Exec("INSERT OR IGNORE INTO cleared_signals (user_id, other_id, kind, value, admin_id, created_at) VALUES (?,?,?,?,?,?)",
+				pair[0], pair[1], sg.Kind, sg.Value, adminID, now())
 		}
-		for _, pair := range [][2]int64{{id, other}, {other, id}} {
-			a.db.Exec("INSERT OR IGNORE INTO cleared_links (user_id, other_id, admin_id, created_at) VALUES (?,?,?,?)", pair[0], pair[1], adminID, now())
-		}
-		n++
+		others[sg.Other] = true
 	}
-	a.logAdmin(r, "clear-links", id, 0, fmt.Sprintf("%d accounts: %s", n, note))
-	a.redirect(w, r, back, fmt.Sprintf("Cleared the links to %d accounts: their shared signals no longer hold back this account's automatic credits.", n), "")
+	a.logAdmin(r, "clear-links", id, 0, fmt.Sprintf("%d signals with %d accounts: %s", len(shared), len(others), note))
+	a.redirect(w, r, back, fmt.Sprintf("Cleared %d shared signals with %d accounts: those no longer hold back this account's automatic credits; anything they come to share next does.", len(shared), len(others)), "")
 }

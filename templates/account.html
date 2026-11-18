@@ -26,7 +26,7 @@
     <p class="small muted">Your public account code. It doubles as your referral code, and a task may occasionally ask you to embed it in on-chain data (for example an OP_RETURN) to prove a transaction is yours. It is not a secret.</p>
     <h3 class="u-margin-top-1-6rem">Refer a friend</h3>
     <div class="kv">{{.Data.RefLink}}</div>
-    <p class="small muted">When someone joins through this link and you have each earned at least {{seq .Data.RefThreshold}} SEQ from tasks, competitions or security reports, you both receive {{seq .Data.RefBonus}} SEQ automatically. Paid for up to {{.Data.RefCap}} referrals; {{seq .Data.RefCount}} qualified so far.</p>
+    <p class="small muted">When someone joins through this link and you have each earned at least {{seq .Data.RefThreshold}} SEQ from tasks, competitions or security reports, you both receive {{seq .Data.RefBonus}} SEQ, automatically unless either account shares a network, a browser or a chain address with another, when a reviewer looks first. Paid for up to {{.Data.RefCap}} referrals; {{seq .Data.RefCount}} qualified so far.</p>
     {{with .Data.Share}}{{template "sharekit" .}}{{end}}
   </div>
   <div class="register-card">

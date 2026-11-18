@@ -56,6 +56,9 @@ type checkResult struct {
 	// person must judge. The waiting poller keeps trying the first kind and
 	// sends the second to the queue at once.
 	Transient bool
+	// Tx is the transaction the check judged, when it read one: the credit
+	// takes the evidence's funding from it rather than reading it again.
+	Tx *chainTx
 }
 
 func pass(format string, args ...any) checkResult {
@@ -158,6 +161,18 @@ func proofRule(kind string) string {
 	return "required"
 }
 
+// readsTx says whether a check's evidence is a transaction it reads: every
+// kind but those whose evidence is elsewhere (notes, peers, Emissio's own
+// wallet).
+func readsTx(kind string) bool {
+	switch kind {
+	case "none", "", "build-from-source", "run-node", "install-release", "own-bitcoin-node", "emissio-unblind", "wallet-link",
+		"arca-pay-code", "arca-pay-btc", "arca-roundtrip", "arca-invoice", "arca-swap", "arca-name":
+		return false
+	}
+	return true
+}
+
 func (a *App) evidenceCheck(kind, txid, notes string, user *User) checkResult {
 	switch kind {
 	case "none", "":
@@ -216,6 +231,7 @@ func (a *App) evidenceCheck(kind, txid, notes string, user *User) checkResult {
 		r = a.taggedCheck(kind, tx, notes, user)
 	}
 	r.Note += "; " + where
+	r.Tx = tx
 	return r
 }
 
