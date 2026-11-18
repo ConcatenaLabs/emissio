@@ -71,7 +71,7 @@ func (a *App) checkTelegramBot(handle, claimCode string) checkResult {
 	url := a.tgAPI() + "/bot" + a.cfg.TgBotToken + "/getUpdates?limit=100"
 	resp, err := verifClient.Get(url)
 	if err != nil {
-		return review("telegram API unreachable; manual review")
+		return unavailable("telegram API unreachable; manual review")
 	}
 	defer resp.Body.Close()
 	var out struct {
@@ -87,7 +87,7 @@ func (a *App) checkTelegramBot(handle, claimCode string) checkResult {
 		} `json:"result"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&out); err != nil || !out.OK {
-		return review("telegram API response unreadable; manual review")
+		return unavailable("telegram API response unreadable; manual review")
 	}
 	for _, u := range out.Result {
 		if !strings.EqualFold(u.Message.From.Username, handle) || !strings.Contains(u.Message.Text, claimCode) {
@@ -111,7 +111,7 @@ func (a *App) checkTelegramBot(handle, claimCode string) checkResult {
 		}
 		return pass("%s", note)
 	}
-	return fail("no message with your account code from @%s reached the bot in the last 24 hours: send your account code as a Telegram message to the bot from that account, then submit again", handle)
+	return fail("no message with your account code from @%s reached the bot in the last 24 hours: send your account code as a Telegram message to the bot from that account", handle)
 }
 
 func (a *App) tgAPI() string {

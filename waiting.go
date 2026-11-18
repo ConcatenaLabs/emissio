@@ -3,12 +3,16 @@ package main
 // Waiting submissions. A check that fails only because its evidence has not
 // arrived yet (checks.go's wait verdict) does not send the submission to a
 // reviewer: the submission waits, and this poller runs the same check again
-// on every waiting submission. It is credited the moment the check passes,
-// exactly as at submission; refused if the check now fails for a reason the
-// tester must fix; and it lapses after waitLimit with the check's last note.
-// A check that could not run at all (a service unreachable) keeps the
-// submission waiting; if it still cannot run when the time is up, the
-// submission goes to a reviewer, since nothing automatic could decide it.
+// on every waiting submission. When the check passes it is credited through
+// the same boundary as at submission (autocredit.go: not while the account
+// is held or shares an uncleared signal, then it goes to a reviewer), unless
+// another account has claimed the transaction meanwhile; it is refused if
+// the check now fails for a reason the tester must fix; it goes to the
+// queue at once if the check now says a person must judge it; and it lapses
+// after waitLimit with the check's last note. A check that could not run at
+// all (a service unreachable) keeps it waiting; if it still cannot run when
+// the time is up, it goes to a reviewer, since nothing automatic could
+// decide it.
 
 import (
 	"fmt"
@@ -72,6 +76,8 @@ func (a *App) recheckOne(w waitingSub, at time.Time) {
 	if err != nil {
 		return
 	}
+	// The hold and the signals are read again at the credit itself
+	// (autoApproveSubmission), so a hold placed while the check runs counts.
 	task, err := taskByID(a.db, w.TaskID)
 	if err != nil {
 		return
@@ -88,16 +94,25 @@ func (a *App) recheckOne(w waitingSub, at time.Time) {
 	lapsed := at.Sub(time.Unix(w.CreatedAt, 0)) >= waitLimit(w.Kind)
 	switch {
 	case res.Verdict == vPass:
+		if w.Txid != "" {
+			if claimed, err := txidClaimed(a.db, w.Txid, w.UserID); err != nil {
+				return
+			} else if claimed {
+				a.endWaiting(w.ID, "rejected", res.Note, "This transaction has been submitted by another account.")
+				return
+			}
+		}
 		if !a.endWaiting(w.ID, "pending", res.Note, "") {
 			return
 		}
-		if !user.Held {
-			if err := a.creditChecked(w.ID, w.UserID, w.Txid); err != nil {
-				log.Printf("waiting submission %d: %v", w.ID, err)
-			}
+		if _, err := a.autoApproveSubmission(w.ID, w.UserID, a.fundingAddrs(w.Txid)); err != nil {
+			log.Printf("waiting submission %d: %v", w.ID, err)
 		}
 	case res.Verdict == vFail:
 		a.endWaiting(w.ID, "rejected", res.Note, "Checked again: "+res.Note+".")
+	case res.Verdict == vReview && !res.Transient:
+		// A person must judge it: to the queue now, not at the lapse.
+		a.endWaiting(w.ID, "pending", res.Note, "")
 	case !lapsed:
 		a.db.Exec("UPDATE submissions SET chain_note = ? WHERE id = ? AND status = 'waiting'", res.Note, w.ID)
 	case res.Verdict == vReview:

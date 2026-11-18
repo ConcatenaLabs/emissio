@@ -194,8 +194,12 @@ func bugHash(steps, expected, actual string) string {
 // form's own fields.
 const testMarker = "EMISSIO-TEST"
 
+// testMarkerRe matches the marker as a whole word at the start: a title
+// such as "Emissio-testnet faucet" is a real report.
+var testMarkerRe = regexp.MustCompile(`^(?i:` + regexp.QuoteMeta(testMarker) + `)(?:$|[^A-Za-z0-9_-])`)
+
 func isTestText(s string) bool {
-	return strings.HasPrefix(strings.ToUpper(strings.TrimSpace(s)), testMarker)
+	return testMarkerRe.MatchString(strings.TrimSpace(s))
 }
 
 type newBug struct {

@@ -247,10 +247,10 @@ func (a *App) ownBitcoinObserved(user *User, now time.Time) checkResult {
 	raw, err := os.ReadFile(a.cfg.BtcPeersFile)
 	var list btcPeerList
 	if err != nil || json.Unmarshal(raw, &list) != nil || list.Height == nil {
-		return review("the public Bitcoin node's peer list is unavailable; manual review")
+		return unavailable("the public Bitcoin node's peer list is unavailable; manual review")
 	}
 	if now.Sub(time.Unix(list.Updated, 0)) > btcPeersMaxAge {
-		return review("the public Bitcoin node's peer list is out of date; manual review")
+		return unavailable("the public Bitcoin node's peer list is out of date; manual review")
 	}
 	var btc *btcPeer
 	why, best := "", -1
@@ -280,7 +280,7 @@ func (a *App) ownBitcoinObserved(user *User, now time.Time) checkResult {
 	// 2. The tester's Sequentia node, from the same address.
 	ps, err := a.peers()
 	if err != nil {
-		return review("Bitcoin node seen (%s); public Sequentia node unreachable, manual review", btcAgent)
+		return unavailable("Bitcoin node seen (%s); public Sequentia node unreachable, manual review", btcAgent)
 	}
 	seqHost := ""
 	for _, p := range ps {
@@ -304,7 +304,7 @@ func (a *App) ownBitcoinObserved(user *User, now time.Time) checkResult {
 	// 3. Not the shared endpoint, by a record that covers the whole interval.
 	rec, err := a.sharedLastCall(btcHost)
 	if err != nil {
-		return review("both nodes are seen from %s; the shared endpoint's record is unavailable, manual review", btcHost)
+		return unavailable("both nodes are seen from %s; the shared endpoint's record is unavailable, manual review", btcHost)
 	}
 	if !rec.Last.IsZero() && now.Sub(rec.Last) < sharedQuiet {
 		return wait("the shared Bitcoin endpoint was called from %s %s ago: your Sequentia node still checks its anchors there. Set mainchainrpchost, mainchainrpcport and mainchainrpccookiefile to your own Bitcoin node, and restart it: it passes after %d quiet minutes (another node on the same address counts too)", btcHost, now.Sub(rec.Last).Round(time.Second), int(sharedQuiet.Minutes()))
@@ -315,7 +315,7 @@ func (a *App) ownBitcoinObserved(user *User, now time.Time) checkResult {
 	// while the record was full, or before it began.
 	known := !rec.Last.IsZero()
 	if !known && !rec.Dropped.IsZero() && now.Sub(rec.Dropped) < sharedQuiet {
-		return review("both nodes are seen from %s; the shared endpoint's record was full %s ago and may have missed a call from that address, manual review", btcHost, now.Sub(rec.Dropped).Round(time.Second))
+		return unavailable("both nodes are seen from %s; the shared endpoint's record was full %s ago and may have missed a call from that address, manual review", btcHost, now.Sub(rec.Dropped).Round(time.Second))
 	}
 	if age := now.Sub(rec.Since); !known && age < sharedQuiet {
 		return wait("both nodes are seen from %s, but the shared endpoint's record began only %s ago and cannot yet show %d quiet minutes: keep both nodes running; it can pass in %s", btcHost, age.Round(time.Second), int(sharedQuiet.Minutes()), minutesUntil(sharedQuiet-age))
@@ -324,7 +324,7 @@ func (a *App) ownBitcoinObserved(user *User, now time.Time) checkResult {
 	a.db.Exec("INSERT OR IGNORE INTO btc_node_hosts (host, user_id, created_at) VALUES (?,?,?)", btcHost, user.ID, now.Unix())
 	var owner int64
 	if err := a.db.QueryRow("SELECT user_id FROM btc_node_hosts WHERE host = ?", btcHost).Scan(&owner); err != nil {
-		return review("both nodes are seen from %s; the record of addresses could not be read, manual review", btcHost)
+		return unavailable("both nodes are seen from %s; the record of addresses could not be read, manual review", btcHost)
 	}
 	if owner != user.ID {
 		return review("a Bitcoin node from %s has already been used for another account; a reviewer decides", btcHost)

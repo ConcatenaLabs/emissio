@@ -444,14 +444,12 @@ func (a *App) handleTaskSubmit(w http.ResponseWriter, r *http.Request) {
 		// A transaction proves work for one account only; recycling someone
 		// else's txid is the main farming vector. The same account may use
 		// its own transaction for another task, where that task allows it.
-		var claimed int64
-		if err := a.db.QueryRow(`SELECT COUNT(*) FROM submissions
-			WHERE txid = ? AND user_id != ? AND status != 'rejected'`,
-			strings.ToLower(txid), user.ID).Scan(&claimed); err != nil {
+		claimed, err := txidClaimed(a.db, txid, user.ID)
+		if err != nil {
 			a.serverError(w, err)
 			return
 		}
-		if claimed > 0 {
+		if claimed {
 			a.redirect(w, r, back, "", "This transaction has already been submitted by another account. Submit a transaction made by your own wallet.")
 			return
 		}
@@ -488,10 +486,16 @@ func (a *App) handleTaskSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	subID, _ := ins.LastInsertId()
 	switch {
-	case res.Verdict == vPass && !user.Held:
-		// A pass is approved at once, unless an admin holds the account.
-		if err := a.creditChecked(subID, user.ID, txid); err != nil {
+	case res.Verdict == vPass:
+		// A pass is credited at once, unless the account is held or shares
+		// a signal no reviewer has cleared (autocredit.go).
+		why, err := a.autoApproveSubmission(subID, user.ID, a.fundingAddrs(txid))
+		if err != nil {
 			a.serverError(w, err)
+			return
+		}
+		if why != "" {
+			a.redirect(w, r, back, "Checked: the evidence passes. A reviewer confirms it before the reward is credited.", "")
 			return
 		}
 		a.redirect(w, r, back, fmt.Sprintf("Checked and credited: %s SEQ is in your ledger.", formatSEQ(task.Reward)), "")
@@ -503,16 +507,16 @@ func (a *App) handleTaskSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// creditChecked approves a pending submission whose check passed, as the
-// check's own decision.
-func (a *App) creditChecked(subID, userID int64, txid string) error {
-	if err := reviewSubmission(a.db, subID, true, "Checked automatically."); err != nil {
-		return err
-	}
-	a.db.Exec("UPDATE submissions SET auto = 1 WHERE id = ?", subID)
-	a.recordFunding(userID, txid)
-	a.processReferrals(userID)
-	return nil
+// txidClaimed says whether another account claims this transaction: a
+// submission of it that is pending or approved. A waiting one is no claim
+// yet, so it cannot keep the transaction's owner out; the poller asks this
+// again, under the txid's lock, before it credits one.
+func txidClaimed(db querier, txid string, userID int64) (bool, error) {
+	var n int64
+	err := db.QueryRow(`SELECT COUNT(*) FROM submissions
+		WHERE txid = ? AND user_id != ? AND status NOT IN ('rejected', 'waiting')`,
+		strings.ToLower(txid), userID).Scan(&n)
+	return n > 0, err
 }
 
 func (a *App) handleCompetitions(w http.ResponseWriter, r *http.Request) {
@@ -805,7 +809,11 @@ func (a *App) handleVerify(w http.ResponseWriter, r *http.Request) {
 		}
 		handle = strings.ToLower(handle)
 	}
-	// One live request per platform per account.
+	// One live request per platform per account: the query, the check, the
+	// insert and the approval run as one step for this account and
+	// platform, and the verifications_one_live index refuses a second live
+	// row whatever path writes it.
+	defer a.claims.lock(fmt.Sprintf("verify:%d:%s", user.ID, platform))()
 	var mine int64
 	if err := a.db.QueryRow(`SELECT COUNT(*) FROM verifications
 		WHERE user_id = ? AND platform = ? AND status != 'rejected'`, user.ID, platform).Scan(&mine); err != nil {
@@ -851,24 +859,25 @@ func (a *App) handleVerify(w http.ResponseWriter, r *http.Request) {
 			res.Verdict = vReview
 		}
 	}
-	// A clean check is the decision, unless the account shares a network
-	// address, a browser or a chain address with another account: that is
-	// what a person must look at, and the queue shows it as a badge.
+	// A clean check is the decision, unless the account is held or shares
+	// a network address, a browser or a chain address with another account
+	// no reviewer has cleared: both are read again inside the approval's
+	// transaction (autocredit.go).
 	a.seen(user.ID, clientIP(r), a.device(w, r))
-	sig := signalsOf(a.db, user.ID)
-	if res.Verdict == vPass && sig.Any() {
-		note += "; for a reviewer: this account " + sig.Words()
-	}
 	ins, err := a.db.Exec(`INSERT INTO verifications (user_id, platform, handle, evidence, check_note, created_at)
 		VALUES (?,?,?,?,?,?)`, user.ID, platform, handle, evidence, note, now())
 	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			a.redirect(w, r, "/account", "", "You already have a "+platformName(platform)+" verification on file.")
+			return
+		}
 		a.serverError(w, err)
 		return
 	}
-	if res.Verdict == vPass && !sig.Any() && !user.Held {
+	if res.Verdict == vPass {
 		id, _ := ins.LastInsertId()
-		if err := reviewVerification(a.db, id, true, "Checked automatically."); err == nil {
-			a.processReferrals(user.ID)
+		why, err := a.autoApproveVerification(id, user.ID)
+		if err == nil && why == "" {
 			a.redirect(w, r, "/account", fmt.Sprintf("Verified: your %s account is linked, and %s SEQ is in your ledger.", platformName(platform), formatSEQ(verificationBonus)), "")
 			return
 		}

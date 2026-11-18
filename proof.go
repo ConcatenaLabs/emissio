@@ -234,7 +234,7 @@ func builtClientName(subver, code string) bool {
 func (a *App) buildCheck(code string) checkResult {
 	ps, err := a.peers()
 	if err != nil {
-		return review("public node unreachable; manual review")
+		return unavailable("public node unreachable; manual review")
 	}
 	for _, p := range ps {
 		if builtClientName(p.Subver, code) {

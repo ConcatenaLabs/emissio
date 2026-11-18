@@ -19,6 +19,26 @@ import (
 	"time"
 )
 
+// xff sends every request as if from one network address.
+type xff struct{ ip string }
+
+func (x xff) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.Header.Set("X-Forwarded-For", x.ip)
+	return http.DefaultTransport.RoundTrip(r)
+}
+
+func fromIP(ip string) http.RoundTripper { return xff{ip} }
+
+// ipFor gives each email a network address of its own.
+func ipFor(email string) string {
+	var h uint32 = 2166136261
+	for _, c := range []byte(email) {
+		h = (h ^ uint32(c)) * 16777619
+	}
+	return fmt.Sprintf("10.%d.%d.%d", h>>16&0xff, h>>8&0xff, h&0xff|1)
+}
+
 // switchExplorer is a stand-in explorer whose transactions a test can
 // change between polls, and switch off.
 type switchExplorer struct {
@@ -127,10 +147,16 @@ func TestWaitingSubmissions(t *testing.T) {
 		t.Fatalf("credited twice: %d", balance())
 	}
 
-	// A check that now fails refuses the waiting submission with the reason.
+	// An unconfirmed transaction without this account's proof decimals is
+	// refused at once: it is not bound to the account, so it cannot wait.
 	txB := "b1" + strings.Repeat("0", 62)
 	ex.set(txB, txJSONid(txB, plain, untagged, false))
 	app.db.Exec("UPDATE tasks SET check_kind = 'first-transaction' WHERE slug IN ('anchor-lookup', 'multi-asset-send', 'any-asset-fee')")
+	if m := submit("anchor-lookup", txB); !strings.Contains(m, "Not accepted: proof amount .86718345 NOT found") {
+		t.Fatalf("unbound mempool submission: %q", m)
+	}
+	// A check that now fails refuses the waiting submission with the reason.
+	ex.set(txB, txJSONid(txB, plain, tagged, false))
 	if m := submit("anchor-lookup", txB); !strings.Contains(m, "Not there yet") {
 		t.Fatalf("second mempool submission: %q", m)
 	}

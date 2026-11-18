@@ -120,6 +120,15 @@ func reviewVerification(db *sql.DB, verifID int64, approve bool, note string) er
 		return err
 	}
 	defer tx.Rollback()
+	if err := reviewVerificationTx(tx, verifID, approve, note); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// reviewVerificationTx is reviewVerification inside a caller's transaction.
+func reviewVerificationTx(tx *sql.Tx, verifID int64, approve bool, note string) error {
+	var err error
 	var userID int64
 	var status, platform string
 	if err := tx.QueryRow("SELECT user_id, status, platform FROM verifications WHERE id = ?", verifID).
@@ -140,10 +149,7 @@ func reviewVerification(db *sql.DB, verifID int64, approve bool, note string) er
 	}
 	_, err = tx.Exec("UPDATE verifications SET status = ?, review_note = ?, reviewed_at = ? WHERE id = ?",
 		newStatus, note, now(), verifID)
-	if err != nil {
-		return err
-	}
-	return tx.Commit()
+	return err
 }
 
 func platformName(key string) string {
@@ -266,24 +272,24 @@ func redditToken(base, id, secret string) (string, error) {
 func checkReddit(base, api, id, secret, handle, claimCode string) checkResult {
 	token, err := redditToken(base, id, secret)
 	if err != nil {
-		return review("reddit token failed (%s); manual review", err)
+		return unavailable("reddit token failed (%s); manual review", err)
 	}
 	req, err := http.NewRequest("GET", strings.TrimRight(api, "/")+"/user/"+handle+"/about", nil)
 	if err != nil {
-		return review("check failed; manual review")
+		return unavailable("check failed; manual review")
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("User-Agent", "emissio-verifier/1.0 (sequentiatestnet.com)")
 	resp, err := verifClient.Do(req)
 	if err != nil {
-		return review("reddit unreachable; manual review")
+		return unavailable("reddit unreachable; manual review")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
 		return fail("reddit user NOT FOUND")
 	}
 	if resp.StatusCode != http.StatusOK {
-		return review("reddit returned HTTP %d; manual review", resp.StatusCode)
+		return unavailable("reddit returned HTTP %d; manual review", resp.StatusCode)
 	}
 	var about struct {
 		Data struct {
@@ -294,7 +300,7 @@ func checkReddit(base, api, id, secret, handle, claimCode string) checkResult {
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&about); err != nil {
-		return review("reddit response unreadable; manual review")
+		return unavailable("reddit response unreadable; manual review")
 	}
 	created := time.Unix(int64(about.Data.CreatedUTC), 0)
 	ageOK := oldEnough(created, time.Now())
@@ -314,20 +320,20 @@ func checkReddit(base, api, id, secret, handle, claimCode string) checkResult {
 func checkTelegram(base, handle, claimCode string) checkResult {
 	req, err := http.NewRequest("GET", strings.TrimRight(base, "/")+"/"+handle, nil)
 	if err != nil {
-		return review("check failed; manual review")
+		return unavailable("check failed; manual review")
 	}
 	req.Header.Set("User-Agent", "emissio-verifier/1.0 (sequentiatestnet.com)")
 	resp, err := verifClient.Do(req)
 	if err != nil {
-		return review("t.me unreachable; manual review")
+		return unavailable("t.me unreachable; manual review")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return review("t.me returned HTTP %d; manual review", resp.StatusCode)
+		return unavailable("t.me returned HTTP %d; manual review", resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return review("t.me response unreadable; manual review")
+		return unavailable("t.me response unreadable; manual review")
 	}
 	if strings.Contains(string(body), claimCode) {
 		return review("code found in the public profile page; age at reviewer discretion (Telegram does not publish it)")
@@ -388,19 +394,19 @@ func xToken(postID string) string {
 func checkX(base, handle, postID, claimCode string) checkResult {
 	req, err := http.NewRequest("GET", strings.TrimRight(base, "/")+"/tweet-result?id="+postID+"&token="+xToken(postID)+"&lang=en", nil)
 	if err != nil {
-		return review("check failed; manual review")
+		return unavailable("check failed; manual review")
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; emissio-verifier/1.0; sequentiatestnet.com)")
 	resp, err := verifClient.Do(req)
 	if err != nil {
-		return review("x unreachable; manual review")
+		return unavailable("x unreachable; manual review")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
 		return fail("post NOT FOUND (deleted, protected account, or wrong link)")
 	}
 	if resp.StatusCode != http.StatusOK {
-		return review("x returned HTTP %d; manual review", resp.StatusCode)
+		return unavailable("x returned HTTP %d; manual review", resp.StatusCode)
 	}
 	var post struct {
 		Type string `json:"__typename"`
@@ -411,7 +417,7 @@ func checkX(base, handle, postID, claimCode string) checkResult {
 		} `json:"user"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&post); err != nil {
-		return review("x response unreadable; manual review")
+		return unavailable("x response unreadable; manual review")
 	}
 	if post.Type != "Tweet" || post.User.ScreenName == "" {
 		return fail("post unavailable (deleted, protected account, or wrong link)")

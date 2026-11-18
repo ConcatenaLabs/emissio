@@ -51,6 +51,11 @@ type checkResult struct {
 	// Firm marks a refusal the tester cannot fix by explaining: the
 	// transaction is missing or lacks the proof decimals.
 	Firm bool
+	// Transient marks a review verdict that means the check could not run
+	// (a service unreachable or its answer unreadable), as against one a
+	// person must judge. The waiting poller keeps trying the first kind and
+	// sends the second to the queue at once.
+	Transient bool
 }
 
 func pass(format string, args ...any) checkResult {
@@ -67,6 +72,11 @@ func wait(format string, args ...any) checkResult {
 }
 func review(format string, args ...any) checkResult {
 	return checkResult{Note: fmt.Sprintf(format, args...), Verdict: vReview}
+}
+
+// unavailable is the review verdict of a check that could not run.
+func unavailable(format string, args ...any) checkResult {
+	return checkResult{Note: fmt.Sprintf(format, args...), Verdict: vReview, Transient: true}
 }
 
 // checkKinds names every check, for the admin's task editor.
@@ -175,9 +185,18 @@ func (a *App) evidenceCheck(kind, txid, notes string, user *User) checkResult {
 		if strings.Contains(note, "NOT FOUND") {
 			return firmFail("%s", note)
 		}
-		return review("%s", note)
+		return unavailable("%s", note)
 	}
 	if !tx.Status.Confirmed {
+		// Bound to the account before it waits: a waiting submission of a
+		// transaction without this account's proof decimals would only park
+		// someone else's.
+		if proofRule(kind) == "required" && kind != "burn-asset" {
+			tag := proofTag(user.ClaimCode)
+			if _, po := proofOutput(tx, tag); po == nil {
+				return firmFail("proof amount .%s NOT found in any transparent output%s", tag, a.proofMissHint(tx, tag))
+			}
+		}
 		return wait("the transaction is in the mempool and not yet confirmed")
 	}
 	where := fmt.Sprintf("confirmed at height %d", tx.Status.BlockHeight)
@@ -270,6 +289,8 @@ func (a *App) taggedCheck(kind string, tx *chainTx, notes string, user *User) ch
 			return pass("%s; reissues asset %s; %s", found, short(iss.AssetID), note)
 		case vFail:
 			return fail("%s; reissues asset %s; %s", found, short(iss.AssetID), note)
+		case vWait:
+			return unavailable("%s; reissues asset %s; %s", found, short(iss.AssetID), note)
 		}
 		return review("%s; reissues asset %s; %s", found, short(iss.AssetID), note)
 	case "stake":
@@ -345,7 +366,10 @@ func (a *App) ownsIssuance(userID int64, assetID string) (verdict, string) {
 			Txid string `json:"txid"`
 		} `json:"issuance_txin"`
 	}
-	if err := a.fetchJSON("/asset/"+assetID, &info); err != nil || info.IssuanceTxin.Txid == "" {
+	if err := a.fetchJSON("/asset/"+assetID, &info); err != nil {
+		return vWait, "the explorer did not answer for the asset's issuer; checked again shortly"
+	}
+	if info.IssuanceTxin.Txid == "" {
 		return vReview, "issuer unknown; manual review"
 	}
 	for _, t := range a.priorTxids(userID, "issue-asset") {
@@ -615,7 +639,7 @@ func (a *App) delegationCheck(user *User, tx *chainTx) checkResult {
 	}
 	pools, err := a.poolSigners()
 	if err != nil {
-		return review("delegates stake key %s to %s; pool board unavailable, manual review", short(key), short(signer))
+		return unavailable("delegates stake key %s to %s; pool board unavailable, manual review", short(key), short(signer))
 	}
 	if !pools[signer] {
 		return fail("delegates to %s, which is not a pool on the board", short(signer))
@@ -658,7 +682,7 @@ func (a *App) redelegationCheck(user *User, tx *chainTx) checkResult {
 	}
 	pools, err := a.poolSigners()
 	if err != nil {
-		return review("moves the delegation from %s to %s; pool board unavailable, manual review", short(old), short(signer))
+		return unavailable("moves the delegation from %s to %s; pool board unavailable, manual review", short(old), short(signer))
 	}
 	if !pools[signer] {
 		return fail("moves the delegation to %s, which is not a pool on the board", short(signer))
@@ -826,7 +850,7 @@ func (a *App) bridgeInCheck(kind string, tx *chainTx, notes string, user *User, 
 		return fail("%s; the notes name no Ethereum deposit hash (0x...) or Solana deposit address", found)
 	}
 	if err != nil {
-		return review("%s; bridge unavailable (%v), manual review", found, err)
+		return unavailable("%s; bridge unavailable (%v), manual review", found, err)
 	}
 	if len(txids) == 0 {
 		return wait("%s; the bridge has delivered nothing for that %s deposit yet", found, chain)
@@ -877,7 +901,7 @@ func (a *App) bridgeOutCheck(tx *chainTx, po *chainVout, found string) checkResu
 		return fail("%s; %s is not a Compages redemption address", found, short(po.Address))
 	}
 	if err != nil {
-		return review("%s; bridge unavailable (%v), manual review", found, err)
+		return unavailable("%s; bridge unavailable (%v), manual review", found, err)
 	}
 	for _, r := range st.Redemptions {
 		if strings.EqualFold(r.Txid, tx.Txid) {
@@ -907,7 +931,7 @@ func (a *App) releaseCheck(notes, code string) checkResult {
 	}
 	resp, err := proofClient.Get(a.cfg.SumsURL)
 	if err != nil {
-		return review("checksum list unreachable; manual review")
+		return unavailable("checksum list unreachable; manual review")
 	}
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	resp.Body.Close()
@@ -930,7 +954,7 @@ func (a *App) releaseCheck(notes, code string) checkResult {
 	}
 	ps, err := a.peers()
 	if err != nil {
-		return review("checksum of %s matches (OK); public node unreachable, manual review", file)
+		return unavailable("checksum of %s matches (OK); public node unreachable, manual review", file)
 	}
 	sv, seen := peerCodes(ps)[strings.ToLower(code)]
 	if !seen {
