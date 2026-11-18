@@ -268,8 +268,18 @@ func (a *App) handleAdminQueue(w http.ResponseWriter, r *http.Request) {
 			var it queueItem
 			var referrer int64
 			if rrows.Scan(&it.ID, &referrer, &it.Email, &it.Detail, &it.At) == nil {
-				it.Kind, it.UserID, it.Held = "referral", it.ID, held[it.ID]
+				// A referral pays both sides: a hold on either shows, and
+				// approval refuses to pay while one lasts.
+				it.Kind, it.UserID, it.Held = "referral", it.ID, held[it.ID] || held[referrer]
 				it.Title = fmt.Sprintf("Referral by account #%d of account #%d, %d SEQ each", referrer, it.ID, referralBonus)
+				for _, side := range []struct {
+					name string
+					id   int64
+				}{{"referrer", referrer}, {"referee", it.ID}} {
+					if held[side.id] {
+						it.Detail += fmt.Sprintf("; the %s, account #%d, is held: release it to pay the referral, or reject it", side.name, side.id)
+					}
+				}
 				refs = append(refs, it)
 			}
 		}
@@ -450,7 +460,13 @@ func (a *App) handleAdminReferralReview(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	a.logAdmin(r, "referral-"+action, id, 0, note)
-	a.redirect(w, r, "/admin/queue", fmt.Sprintf("Referral of account %d %sd.", id, action), "")
+	var status string
+	a.db.QueryRow("SELECT status FROM referral_reviews WHERE referee_id = ?", id).Scan(&status)
+	if action == "reject" && status == "approved" {
+		a.redirect(w, r, "/admin/queue", fmt.Sprintf("The referral of account %d was already paid; its item is closed.", id), "")
+		return
+	}
+	a.redirect(w, r, "/admin/queue", fmt.Sprintf("Referral of account %d %s.", id, status), "")
 }
 
 func (a *App) handleAdminHold(w http.ResponseWriter, r *http.Request) {
