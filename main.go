@@ -410,6 +410,7 @@ func main() {
 	app.startPayoutFollower()
 	app.startArcaFollower()
 	app.startTelegramBot()
+	clearReservations(db)
 	log.Printf("emissio listening on %s (base path %q, db %s)", cfg.Listen, cfg.BasePath, cfg.DBPath)
 	srv := &http.Server{
 		Addr:              cfg.Listen,

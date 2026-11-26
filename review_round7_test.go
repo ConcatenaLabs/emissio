@@ -286,3 +286,56 @@ func TestReadmeNamesTheDeskLimit(t *testing.T) {
 	}
 	_ = time.Now
 }
+
+// A one-shot command (createadmin, reseed-tasks) opens the database beside
+// the serving process: a reservation of a request in flight there stands.
+func TestCommandLeavesStandingReservations(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "serving.db")
+	db, err := openDB(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, _ := createUser(db, "s@example.com", "h", "0123456789", "")
+	db.Exec("INSERT INTO arca_sends (user_id, purpose, target, asset, atoms, state, ref, ip, created_at) VALUES (?, 'roundtrip', '', '', 0, 'reserved', '', '10.1.1.1', ?)", u, now())
+	db.Close()
+	db = mustOpenDB(path) // as main does before any command
+	seedDB(db)
+	runCommand(db, []string{"reseed-tasks"})
+	var n int
+	db.QueryRow("SELECT COUNT(*) FROM arca_sends WHERE state = 'reserved'").Scan(&n)
+	db.Close()
+	if n != 1 {
+		t.Fatalf("a command removed a standing reservation (%d left)", n)
+	}
+}
+
+// A payment whose reserved row is gone when it is filled in (whatever
+// removed it) is recorded anew, counted, and logged with what was paid.
+func TestFillWithItsRowGone(t *testing.T) {
+	r := newArcaRig(t)
+	var logs bytes.Buffer
+	log.SetOutput(&logs)
+	defer log.SetOutput(os.Stderr)
+	slot := &paySlot{id: 4242, userID: 1, purpose: "roundtrip", ip: "10.7.7.7"}
+	r.app.fillSlot(slot, "target", strings.Repeat("ab", 32), 123456, "sent", "t9")
+	var n int
+	var atoms int64
+	r.app.db.QueryRow("SELECT COUNT(*), COALESCE(SUM(atoms), 0) FROM arca_sends WHERE user_id = 1 AND purpose = 'roundtrip' AND state = 'sent'").Scan(&n, &atoms)
+	if n != 1 || atoms != 123456 {
+		t.Fatalf("the payment left %d rows (%d atoms)", n, atoms)
+	}
+	if !strings.Contains(logs.String(), "payment 4242") || !strings.Contains(logs.String(), "123456 atoms") {
+		t.Fatalf("not logged:\n%s", logs.String())
+	}
+	// In a request: the reservation removed while the wallet pays.
+	os.WriteFile(filepath.Join(r.dir, "slow-send"), []byte("1"), 0o600)
+	go func() {
+		time.Sleep(400 * time.Millisecond)
+		r.app.db.Exec("DELETE FROM arca_sends WHERE state = 'reserved'")
+	}()
+	r.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}})
+	r.app.db.QueryRow("SELECT COUNT(*) FROM arca_sends WHERE user_id = 1 AND purpose = 'roundtrip' AND state = 'sent'").Scan(&n)
+	if r.calls("send") != 1 || n != 2 {
+		t.Fatalf("a payment made while its row was removed: %d payments, %d sent rows", r.calls("send"), n)
+	}
+}

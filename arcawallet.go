@@ -24,6 +24,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -839,7 +840,7 @@ func (a *App) handleArcaRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		id, _ := res.LastInsertId()
-		slot := &paySlot{id: id}
+		slot := &paySlot{id: id, userID: user.ID, purpose: purpose, ip: clientIP(r)}
 		defer func() {
 			// Given back only if the wallet paid nothing: after a payment the
 			// row stays, filled in or marked unrecorded (fillSlot).
@@ -886,8 +887,26 @@ const reserveLife = 30 * 60
 // paySlot is the place a paying request took in arca_sends, and whether
 // the wallet has paid since.
 type paySlot struct {
-	id   int64
-	paid bool
+	id      int64
+	paid    bool
+	userID  int64
+	purpose string
+	ip      string
+}
+
+// clearReservations removes the payment places that requests a stop ended
+// left behind (no release ran). Only the process about to serve calls it,
+// immediately before it listens: one process serves a database, so nothing
+// can still be paying one of them. A one-shot command (createadmin,
+// reseed-tasks) runs beside the serving process and never does, as a request
+// in flight there holds its place. Only `reserved` rows: a payment the
+// wallet made is filled in, or kept as unrecorded.
+func clearReservations(db *sql.DB) {
+	if res, err := db.Exec("DELETE FROM arca_sends WHERE state = 'reserved'"); err != nil {
+		log.Printf("arca: reserved payment places not cleared: %v", err)
+	} else if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("arca: %d payment places left by a stop cleared", n)
+	}
 }
 
 // fillSlot records a payment Emissio made in the place its request took
@@ -897,15 +916,43 @@ type paySlot struct {
 // which carries the row's id and what was paid.
 func (a *App) fillSlot(slot *paySlot, target, asset string, atoms int64, state, ref string) {
 	slot.paid = true
-	_, err := a.db.Exec("UPDATE arca_sends SET target = ?, asset = ?, atoms = ?, state = ?, ref = ?, created_at = ? WHERE id = ?",
+	what := fmt.Sprintf("%d atoms of %s, state %s, ref %s", atoms, asset, state, ref)
+	res, err := a.db.Exec("UPDATE arca_sends SET target = ?, asset = ?, atoms = ?, state = ?, ref = ?, created_at = ? WHERE id = ?",
 		target, asset, atoms, state, ref, now(), slot.id)
 	if err == nil {
+		if n, _ := res.RowsAffected(); n == 1 {
+			return
+		}
+		// Its row is gone, whatever removed it: the payment is written anew,
+		// in full, so it is recorded and counted all the same.
+		log.Printf("arca: payment %d made, and its row was gone: %s; recording it anew", slot.id, what)
+		a.recordAnew(slot, target, asset, atoms, state, ref, what)
 		return
 	}
-	log.Printf("arca: payment %d made but not recorded (%v): %d atoms of %s, state %s, ref %s; its row is kept as unrecorded", slot.id, err, atoms, asset, state, ref)
-	if _, err := a.db.Exec("UPDATE arca_sends SET state = 'unrecorded' WHERE id = ?", slot.id); err != nil {
+	log.Printf("arca: payment %d made but not recorded (%v): %s; its row is kept as unrecorded", slot.id, err, what)
+	if res, err := a.db.Exec("UPDATE arca_sends SET state = 'unrecorded' WHERE id = ?", slot.id); err != nil {
 		log.Printf("arca: payment %d could not be marked unrecorded either: %v", slot.id, err)
+	} else if n, _ := res.RowsAffected(); n == 1 {
+		return
+	} else {
+		log.Printf("arca: payment %d could not be marked unrecorded either: its row was gone", slot.id)
 	}
+	a.recordAnew(slot, target, asset, atoms, "unrecorded", ref, what)
+}
+
+// recordAnew writes a payment the wallet made in a new row, when its own row
+// cannot be written, and removes the old place if it still stands, so the
+// payment is counted once. When even that fails, the log line is its record.
+func (a *App) recordAnew(slot *paySlot, target, asset string, atoms int64, state, ref, what string) {
+	res, err := a.db.Exec("INSERT INTO arca_sends (user_id, purpose, target, asset, atoms, state, ref, ip, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+		slot.userID, slot.purpose, target, asset, atoms, state, ref, slot.ip, now())
+	if err != nil {
+		log.Printf("arca: payment %d not recorded anywhere (%v): account %d, %s, %s: reconcile it by hand", slot.id, err, slot.userID, slot.purpose, what)
+		return
+	}
+	id, _ := res.LastInsertId()
+	a.db.Exec("DELETE FROM arca_sends WHERE id = ? AND state = 'reserved'", slot.id)
+	log.Printf("arca: payment %d recorded anew as row %d (%s)", slot.id, id, state)
 }
 
 func isArcaTask(kind string) bool {

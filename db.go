@@ -178,11 +178,6 @@ func openDB(path string) (*sql.DB, error) {
 	if _, err := db.Exec(counterpartySchema + signalSchema + deskSchema + walletLinkSchema + arcaSchema + arcaCoinSchema + btcNodeSchema); err != nil {
 		panic(err)
 	}
-	// A payment's place reserved by a request that a stop ended: nothing can
-	// still be paying it, as one process serves a database and this runs
-	// before it serves. Only `reserved` rows: a payment the wallet made is
-	// filled in or marked unrecorded, and kept.
-	db.Exec("DELETE FROM arca_sends WHERE state = 'reserved'")
 	if _, err := db.Exec(tokenSchema); err != nil {
 		panic(err)
 	}
