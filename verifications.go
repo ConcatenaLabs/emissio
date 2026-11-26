@@ -230,7 +230,7 @@ func (a *App) telegramHint() string {
 		if name := a.tgBotName(); name != "" {
 			bot = "@" + name
 		}
-		return "Send your account code as a Telegram message to " + bot + " from your own Telegram account. That is all: the bot answers in the chat, and the account is linked at once, with this page showing it. The check reads your message to the bot, not your profile or bio: it confirms the message came from that account and estimates the account's age from its Telegram ID. If the bot says a person must judge the age, enter that account's @username (or the id the bot names) below and press Request verification, within a day of the message."
+		return "Send your account code as a Telegram message to " + bot + " from your own Telegram account. That is all: the bot answers in the chat, and the account is linked at once, with this page showing it. The check reads your message to the bot, not your profile or bio: it confirms the message came from that account and estimates the account's age from its Telegram ID. If the bot says a person must look first, enter that account's @username (or the id the bot names) below and press Request verification, within a day of the message."
 	}
 	return "Add your account code to your Telegram bio (Settings, Bio), then submit your public @username. The bio is checked automatically; account age is assessed by the reviewer."
 }

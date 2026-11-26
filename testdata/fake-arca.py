@@ -2,8 +2,9 @@
 # A stand-in for the arca command line, answering in its shapes from files
 # under its --datadir: requests it made, payments it sent, the mailbox the
 # test fills, every coin the wallet holds or held, coin records, Bitcoin ark
-# receipts. It logs each command it runs, and refuses a command while a file
-# fail-<command> exists.
+# receipts. It logs each command it runs, refuses a command while a file
+# fail-<command> exists (one coin's record while fail-record-<leaf> does),
+# and takes the seconds in slow-send to send.
 import json, os, sys, binascii
 args = sys.argv[1:]
 d = args[args.index("--datadir") + 1]
@@ -14,6 +15,10 @@ def load(name, default):
     try: return json.load(open(path(name)))
     except Exception: return default
 with open(path("calls.log"), "a") as f: f.write(args[0] + "\n")
+if args[0] == "record" and os.path.exists(path("fail-record-" + args[1])):
+    print(json.dumps({"error": {"kind": "refused", "message": "refused: no record of " + args[1] + " now"}})); sys.exit(1)
+if args[0] == "send" and os.path.exists(path("slow-send")):
+    import time; time.sleep(float(open(path("slow-send")).read() or "1"))
 if os.path.exists(path("fail-" + args[0])):
     print(json.dumps({"error": {"kind": "refused", "message": "refused: " + args[0] + " is down"}})); sys.exit(1)
 if args[0] == "receive":

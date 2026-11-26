@@ -109,9 +109,12 @@ type recLeaf struct {
 }
 
 // ownLeaf reads the owner key and nonce of the coin a record is the record
-// of. named is false for a record that names no leaf owner (a board, an
-// accumulator slot); err is set for a record this reader cannot read to its
-// last byte, which is never matched to anything.
+// of, as the library's CoinRecord::owner names them, with one difference: a
+// fill's leaf credited back to its maker, or its rest, names the nonce only
+// (the library takes the key from the order's terms, which this reader does
+// not decode), so it pays no code and is logged once as paying none. err is
+// set for a record this reader cannot read to its last byte, which is never
+// matched to anything.
 func ownLeaf(raw []byte) (l recLeaf, named bool, err error) {
 	r := &recReader{b: raw}
 	v, err := r.u8()
@@ -164,23 +167,30 @@ func (r *recReader) body(tag, depth int) (*recLeaf, error) {
 		if err := r.skip(k * (64 + 4)); err != nil {
 			return nil, err
 		}
-		// LeafRecord: version, template id, template version, owner, owner nonce, ...
-		if len(leaf) < 3+64 {
-			return nil, errRecord
-		}
-		return &recLeaf{hex.EncodeToString(leaf[3:35]), hex.EncodeToString(leaf[35:67])}, nil
-	case 6: // an accumulator slot
+		return innerLeaf(leaf)
+	case 6: // an accumulator slot: u16 length, its record, preimage, signature, time
 		n, err := r.u16()
 		if err != nil {
 			return nil, err
 		}
-		return nil, r.skip(n + 32 + 64 + 4)
-	case 2: // a board
+		slot, err := r.take(n)
+		if err != nil {
+			return nil, err
+		}
+		if err := r.skip(32 + 64 + 4); err != nil {
+			return nil, err
+		}
+		return innerLeaf(slot)
+	case 2: // a board: u16 length, its record
 		n, err := r.u16()
 		if err != nil {
 			return nil, err
 		}
-		return nil, r.skip(n)
+		board, err := r.take(n)
+		if err != nil {
+			return nil, err
+		}
+		return innerLeaf(board)
 	case 1, 3, 5, 7, 8, 9, 10: // a transfer
 		if err := r.inputs(depth); err != nil {
 			return nil, err
@@ -265,6 +275,17 @@ func (r *recReader) body(tag, depth int) (*recLeaf, error) {
 		return nil, errRecord
 	}
 	return nil, errRecord
+}
+
+// innerLeaf reads the owner and nonce of a batch leaf, a board or an
+// accumulator slot from its own record, which begins the same way in all
+// three (record.rs, board.rs and accumulator.rs `to_bytes`): version,
+// template id, template version, owner key, owner nonce.
+func innerLeaf(rec []byte) (*recLeaf, error) {
+	if len(rec) < 3+64 {
+		return nil, errRecord
+	}
+	return &recLeaf{hex.EncodeToString(rec[3:35]), hex.EncodeToString(rec[35:67])}, nil
 }
 
 // inputs skips a transfer's inputs: each a full record, its checkpoint

@@ -521,8 +521,10 @@ func TestUnansweredAnswerIsSentAgain(t *testing.T) {
 	if st, _, _ := g.verif(id); st != "verified" || g.bot.answers(oldTG) != 0 {
 		t.Fatalf("first read: %s, %d answers", st, g.bot.answers(oldTG))
 	}
-	g.app.pollTelegram(0)
-	g.app.pollTelegram(0)
+	for i := 0; i < 3; i++ {
+		g.app.db.Exec("UPDATE tg_messages SET next_try_at = 0") // each wait has passed
+		g.app.pollTelegram(0)
+	}
 	if n := g.bot.answers(oldTG); n != 1 {
 		t.Fatalf("%d answers after the Bot API recovered", n)
 	}
@@ -544,7 +546,8 @@ func TestRefusesToStartOverBrokenGuards(t *testing.T) {
 		db.Exec(`INSERT INTO arca_codes (user_id, purpose, request, owner, owner_nonce, paid_leaf, paid_at, created_at) VALUES (?, 'code', 'r', 'o', 'n', ?, 1, 0)`,
 			uid, map[bool]string{true: "secret-leaf", false: "other"}[i < 2])
 	}
-	before := conflictRows(db, guardConflicts["arca_codes_paid_leaf"])
+	found, _ := guardConflicts(db)
+	before := rowList(found["arca_codes_paid_leaf"])
 	db.Close()
 	if _, err := openDB(path); err == nil || !strings.Contains(err.Error(), "arca_codes rows 1, 2 ") || strings.Contains(err.Error(), "secret-leaf") || before != "1, 2" {
 		t.Fatalf("codes: %v (the query before: %q)", err, before)
@@ -563,7 +566,8 @@ func TestRefusesToStartOverBrokenGuards(t *testing.T) {
 		db.Exec(`INSERT INTO verifications (user_id, platform, handle, status, check_note, created_at) VALUES (?, 'telegram', ?, 'verified', ?, 0)`,
 			u, name, "message verified from @"+name+" (id "+tgID+"); account created ~Sep 2014")
 	}
-	before = conflictRows(db, guardConflicts["verifications_telegram_id"])
+	found, _ = guardConflicts(db)
+	before = rowList(found["verifications_telegram_id"])
 	db.Close()
 	if _, err := openDB(path); err == nil || !strings.Contains(err.Error(), "verifications rows 1, 2 ") || strings.Contains(err.Error(), "name_a") || before != "1, 2" {
 		t.Fatalf("telegram: %v (the query before: %q)", err, before)

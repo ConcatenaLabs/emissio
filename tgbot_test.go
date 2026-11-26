@@ -29,7 +29,9 @@ type fakeBot struct {
 	replies []map[string]string
 	gets    int
 	down    bool
-	failing int // sendMessage calls still to refuse
+	failing int             // sendMessage calls still to refuse
+	blocked map[string]bool // chats that blocked the bot: refused for ever
+	sends   map[string]int  // sendMessage calls, by chat
 	srv     *httptest.Server
 }
 
@@ -74,6 +76,15 @@ func newFakeBot(t *testing.T) *fakeBot {
 			}
 			json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": out})
 		case "sendMessage":
+			if f.sends == nil {
+				f.sends = map[string]int{}
+			}
+			f.sends[r.Form.Get("chat_id")]++
+			if f.blocked[r.Form.Get("chat_id")] {
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte(`{"ok":false,"error_code":403,"description":"Forbidden: bot was blocked by the user"}`))
+				return
+			}
 			if f.failing > 0 {
 				f.failing--
 				w.WriteHeader(http.StatusTooManyRequests)
@@ -207,7 +218,7 @@ func TestBotVerifiesOnTheMessage(t *testing.T) {
 	if bonus != verificationBonus {
 		t.Fatalf("bonus %d", bonus)
 	}
-	if a := g.bot.last(oldTG); !strings.HasPrefix(a, "Verified.") || !strings.Contains(a, code) {
+	if a := g.bot.last(oldTG); !strings.Contains(a, "it is linked now") || !strings.Contains(a, code) {
 		t.Fatalf("answer: %q", a)
 	}
 	page := get(t, c, g.srv.URL+"/account")
