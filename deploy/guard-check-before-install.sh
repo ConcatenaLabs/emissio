@@ -27,8 +27,8 @@ if [ ! -e "$db" ]; then
 fi
 
 check="$dir/emissio.check"
+trap 'rm -f "$check"' EXIT # set first, so an interrupted copy leaves nothing behind
 install -m 755 "$bin" "$check"
-trap 'rm -f "$check"' EXIT
 
 if [ "$(id -un)" = "$user" ]; then
     as_user=()

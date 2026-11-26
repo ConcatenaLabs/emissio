@@ -23,63 +23,78 @@ func theirCode() string {
 	return "arca:" + hex.EncodeToString(det)
 }
 
-// 1. A payment's reserved place left by a stop (no deferred release ran)
-// binds nothing: one older than a request can take is not counted, and a
-// start removes every one before serving.
-func TestStaleReservationsFreed(t *testing.T) {
+// 1. A payment's place binds for as long as it stands, however long its
+// request waits behind the wallet: three in flight for over half an hour
+// still fill the address's limit. A start of the service removes the places
+// a stop left reserved, and keeps every place whose payment was begun.
+func TestReservationsBindUntilTheStart(t *testing.T) {
 	r := newArcaRig(t)
-	reserve := func(age int64) {
-		for i := 0; i < paymentsPerTask; i++ {
-			r.app.db.Exec("INSERT INTO arca_sends (user_id, purpose, target, asset, atoms, state, ref, ip, created_at) VALUES (1, 'roundtrip', '', '', 0, 'reserved', '', '10.7.7.7', ?)", now()-age)
-		}
+	for i := 0; i < arcaSendsDay; i++ {
+		u, _ := createUser(r.app.db, fmt.Sprintf("q%d@example.com", i), "h", fmt.Sprintf("00000002%02d", i), "")
+		r.app.db.Exec("INSERT INTO arca_sends (user_id, purpose, target, asset, atoms, state, ref, ip, created_at) VALUES (?, 'roundtrip', '', '', 0, ?, '', '10.7.7.7', ?)",
+			u, []string{"reserved", "paying", "reserved"}[i], now()-31*60)
 	}
-	reserve(31 * 60)
-	if m := r.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}}); !strings.Contains(m, "Emissio has paid your receive code") {
-		t.Fatalf("with old reserved places: %q", m)
+	if m := r.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}}); !strings.Contains(m, "from your network today") || r.calls("send") != 0 {
+		t.Fatalf("a fourth account behind the address, with three requests in flight for 31 minutes: %q, %d payments", m, r.calls("send"))
 	}
-	r.app.db.Exec("DELETE FROM arca_sends")
-	reserve(0) // fresh: a request could still be under way
 	r.restart()
-	var n int
-	r.app.db.QueryRow("SELECT COUNT(*) FROM arca_sends WHERE state = 'reserved'").Scan(&n)
-	if n != 0 {
-		t.Fatalf("%d reserved places outlived a start", n)
-	}
-	if m := r.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}}); !strings.Contains(m, "Emissio has paid your receive code") {
-		t.Fatalf("after a start: %q", m)
+	var reserved, paying int
+	r.app.db.QueryRow("SELECT COUNT(*) FROM arca_sends WHERE state = 'reserved'").Scan(&reserved)
+	r.app.db.QueryRow("SELECT COUNT(*) FROM arca_sends WHERE state = 'paying'").Scan(&paying)
+	if reserved != 0 || paying != 1 {
+		t.Fatalf("after a start: %d reserved, %d paying", reserved, paying)
 	}
 }
 
-// 2. A payment the wallet made keeps its row when the row cannot be filled
-// in: marked for reconciliation, counted by the limits, its id logged.
-func TestUnrecordedPaymentKept(t *testing.T) {
+// 2. The intent is recorded before the act: a payment is begun only once
+// its row reads `paying`, and from then on nothing removes the row. The
+// wallet pays and every later write fails: after a restart the row is still
+// there, counted, and on the desk. The `paying` write fails: the wallet is
+// never asked to pay.
+func TestPayingRowOutlivesEveryFailure(t *testing.T) {
 	r := newArcaRig(t)
 	var logs bytes.Buffer
 	log.SetOutput(&logs)
 	defer log.SetOutput(os.Stderr)
-	r.app.db.Exec("CREATE TRIGGER no_fill BEFORE UPDATE ON arca_sends WHEN NEW.state = 'sent' BEGIN SELECT RAISE(ABORT, 'refused'); END")
+	r.app.db.Exec("CREATE TRIGGER no_fill BEFORE UPDATE ON arca_sends WHEN NEW.state != 'paying' BEGIN SELECT RAISE(ABORT, 'refused'); END")
+	r.app.db.Exec("CREATE TRIGGER no_anew BEFORE INSERT ON arca_sends WHEN NEW.state != 'reserved' BEGIN SELECT RAISE(ABORT, 'refused'); END")
 	r.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}})
 	if r.calls("send") != 1 {
 		t.Fatal("no payment made")
 	}
 	var id int64
-	var state string
-	r.app.db.QueryRow("SELECT id, state FROM arca_sends").Scan(&id, &state)
-	if id == 0 || state != "unrecorded" {
-		t.Fatalf("the payment's row: id %d, state %q", id, state)
+	r.app.db.QueryRow("SELECT id FROM arca_sends").Scan(&id)
+	if id == 0 || !strings.Contains(logs.String(), fmt.Sprintf("payment %d", id)) {
+		t.Fatalf("row %d; log:\n%s", id, logs.String())
 	}
-	if !strings.Contains(logs.String(), fmt.Sprintf("payment %d made but not recorded", id)) {
-		t.Fatalf("not logged with its row id:\n%s", logs.String())
-	}
-	// Neither write can be made: the row is still not given back.
-	r.app.db.Exec("DELETE FROM arca_sends")
 	r.app.db.Exec("DROP TRIGGER no_fill")
-	r.app.db.Exec("CREATE TRIGGER no_write BEFORE UPDATE ON arca_sends BEGIN SELECT RAISE(ABORT, 'refused'); END")
-	r.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}})
+	r.app.db.Exec("DROP TRIGGER no_anew")
+	r.restart()
+	var state string
+	r.app.db.QueryRow("SELECT state FROM arca_sends WHERE id = ?", id).Scan(&state)
+	if state != "paying" {
+		t.Fatalf("after a restart the payment's row is %q", state)
+	}
+	r.app.db.Exec("UPDATE arca_sends SET created_at = created_at - 3600 WHERE id = ?", id)
+	r.app.db.Exec("UPDATE users SET is_admin = 1 WHERE id = 1")
+	if page := get(t, r.client, r.srv.URL+"/admin/queue"); !strings.Contains(page, fmt.Sprintf("Payment %d", id)) || !strings.Contains(page, "reconcile it by hand") {
+		t.Fatal("the desk does not show the payment to reconcile")
+	}
+	r.app.db.Exec("UPDATE users SET is_admin = 0 WHERE id = 1")
+	for i := 0; i < paymentsPerTask-1; i++ {
+		r.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}})
+	}
+	if m := r.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}}); !strings.Contains(m, "paid you 3 times") || r.calls("send") != paymentsPerTask {
+		t.Fatalf("the begun payment is not counted: %q, %d payments", m, r.calls("send"))
+	}
+	// The `paying` write fails: nothing is paid.
+	r2 := newArcaRig(t)
+	r2.app.db.Exec("CREATE TRIGGER no_paying BEFORE UPDATE ON arca_sends WHEN NEW.state = 'paying' BEGIN SELECT RAISE(ABORT, 'refused'); END")
+	m := r2.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}})
 	var n int
-	r.app.db.QueryRow("SELECT COUNT(*) FROM arca_sends").Scan(&n)
-	if r.calls("send") != 2 || n != 1 || !strings.Contains(logs.String(), "could not be marked unrecorded either") {
-		t.Fatalf("with no write possible: %d payments, %d rows", r.calls("send"), n)
+	r2.app.db.QueryRow("SELECT COUNT(*) FROM arca_sends").Scan(&n)
+	if r2.calls("send") != 0 || n != 0 || !strings.Contains(m, "could not pay") {
+		t.Fatalf("with the paying write refused: %d payments, %d rows, %q", r2.calls("send"), n, m)
 	}
 }
 
@@ -331,7 +346,7 @@ func TestFillWithItsRowGone(t *testing.T) {
 	os.WriteFile(filepath.Join(r.dir, "slow-send"), []byte("1"), 0o600)
 	go func() {
 		time.Sleep(400 * time.Millisecond)
-		r.app.db.Exec("DELETE FROM arca_sends WHERE state = 'reserved'")
+		r.app.db.Exec("DELETE FROM arca_sends WHERE state IN ('reserved', 'paying')") // whatever removed it
 	}()
 	r.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}})
 	r.app.db.QueryRow("SELECT COUNT(*) FROM arca_sends WHERE user_id = 1 AND purpose = 'roundtrip' AND state = 'sent'").Scan(&n)
