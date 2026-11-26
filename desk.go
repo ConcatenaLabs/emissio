@@ -246,7 +246,7 @@ func (a *App) deskHealth() []deskLine {
 	// A payment begun and never recorded: the wallet may have paid. Shown
 	// once it is older than a paying request can take (its wallet calls
 	// come to under twenty minutes, under one wallet lock).
-	if rows, err := a.db.Query("SELECT id, user_id, purpose, created_at FROM arca_sends WHERE state = 'paying' AND created_at < ? ORDER BY id", now()-20*60); err == nil {
+	if rows, err := a.db.Query("SELECT id, user_id, purpose, created_at FROM arca_sends WHERE state = 'begun' AND created_at < ? ORDER BY id", now()-20*60); err == nil {
 		for rows.Next() {
 			var id, uid, at int64
 			var purpose string

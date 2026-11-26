@@ -817,7 +817,7 @@ func (a *App) handleArcaRequest(w http.ResponseWriter, r *http.Request) {
 		// request waits behind the wallet. One whose request was never begun
 		// is given back by that request, or, if a stop ended it, by the next
 		// start of the service (clearReservations); one whose payment was
-		// begun (`paying`, then filled in) is never removed.
+		// begun (marked `begun`, then filled in) is never removed.
 		unlockIP := a.claims.lock("arca-ip:" + clientIP(r))
 		var mine, ipToday int64
 		a.db.QueryRow("SELECT COUNT(*) FROM arca_sends WHERE user_id = ? AND purpose = ?", user.ID, purpose).Scan(&mine)
@@ -841,7 +841,7 @@ func (a *App) handleArcaRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		id, _ := res.LastInsertId()
 		slot := &paySlot{id: id, userID: user.ID, purpose: purpose, ip: clientIP(r)}
-		// Given back only while the payment was never begun: a `paying` row
+		// Given back only while the payment was never begun: a `begun` row
 		// is never removed.
 		defer a.db.Exec("DELETE FROM arca_sends WHERE id = ? AND state = 'reserved'", slot.id)
 		switch task.CheckKind {
@@ -859,7 +859,7 @@ func (a *App) handleArcaRequest(w http.ResponseWriter, r *http.Request) {
 // for a wallet that will not pay the one shown. No new payment is made.
 func (a *App) renewReturnCode(w http.ResponseWriter, r *http.Request, user *User, back, purpose string) {
 	var sentAt int64
-	if a.db.QueryRow("SELECT created_at FROM arca_sends WHERE user_id = ? AND purpose = ? AND state NOT IN ('reserved', 'paying') ORDER BY id DESC LIMIT 1", user.ID, purpose).Scan(&sentAt) != nil {
+	if a.db.QueryRow("SELECT created_at FROM arca_sends WHERE user_id = ? AND purpose = ? AND state NOT IN ('reserved', 'begun') ORDER BY id DESC LIMIT 1", user.ID, purpose).Scan(&sentAt) != nil {
 		a.redirect(w, r, back, "", "Emissio has not paid you yet for this task.")
 		return
 	}
@@ -889,7 +889,7 @@ type paySlot struct {
 // so nothing can still hold one of them. A one-shot command (createadmin,
 // reseed-tasks) runs beside the serving process and never does, as a request
 // in flight there holds its place. Only `reserved` rows: a payment begun
-// (`paying`) is never removed.
+// (`begun`) is never removed.
 func clearReservations(db *sql.DB) {
 	if res, err := db.Exec("DELETE FROM arca_sends WHERE state = 'reserved'"); err != nil {
 		log.Printf("arca: reserved payment places not cleared: %v", err)
@@ -899,14 +899,14 @@ func clearReservations(db *sql.DB) {
 }
 
 // beginPayment records the intent before the act: the request's place is
-// moved to `paying` by a checked write before the first wallet call that
+// moved to `begun` by a checked write before the first wallet call that
 // can pay, and the wallet is not asked if that write did not land. From
 // then on nothing removes the row: it counts toward both limits, the
 // readers of the newest payment skip it, and while it is not filled in
 // (the wallet's answer lost, a stop, a write that failed) the desk shows it
 // as a payment to reconcile by hand.
 func (a *App) beginPayment(slot *paySlot) error {
-	res, err := a.db.Exec("UPDATE arca_sends SET state = 'paying', created_at = ? WHERE id = ? AND state = 'reserved'", now(), slot.id)
+	res, err := a.db.Exec("UPDATE arca_sends SET state = 'begun', created_at = ? WHERE id = ? AND state = 'reserved'", now(), slot.id)
 	if err != nil {
 		return err
 	}
@@ -916,16 +916,16 @@ func (a *App) beginPayment(slot *paySlot) error {
 	return nil
 }
 
-// fillSlot records a payment Emissio made in its `paying` row. If the row
-// cannot be written, it stays `paying`, counted and shown on the desk, and
+// fillSlot records a payment Emissio made in its `begun` row. If the row
+// cannot be written, it stays `begun`, counted and shown on the desk, and
 // the log line carries the row's id and what was paid; if it is gone,
 // whatever removed it, the payment is written anew.
 func (a *App) fillSlot(slot *paySlot, target, asset string, atoms int64, state, ref string) {
 	what := fmt.Sprintf("%d atoms of %s, state %s, ref %s", atoms, asset, state, ref)
-	res, err := a.db.Exec("UPDATE arca_sends SET target = ?, asset = ?, atoms = ?, state = ?, ref = ?, created_at = ? WHERE id = ? AND state = 'paying'",
+	res, err := a.db.Exec("UPDATE arca_sends SET target = ?, asset = ?, atoms = ?, state = ?, ref = ?, created_at = ? WHERE id = ? AND state = 'begun'",
 		target, asset, atoms, state, ref, now(), slot.id)
 	if err != nil {
-		log.Printf("arca: payment %d made but not recorded (%v): %s; its row stays paying, to reconcile by hand", slot.id, err, what)
+		log.Printf("arca: payment %d made but not recorded (%v): %s; its row stays begun, to reconcile by hand", slot.id, err, what)
 		return
 	}
 	if n, _ := res.RowsAffected(); n == 1 {
@@ -1018,7 +1018,7 @@ func (a *App) payCode(w http.ResponseWriter, r *http.Request, user *User, back, 
 		return
 	}
 	if err := a.arca(3*time.Minute, &sent, "send", req, "--amount", strconv.FormatInt(atoms, 10), "--asset", asset, "--route", "leaf"); err != nil {
-		log.Printf("arca: send to user %d (payment %d, which stays paying, to reconcile by hand): %v", user.ID, slot.id, err)
+		log.Printf("arca: send to user %d (payment %d, which stays begun, to reconcile by hand): %v", user.ID, slot.id, err)
 		a.redirect(w, r, back, "", "Emissio could not pay that code: "+err.Error())
 		return
 	}
@@ -1161,7 +1161,7 @@ func (a *App) payInvoice(w http.ResponseWriter, r *http.Request, user *User, bac
 		return
 	}
 	if err := a.arca(3*time.Minute, &out, "lightning", "pay", inv); err != nil {
-		log.Printf("arca: invoice for user %d (payment %d, which stays paying, to reconcile by hand): %v", user.ID, slot.id, err)
+		log.Printf("arca: invoice for user %d (payment %d, which stays begun, to reconcile by hand): %v", user.ID, slot.id, err)
 		if strings.Contains(err.Error(), "is paying this invoice already") {
 			a.redirect(w, r, back, "", "Emissio is already paying that invoice, or has paid it: asking again pays nothing more. Keep your web wallet open, its tab in front or behind, and the payment completes there. To be paid again, make a new receive code.")
 			return
@@ -1265,7 +1265,7 @@ func (a *App) arcaCheck(kind string, user *User) checkResult {
 	switch kind {
 	case "arca-invoice":
 		var state string
-		a.db.QueryRow("SELECT state FROM arca_sends WHERE user_id = ? AND purpose = ? AND state NOT IN ('reserved', 'paying') ORDER BY id DESC LIMIT 1", user.ID, purpose).Scan(&state)
+		a.db.QueryRow("SELECT state FROM arca_sends WHERE user_id = ? AND purpose = ? AND state NOT IN ('reserved', 'begun') ORDER BY id DESC LIMIT 1", user.ID, purpose).Scan(&state)
 		switch state {
 		case "":
 			return fail("Emissio has not paid an invoice of yours yet: paste one above")
@@ -1276,7 +1276,7 @@ func (a *App) arcaCheck(kind string, user *User) checkResult {
 	case "arca-roundtrip", "arca-name":
 		var asset string
 		var atoms, sentAt int64
-		if a.db.QueryRow("SELECT asset, atoms, created_at FROM arca_sends WHERE user_id = ? AND purpose = ? AND state NOT IN ('reserved', 'paying') ORDER BY id DESC LIMIT 1", user.ID, purpose).Scan(&asset, &atoms, &sentAt) != nil {
+		if a.db.QueryRow("SELECT asset, atoms, created_at FROM arca_sends WHERE user_id = ? AND purpose = ? AND state NOT IN ('reserved', 'begun') ORDER BY id DESC LIMIT 1", user.ID, purpose).Scan(&asset, &atoms, &sentAt) != nil {
 			return fail("Emissio has not paid your receive code yet: paste it above and ask Emissio to pay you")
 		}
 		var wrong *arcaCode
@@ -1386,7 +1386,7 @@ func (a *App) arcaViewFor(user *User, task *Task) *arcaView {
 		ok, from := a.renewable(user.ID, purpose, c)
 		v.Renew, v.RenewAt = ok, from
 	}
-	a.db.QueryRow("SELECT created_at FROM arca_sends WHERE user_id = ? AND purpose = ? AND state NOT IN ('reserved', 'paying') ORDER BY id DESC LIMIT 1", user.ID, purpose).Scan(&v.SentAt)
+	a.db.QueryRow("SELECT created_at FROM arca_sends WHERE user_id = ? AND purpose = ? AND state NOT IN ('reserved', 'begun') ORDER BY id DESC LIMIT 1", user.ID, purpose).Scan(&v.SentAt)
 	v.Sent = v.SentAt > 0
 	if v.Linked && v.Available {
 		res := a.arcaCheck(task.CheckKind, user)

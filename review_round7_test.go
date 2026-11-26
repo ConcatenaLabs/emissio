@@ -32,7 +32,7 @@ func TestReservationsBindUntilTheStart(t *testing.T) {
 	for i := 0; i < arcaSendsDay; i++ {
 		u, _ := createUser(r.app.db, fmt.Sprintf("q%d@example.com", i), "h", fmt.Sprintf("00000002%02d", i), "")
 		r.app.db.Exec("INSERT INTO arca_sends (user_id, purpose, target, asset, atoms, state, ref, ip, created_at) VALUES (?, 'roundtrip', '', '', 0, ?, '', '10.7.7.7', ?)",
-			u, []string{"reserved", "paying", "reserved"}[i], now()-31*60)
+			u, []string{"reserved", "begun", "reserved"}[i], now()-31*60)
 	}
 	if m := r.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}}); !strings.Contains(m, "from your network today") || r.calls("send") != 0 {
 		t.Fatalf("a fourth account behind the address, with three requests in flight for 31 minutes: %q, %d payments", m, r.calls("send"))
@@ -40,23 +40,23 @@ func TestReservationsBindUntilTheStart(t *testing.T) {
 	r.restart()
 	var reserved, paying int
 	r.app.db.QueryRow("SELECT COUNT(*) FROM arca_sends WHERE state = 'reserved'").Scan(&reserved)
-	r.app.db.QueryRow("SELECT COUNT(*) FROM arca_sends WHERE state = 'paying'").Scan(&paying)
+	r.app.db.QueryRow("SELECT COUNT(*) FROM arca_sends WHERE state = 'begun'").Scan(&paying)
 	if reserved != 0 || paying != 1 {
 		t.Fatalf("after a start: %d reserved, %d paying", reserved, paying)
 	}
 }
 
 // 2. The intent is recorded before the act: a payment is begun only once
-// its row reads `paying`, and from then on nothing removes the row. The
+// its row reads `begun`, and from then on nothing removes the row. The
 // wallet pays and every later write fails: after a restart the row is still
-// there, counted, and on the desk. The `paying` write fails: the wallet is
+// there, counted, and on the desk. The `begun` write fails: the wallet is
 // never asked to pay.
 func TestPayingRowOutlivesEveryFailure(t *testing.T) {
 	r := newArcaRig(t)
 	var logs bytes.Buffer
 	log.SetOutput(&logs)
 	defer log.SetOutput(os.Stderr)
-	r.app.db.Exec("CREATE TRIGGER no_fill BEFORE UPDATE ON arca_sends WHEN NEW.state != 'paying' BEGIN SELECT RAISE(ABORT, 'refused'); END")
+	r.app.db.Exec("CREATE TRIGGER no_fill BEFORE UPDATE ON arca_sends WHEN NEW.state != 'begun' BEGIN SELECT RAISE(ABORT, 'refused'); END")
 	r.app.db.Exec("CREATE TRIGGER no_anew BEFORE INSERT ON arca_sends WHEN NEW.state != 'reserved' BEGIN SELECT RAISE(ABORT, 'refused'); END")
 	r.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}})
 	if r.calls("send") != 1 {
@@ -72,7 +72,7 @@ func TestPayingRowOutlivesEveryFailure(t *testing.T) {
 	r.restart()
 	var state string
 	r.app.db.QueryRow("SELECT state FROM arca_sends WHERE id = ?", id).Scan(&state)
-	if state != "paying" {
+	if state != "begun" {
 		t.Fatalf("after a restart the payment's row is %q", state)
 	}
 	r.app.db.Exec("UPDATE arca_sends SET created_at = created_at - 3600 WHERE id = ?", id)
@@ -87,9 +87,9 @@ func TestPayingRowOutlivesEveryFailure(t *testing.T) {
 	if m := r.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}}); !strings.Contains(m, "paid you 3 times") || r.calls("send") != paymentsPerTask {
 		t.Fatalf("the begun payment is not counted: %q, %d payments", m, r.calls("send"))
 	}
-	// The `paying` write fails: nothing is paid.
+	// The `begun` write fails: nothing is paid.
 	r2 := newArcaRig(t)
-	r2.app.db.Exec("CREATE TRIGGER no_paying BEFORE UPDATE ON arca_sends WHEN NEW.state = 'paying' BEGIN SELECT RAISE(ABORT, 'refused'); END")
+	r2.app.db.Exec("CREATE TRIGGER no_paying BEFORE UPDATE ON arca_sends WHEN NEW.state = 'begun' BEGIN SELECT RAISE(ABORT, 'refused'); END")
 	m := r2.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}})
 	var n int
 	r2.app.db.QueryRow("SELECT COUNT(*) FROM arca_sends").Scan(&n)
@@ -346,7 +346,7 @@ func TestFillWithItsRowGone(t *testing.T) {
 	os.WriteFile(filepath.Join(r.dir, "slow-send"), []byte("1"), 0o600)
 	go func() {
 		time.Sleep(400 * time.Millisecond)
-		r.app.db.Exec("DELETE FROM arca_sends WHERE state IN ('reserved', 'paying')") // whatever removed it
+		r.app.db.Exec("DELETE FROM arca_sends WHERE state IN ('reserved', 'begun')") // whatever removed it
 	}()
 	r.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}})
 	r.app.db.QueryRow("SELECT COUNT(*) FROM arca_sends WHERE user_id = 1 AND purpose = 'roundtrip' AND state = 'sent'").Scan(&n)
