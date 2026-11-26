@@ -15,7 +15,7 @@ import (
 // realRecord is a coin record a real arca wallet made on a private chain,
 // with the owner nonce that wallet keeps for the coin in its own store.
 type realRecord struct {
-	Kind, Nonce, Record string
+	Name, Kind, Nonce, Record string
 }
 
 var (
@@ -48,6 +48,22 @@ func realOf(t *testing.T, kind string, size int) []byte {
 		}
 	}
 	t.Fatalf("no real %s record of %d bytes", kind, size)
+	return nil
+}
+
+// realNamed is the real record the fixture names: "paid", a transfer's coin;
+// "spends-paid", a coin of the transfer that spent it; "change-of-paid", the
+// other coin of the transfer that made "paid"; "spends-fill", a version 2
+// transfer spending the fill "fill-paid", which spent the batch leaf
+// "in-spends-fill".
+func realNamed(t *testing.T, name string) []byte {
+	for _, r := range realRecords(t) {
+		if r.Name == name {
+			b, _ := hex.DecodeString(r.Record)
+			return b
+		}
+	}
+	t.Fatalf("no real record %q", name)
 	return nil
 }
 

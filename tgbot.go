@@ -81,10 +81,10 @@ var tgIDNote = regexp.MustCompile(`\(id (\d+)\)`)
 // migrateTelegramIDs gives every Telegram verification made before the id
 // was recorded the id its check note names, then guards the id: one
 // verified Emissio account per Telegram account. A database where one id
-// already vouches for two accounts cannot take the index; it is left
-// without it, loudly, and the poller still files nothing for an id with a
-// live request.
-func migrateTelegramIDs(db *sql.DB) {
+// already vouches for two accounts cannot take the index, and Emissio does
+// not start until a reviewer has rejected all but one (the error names the
+// rows by id).
+func migrateTelegramIDs(db *sql.DB) error {
 	rows, err := db.Query("SELECT id, check_note FROM verifications WHERE platform = 'telegram' AND evidence = ''")
 	if err == nil {
 		type fix struct {
@@ -109,8 +109,10 @@ func migrateTelegramIDs(db *sql.DB) {
 	}
 	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS verifications_telegram_id ON verifications(evidence)
 		WHERE platform = 'telegram' AND status = 'verified' AND evidence != ''`); err != nil {
-		log.Printf("WARNING: verifications_telegram_id not created (%v): one Telegram account vouches for two Emissio accounts; reject one and restart", err)
+		return errGuard{"verifications rows " + conflictRows(db, guardConflicts["verifications_telegram_id"]) +
+			" are verified by one Telegram account each (verifications_telegram_id cannot be created): reject all but one of each group, then start again"}
 	}
+	return nil
 }
 
 // tgError is an error from the Bot API with the bot's token taken out.
@@ -211,8 +213,35 @@ func (a *App) pollTelegram(wait int) error {
 		last = u.UpdateID
 		a.db.Exec("INSERT INTO kv (key, value) VALUES ('tg_offset', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", strconv.FormatInt(last, 10))
 	}
+	a.tgRetryAnswers()
 	a.db.Exec("DELETE FROM tg_messages WHERE sent_at < ?", now()-tgKeep)
 	return nil
+}
+
+// tgRetryAnswers sends again the answers whose sending failed, for the
+// messages kept, so a sender is never left with silence by a Bot API that
+// refused one answer: a few each read, oldest first.
+func (a *App) tgRetryAnswers() {
+	rows, err := a.db.Query(`SELECT update_id, chat_id, answer FROM tg_messages WHERE answered = 0 AND answer != '' AND sent_at > ?
+		ORDER BY update_id LIMIT 20`, now()-tgKeep)
+	if err != nil {
+		return
+	}
+	type due struct {
+		id, chat int64
+		text     string
+	}
+	var all []due
+	for rows.Next() {
+		var d due
+		if rows.Scan(&d.id, &d.chat, &d.text) == nil {
+			all = append(all, d)
+		}
+	}
+	rows.Close()
+	for _, d := range all {
+		a.tgAnswer(d.id, d.chat, d.text)
+	}
 }
 
 // tgCodeRe is what may be an account code in a message: ten hex digits.

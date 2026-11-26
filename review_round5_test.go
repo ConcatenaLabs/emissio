@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -243,7 +244,12 @@ func TestAttributionIsOneWrite(t *testing.T) {
 	r.post("web-wallet-pay", "wallet", url.Values{})
 	r.coin("atomic", "100000000", r.app.codeOf(1, "code"))
 	r.app.db.Exec("CREATE TRIGGER no_pay BEFORE UPDATE OF paid_at ON arca_codes BEGIN SELECT RAISE(ABORT, 'refused'); END")
-	r.app.followArca()
+	r.app.followArca() // the write is interrupted between the code's payment and the coin's read mark
+	var readAt, tries int64
+	r.app.db.QueryRow("SELECT read_at, tries FROM arca_coins WHERE leaf_id = 'atomic'").Scan(&readAt, &tries)
+	if readAt != 0 || tries != 1 || r.app.codeOf(1, "code").PaidAt != 0 {
+		t.Fatalf("after the interrupted write: read_at %d, tries %d", readAt, tries)
+	}
 	r.app.db.Exec("DROP TRIGGER no_pay")
 	r.app.db.Exec("UPDATE arca_coins SET next_at = 0")
 	r.app.followArca()
@@ -434,3 +440,141 @@ const handCheckQuery = `SELECT COUNT(*) FROM arca_codes c WHERE c.paid_at != 0 A
 	(SELECT 1 FROM arca_coins k WHERE k.leaf_id = c.paid_leaf AND k.code_id = c.id AND k.counted = 1)`
 
 var _ = strconv.Itoa
+
+// B1 on records the real wallet library made: a coin of a transfer that
+// spent a coin which paid code C pays only the code of its own leaf; the
+// change coin of the transfer that paid C pays nothing; the coin that paid C
+// pays C. In format version 1, and in version 2 with a batch leaf two
+// coins back in the history of a transfer that spends a fill.
+func TestRealChainAndChange(t *testing.T) {
+	for _, set := range [][3]string{{"paid", "spends-paid", "change-of-paid"}, {"in-spends-fill", "spends-fill", ""}} {
+		r := newArcaRig(t)
+		paid, spends := realNamed(t, set[0]), realNamed(t, set[1])
+		if !strings.Contains(hex.EncodeToString(spends), hex.EncodeToString(paid[1:])) {
+			t.Fatalf("%s does not carry %s whole", set[1], set[0])
+		}
+		lp, okp, _ := ownLeaf(paid)
+		ls, _, _ := ownLeaf(spends)
+		if !okp || lp.Owner == "" {
+			t.Fatalf("%s names no owner", set[0])
+		}
+		c := r.addCode("code", lp.Owner, lp.Nonce)
+		d := r.addCode("swap", ls.Owner, ls.Nonce)
+		r.coin("spends", "100", nil)
+		r.rec("spends", hex.EncodeToString(spends))
+		if set[2] != "" {
+			r.coin("change", "100", nil)
+			r.rec("change", hex.EncodeToString(realNamed(t, set[2])))
+		}
+		r.app.followArca()
+		if p, _ := r.paidAt(c.ID); p != 0 {
+			t.Fatalf("%s: the spending coin or the change paid the code of the coin they come from", set[1])
+		}
+		if p, leaf := r.paidAt(d.ID); p == 0 || leaf != "spends" {
+			t.Fatalf("%s: its own code stayed unpaid", set[1])
+		}
+		var changeCode int64 = -1
+		r.app.db.QueryRow("SELECT code_id FROM arca_coins WHERE leaf_id = 'change'").Scan(&changeCode)
+		if set[2] != "" && changeCode != 0 {
+			t.Fatalf("the change coin was matched to code %d", changeCode)
+		}
+		r.coin("paid", "100", nil)
+		r.rec("paid", hex.EncodeToString(paid))
+		r.app.followArca()
+		if p, leaf := r.paidAt(c.ID); p == 0 || leaf != "paid" {
+			t.Fatalf("%s: did not pay its own code", set[0])
+		}
+	}
+}
+
+// One coin whose record names two codes (one in its history, one as its
+// own leaf, a third in an output's script) pays exactly one, its own; and
+// the schema refuses a second code that names the same coin.
+func TestOneCoinNamingThreeCodes(t *testing.T) {
+	r := newArcaRig(t)
+	own, hist, script := r.addCode("code", randHex(32), randHex(32)), r.addCode("code", randHex(32), randHex(32)), r.addCode("code", randHex(32), randHex(32))
+	input, _ := hex.DecodeString(synthRecord(t, nil, hist.Owner, hist.OwnerNonce, nil))
+	mark, _ := hex.DecodeString(script.Owner + script.OwnerNonce)
+	r.coin("three", "100000000", nil)
+	r.rec("three", synthRecord(t, input[1:], own.Owner, own.OwnerNonce, mark))
+	r.app.followArca()
+	for _, c := range []*arcaCode{own, hist, script} {
+		p, _ := r.paidAt(c.ID)
+		if (p != 0) != (c == own) {
+			t.Fatalf("code %d paid %v", c.ID, p != 0)
+		}
+	}
+	if _, err := r.app.db.Exec("UPDATE arca_codes SET paid_leaf = 'three', paid_at = 1 WHERE id = ?", hist.ID); err == nil {
+		t.Fatal("the schema let two codes name one coin")
+	}
+}
+
+// A failed answer is sent again on a later read, once.
+func TestUnansweredAnswerIsSentAgain(t *testing.T) {
+	g := newTgRig(t)
+	_, code, id := g.account(t, "silence@example.com", "10.7.0.1")
+	g.bot.mu.Lock()
+	g.bot.failing = 2 // the answer, and its first retry
+	g.bot.mu.Unlock()
+	g.bot.send(oldTG, "old_tg", code, 0)
+	g.app.pollTelegram(0)
+	if st, _, _ := g.verif(id); st != "verified" || g.bot.answers(oldTG) != 0 {
+		t.Fatalf("first read: %s, %d answers", st, g.bot.answers(oldTG))
+	}
+	g.app.pollTelegram(0)
+	g.app.pollTelegram(0)
+	if n := g.bot.answers(oldTG); n != 1 {
+		t.Fatalf("%d answers after the Bot API recovered", n)
+	}
+}
+
+// A database whose rows break a new guard of the ledger does not start:
+// the refusal names the rows by id only, and the read-only query a deploy
+// runs first names the same rows.
+func TestRefusesToStartOverBrokenGuards(t *testing.T) {
+	// One coin as the payment of two codes.
+	path := filepath.Join(t.TempDir(), "codes.db")
+	db, err := openDB(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uid, _ := createUser(db, "x@example.com", "h", "0123456789", "")
+	db.Exec("DROP INDEX arca_codes_paid_leaf")
+	for i := 0; i < 3; i++ {
+		db.Exec(`INSERT INTO arca_codes (user_id, purpose, request, owner, owner_nonce, paid_leaf, paid_at, created_at) VALUES (?, 'code', 'r', 'o', 'n', ?, 1, 0)`,
+			uid, map[bool]string{true: "secret-leaf", false: "other"}[i < 2])
+	}
+	before := conflictRows(db, guardConflicts["arca_codes_paid_leaf"])
+	db.Close()
+	if _, err := openDB(path); err == nil || !strings.Contains(err.Error(), "arca_codes rows 1, 2 ") || strings.Contains(err.Error(), "secret-leaf") || before != "1, 2" {
+		t.Fatalf("codes: %v (the query before: %q)", err, before)
+	}
+	// One Telegram account verifying two accounts, under two usernames, the
+	// id read from the notes as the migration reads it.
+	path = filepath.Join(t.TempDir(), "tg.db")
+	db, err = openDB(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Exec("DROP INDEX verifications_telegram_id")
+	for i, name := range []string{"name_a", "name_b", "name_c"} {
+		u, _ := createUser(db, name+"@example.com", "h", fmt.Sprintf("00000000%02d", i), "")
+		tgID := map[bool]string{true: "777", false: "778"}[i < 2]
+		db.Exec(`INSERT INTO verifications (user_id, platform, handle, status, check_note, created_at) VALUES (?, 'telegram', ?, 'verified', ?, 0)`,
+			u, name, "message verified from @"+name+" (id "+tgID+"); account created ~Sep 2014")
+	}
+	before = conflictRows(db, guardConflicts["verifications_telegram_id"])
+	db.Close()
+	if _, err := openDB(path); err == nil || !strings.Contains(err.Error(), "verifications rows 1, 2 ") || strings.Contains(err.Error(), "name_a") || before != "1, 2" {
+		t.Fatalf("telegram: %v (the query before: %q)", err, before)
+	}
+	// Corrected, it starts.
+	db, _ = sql.Open("sqlite", path)
+	db.Exec("UPDATE verifications SET status = 'rejected' WHERE id = 2")
+	db.Close()
+	if db, err := openDB(path); err != nil {
+		t.Fatalf("after the correction: %v", err)
+	} else {
+		db.Close()
+	}
+}

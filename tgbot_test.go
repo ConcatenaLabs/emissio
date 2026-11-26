@@ -29,6 +29,7 @@ type fakeBot struct {
 	replies []map[string]string
 	gets    int
 	down    bool
+	failing int // sendMessage calls still to refuse
 	srv     *httptest.Server
 }
 
@@ -73,6 +74,12 @@ func newFakeBot(t *testing.T) *fakeBot {
 			}
 			json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": out})
 		case "sendMessage":
+			if f.failing > 0 {
+				f.failing--
+				w.WriteHeader(http.StatusTooManyRequests)
+				w.Write([]byte(`{"ok":false,"error_code":429,"description":"Too Many Requests: retry after 1"}`))
+				return
+			}
 			f.replies = append(f.replies, map[string]string{"chat_id": r.Form.Get("chat_id"), "text": r.Form.Get("text")})
 			w.Write([]byte(`{"ok":true,"result":{}}`))
 		default:
@@ -424,7 +431,9 @@ func TestTelegramIDBackfill(t *testing.T) {
 	_, _, a := g.account(t, "early@example.com", "10.3.0.13")
 	_, codeB, b := g.account(t, "later@example.com", "10.3.0.14")
 	g.app.db.Exec(`INSERT INTO verifications (user_id, platform, handle, status, check_note, created_at) VALUES (?, 'telegram', 'first_name', 'verified', 'message verified from @first_name (id 54845238); account created ~Sep 2014', 0)`, a)
-	migrateTelegramIDs(g.app.db)
+	if err := migrateTelegramIDs(g.app.db); err != nil {
+		t.Fatal(err)
+	}
 	if _, ev, _ := g.verif(a); ev != "telegram-id:54845238" {
 		t.Fatalf("backfill: %q", ev)
 	}
