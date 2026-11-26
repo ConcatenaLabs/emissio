@@ -8,6 +8,7 @@
   {{range $k := list "task" "bug" "security" "verification" "referral" "entry"}}<a class="btn ghost small" href="{{base}}/admin/queue?kind={{$k}}">{{$k}} · {{index $.Data.Counts $k}}</a> {{end}}
 </p>
 {{if not .Data.Items}}<p class="muted">Nothing waiting.</p>{{end}}
+{{range .Data.Health}}<p class="small{{if .Bad}} flash err{{end}}">{{.Text}}</p>{{end}}
 {{range .Data.Items}}
 <details {{if eq .Kind "task"}}open{{end}}>
   <summary><span class="pill">{{.Kind}}</span> <strong>{{.Title}}</strong> · <a href="{{base}}/admin/users/{{.UserID}}">{{if .Email}}{{.Email}}{{else}}unattributed{{end}}</a>{{if .Held}} <span class="pill rejected">held</span>{{end}}{{if .Signals.Any}} <span class="pill rejected">{{.Signals.Words}}</span>{{end}} · {{datetime .At}}</summary>

@@ -240,21 +240,6 @@ func TestBotUnknownCode(t *testing.T) {
 	}
 }
 
-// A held account goes to a reviewer, and the bot does not say why.
-func TestBotHeldAccount(t *testing.T) {
-	g := newTgRig(t)
-	_, code, id := g.account(t, "held@example.com", "10.3.0.2")
-	g.app.db.Exec("UPDATE users SET held = 1 WHERE id = ?", id)
-	g.bot.send(oldTG, "old_tg", code, 0)
-	g.poll(t)
-	if st, _, note := g.verif(id); st != "pending" || !strings.Contains(note, "waiting for a reviewer: the account is held") {
-		t.Fatalf("held: %s %q", st, note)
-	}
-	if a := g.bot.last(oldTG); !strings.HasPrefix(a, "Received. A reviewer confirms") || strings.Contains(a, "held") {
-		t.Fatalf("answer: %q", a)
-	}
-}
-
 // One Telegram account vouches for one Emissio account: a second account's
 // code from it verifies nothing, under a new username too, and the schema
 // refuses a second verified row of its id.
@@ -282,7 +267,11 @@ func TestBotOneTelegramOneAccount(t *testing.T) {
 	_, codeC, c := g.account(t, "c@example.com", "10.3.0.5")
 	_, codeD, d := g.account(t, "d@example.com", "10.3.0.6")
 	g.app.db.Exec("UPDATE users SET held = 1 WHERE id = ?", c)
-	g.bot.send(60000000, "mid_tg", codeC, 0)
+	uc, _ := getUserByID(g.app.db, c)
+	if o := g.app.tgVerify(uc, tgSender{ID: 60000000, Username: "mid_tg", Sent: now()}, true); o.Kind != "pending" {
+		t.Fatalf("the owner's form on a held account: %s", o.Kind)
+	}
+	_ = codeC
 	g.bot.send(60000000, "mid_tg", codeD, 0)
 	g.poll(t)
 	if st, _, _ := g.verif(d); st != "" {
@@ -387,7 +376,7 @@ func TestBotUnreadableAgeGoesToTheForm(t *testing.T) {
 	if st, _, _ := g.verif(id); st != "" {
 		t.Fatalf("filed on the message alone: %s", st)
 	}
-	if a := g.bot.last(9000000000); !strings.Contains(a, "a person must judge it") || !strings.Contains(a, "enter @new_tg") {
+	if a := g.bot.last(9000000000); !strings.Contains(a, "only the account's owner can ask") || !strings.Contains(a, "enter @new_tg") {
 		t.Fatalf("answer: %q", a)
 	}
 	if m := verify("@New_TG"); !strings.Contains(m, "Verification request received") {

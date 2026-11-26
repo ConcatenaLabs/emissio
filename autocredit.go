@@ -195,21 +195,31 @@ func (a *App) autoApproveVerification(verifID, userID int64) (string, error) {
 		return "", err
 	}
 	defer tx.Rollback()
-	if why := whyNotAuto(tx, userID, nil); why != "" {
-		if _, err := tx.Exec("UPDATE verifications SET check_note = check_note || ? WHERE id = ? AND status = 'pending'",
-			"; waiting for a reviewer: "+why, verifID); err != nil {
-			return "", err
-		}
-		return why, tx.Commit()
-	}
-	if err := reviewVerificationTx(tx, verifID, true, "Checked automatically."); err != nil {
+	why, err := autoApproveVerificationTx(tx, verifID, userID)
+	if err != nil {
 		return "", err
 	}
 	if err := tx.Commit(); err != nil {
 		return "", err
 	}
-	a.processReferrals(userID)
-	return "", nil
+	if why == "" {
+		a.processReferrals(userID)
+	}
+	return why, nil
+}
+
+// autoApproveVerificationTx is autoApproveVerification inside a caller's
+// transaction, which the caller commits (then running processReferrals
+// after a credit) or rolls back.
+func autoApproveVerificationTx(tx *sql.Tx, verifID, userID int64) (string, error) {
+	if why := whyNotAuto(tx, userID, nil); why != "" {
+		if _, err := tx.Exec("UPDATE verifications SET check_note = check_note || ? WHERE id = ? AND status = 'pending'",
+			"; waiting for a reviewer: "+why, verifID); err != nil {
+			return "", err
+		}
+		return why, nil
+	}
+	return "", reviewVerificationTx(tx, verifID, true, "Checked automatically.")
 }
 
 // handleAdminClearLinks records a reviewer's judgment that what this

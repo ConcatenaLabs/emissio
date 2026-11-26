@@ -17,16 +17,19 @@ package main
 //
 // What one Telegram account can do. It vouches for one Emissio account,
 // ever: the verifications_telegram_id index on its numeric id, beside the
-// one on its username, refuses a second verified row, and the poller files
-// nothing for a Telegram account that already has a live request for any
+// one on its username, refuses a second verified row; one request of a
+// Telegram id is checked and filed at a time, whichever account it names;
+// and nothing is filed for a Telegram account with a live request for any
 // account. Anyone may send any account's code, so a stranger can verify an
 // account that is not theirs with their own aged Telegram account: their
 // account gains nothing, the account gains a verification it did not ask
 // for, and the stranger spends a Telegram account that can never vouch
-// again. Where the id gives no age the check can vouch for, the bot files
-// nothing on the message alone: the account's owner asks for a reviewer
-// from the account page, so no stranger can fill an account's one live
-// request with a review it did not ask for.
+// again. A message files nothing a reviewer would have to judge (an id with
+// no age to vouch for, an account held or sharing an uncleared signal): the
+// account's owner asks for that from the account page, so a stranger's
+// message verifies an account at once or leaves no trace on it. Every
+// credit passes the email gate. The answers tell a sender nothing of an
+// account beyond what their own message did.
 //
 // The bot's token is in every Bot API address. No error, log line or note
 // carries an address: tgError takes the token out of whatever the HTTP
@@ -196,8 +199,10 @@ func (a *App) pollTelegram(wait int) error {
 	}
 	var ups []tgUpdate
 	if err := a.tgCall("getUpdates", params, time.Duration(wait+15)*time.Second, &ups); err != nil {
+		a.setKV("tg_error", fmt.Sprintf("%d %s", now(), err))
 		return err
 	}
+	a.setKV("tg_read", strconv.FormatInt(now(), 10))
 	for _, u := range ups {
 		if u.UpdateID <= last {
 			continue
@@ -309,7 +314,7 @@ func (s tgSender) handle() string {
 
 // tgOutcome is what came of a message, or of the form, for one account.
 type tgOutcome struct {
-	Kind    string // verified, pending, form, review, young, already, waiting, taken, error
+	Kind    string // verified, pending, form, review, young, already, waiting, blocked, taken, error
 	Code    string
 	Handle  string
 	Created time.Time
@@ -317,14 +322,33 @@ type tgOutcome struct {
 
 // tgVerify files and, where the check passes, credits the Telegram
 // verification of user by sender. consent is whether the account's owner
-// asked for it (the form): only then is a request filed that a reviewer must
-// judge, an id that gives no age to vouch for.
+// asked for it (the form). Without it nothing is filed that a reviewer must
+// judge: an id that gives no age to vouch for, or an account the automatic
+// boundary holds back (held, or sharing a signal no reviewer has cleared);
+// the sender is told the owner can ask from the account page. So a
+// stranger's message either verifies an account at once or leaves no trace
+// on it. The credit passes the email gate as every credit does.
 func (a *App) tgVerify(user *User, s tgSender, consent bool) tgOutcome {
 	o := tgOutcome{Code: user.ClaimCode, Handle: s.handle()}
 	defer a.claims.lock(fmt.Sprintf("verify:%d:telegram", user.ID))()
-	var status string
-	err := a.db.QueryRow("SELECT status FROM verifications WHERE user_id = ? AND platform = 'telegram' AND status != 'rejected' ORDER BY id DESC LIMIT 1", user.ID).Scan(&status)
+	// One request of a Telegram account at a time, whichever Emissio
+	// account it names, so the form and the bot cannot both pass the check
+	// below; verifications_telegram_id is the second guard.
+	defer a.claims.lock(fmt.Sprintf("telegram-id:%d", s.ID))()
+	if u, err := getUserByID(a.db, user.ID); err == nil {
+		user = u
+	}
+	if !a.mayEarn(user) {
+		o.Kind = "blocked"
+		return o
+	}
+	var status, evidence string
+	err := a.db.QueryRow("SELECT status, evidence FROM verifications WHERE user_id = ? AND platform = 'telegram' AND status != 'rejected' ORDER BY id DESC LIMIT 1", user.ID).Scan(&status, &evidence)
 	switch {
+	case err == nil && evidence != tgEvidence(s.ID):
+		// Another Telegram account's: nothing of it is said to this sender.
+		o.Kind = "blocked"
+		return o
 	case err == nil && status == "verified":
 		o.Kind = "already"
 		return o
@@ -347,6 +371,7 @@ func (a *App) tgVerify(user *User, s tgSender, consent bool) tgOutcome {
 		o.Kind = "taken"
 		return o
 	}
+	tgAfterCheck()
 	at := time.Unix(s.Sent, 0)
 	created, weak := tgEstimateCreation(s.ID)
 	o.Created = created
@@ -363,32 +388,60 @@ func (a *App) tgVerify(user *User, s tgSender, consent bool) tgOutcome {
 	case weak:
 		note += "; id beyond the newest anchor, so the account is younger than this estimate: manual review"
 	}
-	ins, err := a.db.Exec(`INSERT INTO verifications (user_id, platform, handle, evidence, check_note, created_at) VALUES (?, 'telegram', ?, ?, ?, ?)`,
+	// The row and the approval are one transaction, so a message whose
+	// credit the boundary holds back leaves nothing behind.
+	tx, err := a.db.Begin()
+	if err != nil {
+		o.Kind = "error"
+		return o
+	}
+	defer tx.Rollback()
+	ins, err := tx.Exec(`INSERT INTO verifications (user_id, platform, handle, evidence, check_note, created_at) VALUES (?, 'telegram', ?, ?, ?, ?)`,
 		user.ID, s.handle(), tgEvidence(s.ID), note, now())
 	if err != nil {
+		o.Kind = "error"
 		if strings.Contains(err.Error(), "UNIQUE") {
-			o.Kind = "waiting"
-		} else {
-			o.Kind = "error"
+			o.Kind = "blocked"
 		}
 		return o
 	}
 	if weak {
+		if tx.Commit() != nil {
+			o.Kind = "error"
+			return o
+		}
 		o.Kind = "review"
 		return o
 	}
 	id, _ := ins.LastInsertId()
-	why, err := a.autoApproveVerification(id, user.ID)
+	why, err := autoApproveVerificationTx(tx, id, user.ID)
 	switch {
 	case err != nil:
 		o.Kind = "error"
-	case why != "":
-		o.Kind = "pending"
-	default:
-		o.Kind = "verified"
+		return o
+	case why != "" && !consent:
+		o.Kind = "form" // rolled back: the owner asks for the review
+		return o
 	}
+	if err := tx.Commit(); err != nil {
+		o.Kind = "error"
+		if strings.Contains(err.Error(), "UNIQUE") {
+			o.Kind = "blocked"
+		}
+		return o
+	}
+	if why != "" {
+		o.Kind = "pending"
+		return o
+	}
+	a.processReferrals(user.ID)
+	o.Kind = "verified"
 	return o
 }
+
+// tgAfterCheck runs between tgVerify's check that a Telegram account has no
+// live request and the request it files: a test widens the window there.
+var tgAfterCheck = func() {}
 
 // tgName is how a note names a Telegram account.
 func tgName(s tgSender) string {
@@ -398,9 +451,12 @@ func tgName(s tgSender) string {
 	return "an account with no username"
 }
 
-// tgWords is the bot's answer for an outcome, in plain words. It says
-// nothing of why a reviewer must look (a hold, a shared signal): the sender
-// need not be the account's owner.
+// tgWords is the bot's answer for an outcome, in plain words. The sender
+// need not be the account's owner, so it says nothing of the account beyond
+// what this sender's own message did: not why a person must look (a hold, a
+// shared signal, the account's age), and not whether another Telegram
+// account verified it, is waiting, or its email is unconfirmed. Whether a
+// code exists is said, as codes are public (the referral link carries one).
 func tgWords(kind string, o *tgOutcome) string {
 	switch kind {
 	case "verified":
@@ -412,13 +468,15 @@ func tgWords(kind string, o *tgOutcome) string {
 		if _, err := strconv.ParseInt(o.Handle, 10, 64); err == nil {
 			name = o.Handle
 		}
-		return fmt.Sprintf("Received. The age of this Telegram account cannot be read from its id, so a person must judge it. To ask for that, sign in to Emissio and, under Verified accounts, Telegram, enter %s and press Request verification, within a day.", name)
+		return fmt.Sprintf("Received. A person must look at this one, and only the account's owner can ask for that: sign in to Emissio and, under Verified accounts, Telegram, enter %s and press Request verification, within a day.", name)
 	case "young":
 		return fmt.Sprintf("Received, but this Telegram account looks under %d years old (made about %s), and Emissio links only accounts at least %d years old. Nothing was linked.", verifMinAgeYears, o.Created.Format("January 2006"), verifMinAgeYears)
 	case "already":
-		return "That Emissio account is already verified with Telegram. There is nothing more to do."
+		return "That Emissio account is already verified with this Telegram account. There is nothing more to do."
 	case "waiting":
-		return "That Emissio account already has a Telegram verification waiting for a reviewer. There is nothing more to do."
+		return "That Emissio account's verification with this Telegram account is waiting for a reviewer. There is nothing more to do."
+	case "blocked":
+		return "Nothing was linked: the Emissio account with that code cannot take a Telegram verification from this message. If the account is yours, sign in: your account page says why."
 	case "taken":
 		return "This Telegram account already vouches for another Emissio account, and a Telegram account can vouch for one only. Nothing was linked."
 	case "unknown":
@@ -460,7 +518,7 @@ func (a *App) verifyTelegramForm(w http.ResponseWriter, r *http.Request, user *U
 		a.redirect(w, r, "/account", fmt.Sprintf("Verified: your Telegram account is linked, and %s SEQ is in your ledger.", formatSEQ(verificationBonus)), "")
 	case "pending", "review":
 		a.redirect(w, r, "/account", "Verification request received. A reviewer confirms it, and the reward lands in your ledger.", "")
-	case "already", "waiting":
+	case "already", "waiting", "blocked":
 		a.redirect(w, r, "/account", "", "You already have a Telegram verification on file.")
 	case "taken":
 		a.redirect(w, r, "/account", "", "That Telegram account already vouches for another Emissio account.")
@@ -469,4 +527,39 @@ func (a *App) verifyTelegramForm(w http.ResponseWriter, r *http.Request, user *U
 	default:
 		a.redirect(w, r, "/account", "", "Emissio could not take this just now. Try again in a few minutes.")
 	}
+}
+
+func (a *App) setKV(key, value string) {
+	a.db.Exec("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, value)
+}
+
+// tgHealth says, for the desk, whether the poller reads the bot's messages:
+// when it last did, and the last error since, if any (with no token: every
+// error has been through tgError).
+func (a *App) tgHealth() (line string, bad bool) {
+	if a.cfg.TgBotToken == "" {
+		return "", false
+	}
+	var readS, errS string
+	a.db.QueryRow("SELECT value FROM kv WHERE key = 'tg_read'").Scan(&readS)
+	a.db.QueryRow("SELECT value FROM kv WHERE key = 'tg_error'").Scan(&errS)
+	read, _ := strconv.ParseInt(readS, 10, 64)
+	var errAt int64
+	var errText string
+	if i := strings.IndexByte(errS, ' '); i > 0 {
+		errAt, _ = strconv.ParseInt(errS[:i], 10, 64)
+		errText = errS[i+1:]
+	}
+	when := func(ts int64) string { return time.Unix(ts, 0).UTC().Format("2006-01-02 15:04 UTC") }
+	switch {
+	case errAt > read && read == 0:
+		return "The Telegram bot has not read its messages since Emissio started: " + errText, true
+	case errAt > read:
+		return "The Telegram bot has not read its messages since " + when(read) + ": " + errText, true
+	case read == 0:
+		return "The Telegram bot has not read its messages yet.", true
+	case now()-read > 5*60:
+		return "The Telegram bot has not read its messages since " + when(read) + ".", true
+	}
+	return "The Telegram bot read its messages at " + when(read) + ".", false
 }

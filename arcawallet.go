@@ -310,16 +310,25 @@ func (a *App) followArca() time.Duration {
 
 // The reconciliation. Whichever command accepted a coin (the follower's own
 // sync, a send's, a sync run by hand) and whenever, the coin is in the
-// wallet's list of every coin it holds or held. On each follow that list is
-// read once (`arca coins`), and each coin not read before has its record
-// read (`arca record`) and kept in arca_coins: the code whose owner key and
-// nonce the record carries side by side, or none. A coin is read once, ever;
-// a coin of no code is logged once, when it is read. A coin pays one code,
-// once: the code takes it only while unpaid, and arca_codes_paid_leaf keeps
-// one coin from paying two codes. Per follow that is one `coins` call and at
-// most reconcileBatch `record` calls, the newest coins first, so a wallet
-// with a long history catches up over a few follows without delaying what
-// arrived just now.
+// wallet's list of every coin it holds or held. A follow reads that list
+// (`arca coins`), and each coin not read before has its record read (`arca
+// record`) and kept in arca_coins with the code it pays: the code whose
+// owner key and nonce are those of the coin's own leaf, read from the record
+// field by field (arcarecord.go), never found by searching it, since a
+// transfer's record carries every coin of its history ahead of its own leaf.
+// A code takes the first coin that pays it, and a coin pays one code, once
+// (arca_codes_paid_leaf). The coin's read and its code's payment are one
+// write. A record the wallet does not give, or that this reader cannot
+// read, is asked for again on later follows for as long as it takes, less
+// often as its failures grow, and the desk names it meanwhile.
+//
+// Per follow: one listing, and at most reconcileBatch records, those the
+// follow's own sync accepted first, then reconcileOldest of the oldest
+// unread and the newest for the rest, so a payment is read in the follow
+// it arrives in and no backlog keeps an older one waiting. The listing is
+// the wallet's whole history, with work per coin in the wallet, so a follow
+// with no code open, nothing unread and nothing accepted lists it at most
+// once an hour.
 const arcaCoinSchema = `
 CREATE TABLE IF NOT EXISTS arca_coins (
 	leaf_id TEXT PRIMARY KEY,
@@ -328,21 +337,49 @@ CREATE TABLE IF NOT EXISTS arca_coins (
 	asset TEXT NOT NULL DEFAULT '',
 	atoms INTEGER NOT NULL DEFAULT 0,
 	tries INTEGER NOT NULL DEFAULT 0,
+	error TEXT NOT NULL DEFAULT '',
+	next_at INTEGER NOT NULL DEFAULT 0,
 	read_at INTEGER NOT NULL DEFAULT 0,
 	seen_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS arca_coins_code ON arca_coins(code_id) WHERE code_id != 0;
+CREATE INDEX IF NOT EXISTS arca_coins_unread ON arca_coins(read_at) WHERE read_at = 0;
 `
 
 const (
-	reconcileBatch = 50 // records read per follow
-	recordTries    = 20 // follows a coin's record is asked for before it is logged as unreadable
+	reconcileBatch  = 50         // records read per follow
+	reconcileOldest = 10         // of them, the oldest unread
+	recordBackoff   = 6 * 3600   // seconds, the longest wait before a failed record is asked for again
+	codeLife        = 30 * 86400 // seconds a code is followed as open (a code works for 20 days)
+	quietListing    = 3600       // seconds between listings when nothing can be owed
 )
 
+// recordWait is how long to wait after a coin's record failed n times: a
+// minute, doubling up to recordBackoff.
+func recordWait(n int) int64 {
+	return min(int64(60)<<min(max(n-1, 0), 20), recordBackoff)
+}
+
+// owedNow says whether a coin may be owed to a code: a code open, a coin
+// unread at the last listing, or a coin this follow accepted.
+func (a *App) owedNow(first []string) bool {
+	if _, unread := a.reconciled(); len(first) > 0 || unread > 0 {
+		return true
+	}
+	var n int64
+	a.db.QueryRow(`SELECT (SELECT COUNT(*) FROM arca_coins WHERE read_at = 0)
+		+ (SELECT COUNT(*) FROM arca_codes WHERE paid_at = 0 AND created_at > ?)`, now()-codeLife).Scan(&n)
+	return n > 0
+}
+
 // reconcileCoins matches the wallet's coins not read before to the codes
-// their records name. first are the coins this follow's own sync accepted,
-// read before any other.
+// they pay. first are the coins this follow's own sync accepted.
 func (a *App) reconcileCoins(first []string) {
+	var listed int64
+	a.db.QueryRow("SELECT CAST(value AS INTEGER) FROM kv WHERE key = 'arca_listed'").Scan(&listed)
+	if !a.owedNow(first) && now()-listed < quietListing {
+		return
+	}
 	var coins []struct {
 		LeafID string `json:"leaf_id"`
 		Asset  string `json:"asset"`
@@ -352,74 +389,100 @@ func (a *App) reconcileCoins(first []string) {
 		log.Printf("arca: coins: %v", err)
 		return
 	}
-	done := map[string]bool{}
-	tries := map[string]int{}
-	rows, err := a.db.Query("SELECT leaf_id, read_at, tries FROM arca_coins")
+	a.db.Exec("INSERT INTO kv (key, value) VALUES ('arca_listed', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", strconv.FormatInt(now(), 10))
+	type state struct {
+		read   bool
+		tries  int
+		nextAt int64
+	}
+	known := map[string]state{}
+	rows, err := a.db.Query("SELECT leaf_id, read_at, tries, next_at FROM arca_coins")
 	if err != nil {
 		return
 	}
 	for rows.Next() {
 		var leaf string
-		var readAt int64
+		var readAt, nextAt int64
 		var n int
-		rows.Scan(&leaf, &readAt, &n)
-		done[leaf] = readAt != 0 || n >= recordTries
-		tries[leaf] = n
+		rows.Scan(&leaf, &readAt, &n, &nextAt)
+		known[leaf] = state{readAt != 0, n, nextAt}
 	}
 	rows.Close()
 	type coin struct{ leaf, asset, value string }
-	byLeaf := map[string]coin{}
-	var todo []coin
-	for i := len(coins) - 1; i >= 0; i-- { // newest first
-		c := coins[i]
-		if c.LeafID == "" || done[c.LeafID] {
+	var unread []coin // oldest first, as the wallet lists them
+	inList := map[string]bool{}
+	for _, c := range coins {
+		if c.LeafID == "" || inList[c.LeafID] || known[c.LeafID].read {
 			continue
 		}
-		if _, dup := byLeaf[c.LeafID]; dup {
-			continue
-		}
-		byLeaf[c.LeafID] = coin{c.LeafID, c.Asset, c.Value}
-		todo = append(todo, byLeaf[c.LeafID])
+		inList[c.LeafID] = true
+		unread = append(unread, coin{c.LeafID, c.Asset, c.Value})
 	}
-	// What this follow's sync accepted goes first.
-	var ordered []coin
+	due := func(c coin) bool { return known[c.leaf].nextAt <= now() }
+	var batch []coin
+	taken := map[string]bool{}
+	add := func(c coin) {
+		if len(batch) < reconcileBatch && !taken[c.leaf] && due(c) {
+			taken[c.leaf] = true
+			batch = append(batch, c)
+		}
+	}
+	byLeaf := map[string]coin{}
+	for _, c := range unread {
+		byLeaf[c.leaf] = c
+	}
 	for _, l := range first {
 		if c, ok := byLeaf[l]; ok {
-			ordered = append(ordered, c)
-			delete(byLeaf, l)
+			add(c)
 		}
 	}
-	for _, c := range todo {
-		if _, ok := byLeaf[c.leaf]; ok {
-			ordered = append(ordered, c)
+	for i, n := 0, 0; i < len(unread) && n < reconcileOldest; i++ {
+		if !taken[unread[i].leaf] && due(unread[i]) {
+			add(unread[i])
+			n++
 		}
 	}
-	unread := len(ordered)
-	if len(ordered) > reconcileBatch {
-		ordered = ordered[:reconcileBatch]
+	for i := len(unread) - 1; i >= 0; i-- {
+		add(unread[i])
 	}
-	var marks map[string][]codeMark
-	for _, c := range ordered {
+	left := len(unread)
+	for _, c := range batch {
 		atoms, _ := strconv.ParseInt(c.value, 10, 64)
 		a.db.Exec("INSERT OR IGNORE INTO arca_coins (leaf_id, asset, atoms, seen_at) VALUES (?,?,?,?)", c.leaf, c.asset, atoms, now())
 		var rec struct {
 			Record string `json:"record"`
 		}
-		if err := a.arca(time.Minute, &rec, "record", c.leaf); err != nil {
-			a.db.Exec("UPDATE arca_coins SET tries = tries + 1 WHERE leaf_id = ?", c.leaf)
-			if tries[c.leaf]+1 >= recordTries {
-				log.Printf("arca: record %s could not be read %d times; it is no longer asked for: %v", c.leaf, recordTries, err)
+		err := a.arca(time.Minute, &rec, "record", c.leaf)
+		var raw []byte
+		if err == nil {
+			if raw, err = hex.DecodeString(rec.Record); err != nil {
+				err = errors.New("the wallet gave a record that is not hex")
 			}
-			continue
 		}
-		if marks == nil {
-			marks = a.codeMarks()
+		if err == nil {
+			var own recLeaf
+			var named bool
+			if own, named, err = ownLeaf(raw); err == nil {
+				if err = a.attribute(c.leaf, c.asset, atoms, own, named); err == nil {
+					left--
+					continue
+				}
+			} else {
+				err = errors.New("a record in a format this Emissio does not read: update Emissio")
+			}
 		}
-		unread--
-		a.attribute(c.leaf, c.asset, atoms, rec.Record, marks)
+		n := known[c.leaf].tries + 1
+		msg := err.Error()
+		if len(msg) > 200 {
+			msg = msg[:200]
+		}
+		a.db.Exec("UPDATE arca_coins SET tries = ?, error = ?, next_at = ? WHERE leaf_id = ? AND read_at = 0", n, msg, now()+recordWait(n), c.leaf)
+		if n&(n-1) == 0 { // the 1st, 2nd, 4th, 8th... failure
+			log.Printf("arca: coin %s not read (%d times so far, asked for again later): %s", c.leaf, n, msg)
+		}
 	}
 	a.db.Exec("INSERT INTO kv (key, value) VALUES ('arca_reconciled', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-		fmt.Sprintf("%d %d", now(), unread))
+		fmt.Sprintf("%d %d", now(), left))
 }
 
 // reconciled says when the wallet's coins were last read, and how many it
@@ -431,72 +494,65 @@ func (a *App) reconciled() (at int64, unread int64) {
 	return at, unread
 }
 
-// codeMark is what a coin's record carries of the code it paid: the code's
-// owner key, then its nonce.
-type codeMark struct {
-	id    int64
-	nonce string
-}
-
-// codeMarks indexes every code by its owner key.
-func (a *App) codeMarks() map[string][]codeMark {
-	out := map[string][]codeMark{}
-	rows, err := a.db.Query("SELECT id, owner, owner_nonce FROM arca_codes")
+// attribute keeps, in one write, that a coin's record was read and the code
+// its own leaf pays, if any. A code takes its first coin only, with one
+// exception: a code whose recorded coin is not a coin read from the wallet
+// whose own leaf pays it (a code marked paid by hand, or by an earlier
+// matcher that searched the record) takes the coin that does pay it as its
+// payment, staying paid as it was, so the tester's coin is never shown as a
+// problem. Nothing is credited here: the code was paid already.
+func (a *App) attribute(leaf, asset string, atoms int64, own recLeaf, named bool) error {
+	tx, err := a.db.Begin()
 	if err != nil {
-		return out
+		return err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var id int64
-		var owner, nonce string
-		if rows.Scan(&id, &owner, &nonce) == nil && len(owner) == 64 {
-			o := strings.ToLower(owner)
-			out[o] = append(out[o], codeMark{id, strings.ToLower(nonce)})
+	defer tx.Rollback()
+	var id int64
+	if named && own.Owner != "" {
+		tx.QueryRow("SELECT id FROM arca_codes WHERE lower(owner) = ? AND lower(owner_nonce) = ? ORDER BY id LIMIT 1", own.Owner, own.Nonce).Scan(&id)
+	}
+	counted := false
+	if id != 0 {
+		res, err := tx.Exec("UPDATE arca_codes SET paid_leaf = ?, paid_asset = ?, paid_atoms = ?, paid_at = ? WHERE id = ? AND paid_at = 0",
+			leaf, asset, atoms, now(), id)
+		if err != nil {
+			return err
 		}
-	}
-	return out
-}
-
-// markIn finds the code a record names: an owner key followed by that
-// code's nonce, read at every byte of the record's hex.
-func markIn(record string, marks map[string][]codeMark) int64 {
-	r := strings.ToLower(record)
-	for i := 0; i+128 <= len(r); i += 2 {
-		for _, m := range marks[r[i:i+64]] {
-			if r[i+64:i+128] == m.nonce {
-				return m.id
+		if n, _ := res.RowsAffected(); n == 1 {
+			counted = true
+		} else {
+			var paidLeaf string
+			var genuine int
+			tx.QueryRow("SELECT paid_leaf FROM arca_codes WHERE id = ?", id).Scan(&paidLeaf)
+			tx.QueryRow("SELECT COUNT(*) FROM arca_coins WHERE leaf_id = ? AND code_id = ? AND read_at != 0", paidLeaf, id).Scan(&genuine)
+			switch {
+			case paidLeaf == leaf:
+				counted = true
+			case genuine == 0:
+				if _, err := tx.Exec("UPDATE arca_codes SET paid_leaf = ? WHERE id = ?", leaf, id); err != nil {
+					return err
+				}
+				if paidLeaf != "" {
+					tx.Exec("UPDATE arca_coins SET counted = 0 WHERE leaf_id = ?", paidLeaf)
+				}
+				counted = true
 			}
 		}
 	}
-	return 0
-}
-
-// attribute keeps what a coin's record says: the code it paid, and whether
-// it is that code's payment. A code takes its first coin only.
-func (a *App) attribute(leaf, asset string, atoms int64, record string, marks map[string][]codeMark) {
-	id := markIn(record, marks)
-	a.db.Exec("UPDATE arca_coins SET code_id = ?, read_at = ? WHERE leaf_id = ?", id, now(), leaf)
-	if id == 0 {
+	if _, err := tx.Exec("UPDATE arca_coins SET code_id = ?, counted = ?, read_at = ?, error = '', next_at = 0 WHERE leaf_id = ?",
+		id, counted, now(), leaf); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	switch {
+	case id == 0 && named:
 		log.Printf("arca: coin %s (%d atoms of %s) paid no code", leaf, atoms, short(asset))
-		return
+	case id != 0 && !counted:
+		log.Printf("arca: coin %s paid code %d, which another coin paid already: not counted", leaf, id)
 	}
-	res, err := a.db.Exec("UPDATE arca_codes SET paid_leaf = ?, paid_asset = ?, paid_atoms = ?, paid_at = ? WHERE id = ? AND paid_at = 0",
-		leaf, asset, atoms, now(), id)
-	if err != nil {
-		log.Printf("arca: coin %s for code %d: %v", leaf, id, err)
-		return
-	}
-	if n, _ := res.RowsAffected(); n == 1 {
-		a.db.Exec("UPDATE arca_coins SET counted = 1 WHERE leaf_id = ?", leaf)
-		return
-	}
-	var paidLeaf string
-	a.db.QueryRow("SELECT paid_leaf FROM arca_codes WHERE id = ?", id).Scan(&paidLeaf)
-	if paidLeaf == leaf {
-		a.db.Exec("UPDATE arca_coins SET counted = 1 WHERE leaf_id = ?", leaf)
-		return
-	}
-	log.Printf("arca: coin %s paid code %d, which another coin paid already: not counted", leaf, id)
+	return nil
 }
 
 // followArk reads what arrived at each account's Bitcoin ark address.
@@ -687,6 +743,10 @@ func (a *App) handleArcaRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	purpose := arcaPurpose(task.CheckKind)
+	// One request of an account's task at a time, from its limits' check to
+	// the code or payment it makes; and one paying request of a network
+	// address at a time, for the address's daily limit.
+	defer a.claims.lock(fmt.Sprintf("arca:%d:%s", user.ID, purpose))()
 	switch task.CheckKind {
 	case "arca-pay-code", "arca-pay-btc", "arca-swap":
 		if ok, from := a.renewable(user.ID, purpose, a.codeOf(user.ID, purpose)); !ok {
@@ -704,6 +764,7 @@ func (a *App) handleArcaRequest(w http.ResponseWriter, r *http.Request) {
 			a.renewReturnCode(w, r, user, back, purpose)
 			return
 		}
+		defer a.claims.lock("arca-ip:" + clientIP(r))()
 		var mine, ipToday int64
 		a.db.QueryRow("SELECT COUNT(*) FROM arca_sends WHERE user_id = ? AND purpose = ?", user.ID, purpose).Scan(&mine)
 		a.db.QueryRow("SELECT COUNT(*) FROM arca_sends WHERE ip = ? AND created_at > ?", clientIP(r), now()-86400).Scan(&ipToday)
@@ -785,6 +846,14 @@ func (a *App) payCode(w http.ResponseWriter, r *http.Request, user *User, back, 
 	}
 	if op := a.arcaOperator(); op != "" && !strings.EqualFold(op, d.Operator) {
 		a.redirect(w, r, back, "", "That receive code is for another server than Emissio's.")
+		return
+	}
+	// Emissio never pays itself: a code of its own, paid, would credit the
+	// account with Emissio's own coin.
+	var mine int64
+	a.db.QueryRow("SELECT COUNT(*) FROM arca_codes WHERE lower(owner) = ?", strings.ToLower(d.Owner)).Scan(&mine)
+	if mine > 0 {
+		a.redirect(w, r, back, "", "That is one of Emissio's own receive codes. Paste the receive code your web wallet shows under Receive.")
 		return
 	}
 	if d.Until != 0 && d.Until < time.Now().Unix()+3600 {
@@ -1227,6 +1296,23 @@ func (a *App) walletNote(userID int64, kind string) string {
 	}
 	if len(extra) > 0 {
 		note += " Not counted: " + strings.Join(extra, "; ") + "."
+	}
+	if rows, err := a.db.Query("SELECT leaf_id, tries, error FROM arca_coins WHERE read_at = 0 AND tries > 0 ORDER BY seen_at LIMIT 10"); err == nil {
+		var bad []string
+		for rows.Next() {
+			var leaf, why string
+			var n int
+			if rows.Scan(&leaf, &n, &why) == nil {
+				bad = append(bad, fmt.Sprintf("coin %s (%d tries: %s)", leaf, n, why))
+			}
+		}
+		rows.Close()
+		if len(bad) > 0 {
+			var all int
+			a.db.QueryRow("SELECT COUNT(*) FROM arca_coins WHERE read_at = 0 AND tries > 0").Scan(&all)
+			note += fmt.Sprintf(" %d coins' records could not be read yet and are asked for again: %s. Any of them may be this account's payment: do not say that nothing arrived.",
+				all, strings.Join(bad, "; "))
+		}
 	}
 	at, unread := a.reconciled()
 	switch {

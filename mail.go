@@ -281,8 +281,15 @@ func (a *App) handleResendVerification(w http.ResponseWriter, r *http.Request) {
 // gate holds back an account that has not confirmed its email from
 // earning, when this instance sends mail. It answers the request itself
 // when it refuses.
+// mayEarn is the email gate: where the site confirms email, an account
+// earns only once its address is confirmed. Every path that credits
+// passes it: the forms through gate, the bot through tgVerify.
+func (a *App) mayEarn(user *User) bool {
+	return !a.mailOn() || user.EmailVerifiedAt != 0 || user.IsAdmin
+}
+
 func (a *App) gate(w http.ResponseWriter, r *http.Request, user *User, back string) bool {
-	if !a.mailOn() || user.EmailVerifiedAt != 0 || user.IsAdmin {
+	if a.mayEarn(user) {
 		return true
 	}
 	a.redirect(w, r, back, "", "Confirm your email address first: open the link we sent to "+user.Email+". You can send a new one from your account page.")

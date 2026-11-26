@@ -31,7 +31,8 @@ if args[0] == "send":
 if args[0] == "sync":
     mb = load("mailbox.json", [])
     if os.path.exists(path("mailbox.json")): os.remove(path("mailbox.json"))
-    json.dump(load("coins.json", []) + mb, open(path("coins.json"), "w"))
+    have = load("coins.json", []); known = {c["leaf_id"] for c in have}
+    json.dump(have + [c for c in mb if c["leaf_id"] not in known], open(path("coins.json"), "w"))
     out({"mailbox": {"accepted": mb}, "schedule": {"now": 100, "next_sync_at": 160}})
 if args[0] == "coins": out(load("coins.json", []))
 if args[0] == "record": out({"leaf_id": args[1], "record": load("rec-" + args[1] + ".json", "00")})

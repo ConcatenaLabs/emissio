@@ -73,11 +73,16 @@ func (r *arcaRig) coin(leaf, value string, c *arcaCode) {
 	coins = append(coins, map[string]string{"leaf_id": leaf, "asset": strings.Repeat("ab", 32), "value": value, "kind": "transfer", "state": "live"})
 	b, _ := json.Marshal(coins)
 	os.WriteFile(filepath.Join(r.dir, "coins.json"), b, 0o600)
-	rec := "00ff"
+	rec := synthRecord(r.t, nil, randHex(32), randHex(32), nil)
 	if c != nil {
-		rec += c.Owner + c.OwnerNonce + "11"
+		rec = synthRecord(r.t, nil, c.Owner, c.OwnerNonce, nil)
 	}
-	b, _ = json.Marshal(rec)
+	r.rec(leaf, rec)
+}
+
+// rec sets the record the wallet gives for a coin.
+func (r *arcaRig) rec(leaf, rec string) {
+	b, _ := json.Marshal(rec)
 	os.WriteFile(filepath.Join(r.dir, "rec-"+leaf+".json"), b, 0o600)
 }
 
@@ -275,6 +280,7 @@ func TestReconcileCost(t *testing.T) {
 	if got := r.calls("record"); got != 1001 {
 		t.Fatalf("%d records read for 1001 coins", got)
 	}
+	r.addCode("btc", randHex(32), randHex(32)) // a code open: the follow lists the coins
 	coins, records := r.calls("coins"), r.calls("record")
 	start := time.Now()
 	r.app.followArca()
@@ -300,6 +306,7 @@ func TestReconcileRecordFails(t *testing.T) {
 		t.Fatal("matched without a record")
 	}
 	os.Remove(filepath.Join(r.dir, "fail-record"))
+	r.app.db.Exec("UPDATE arca_coins SET next_at = 0") // its backoff has passed
 	// The sync failing does not stop the reconciliation.
 	os.WriteFile(filepath.Join(r.dir, "fail-sync"), nil, 0o600)
 	r.app.followArca()

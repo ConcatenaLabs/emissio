@@ -214,6 +214,41 @@ type queueData struct {
 	Filter string
 	Counts map[string]int
 	Recent []*Submission // automatic approvals, newest first
+	Health []deskLine    // the state of what credits without a person
+}
+
+// deskLine is a line of the desk's health: Bad when it needs a person.
+type deskLine struct {
+	Text string
+	Bad  bool
+}
+
+// deskHealth is what the desk shows above the queue: whether the bot's
+// poller reads its messages, and every guard of the schema that the
+// database could not take at start (each logged then, as a WARNING), with
+// what is left unguarded while it is missing.
+func (a *App) deskHealth() []deskLine {
+	var out []deskLine
+	if line, bad := a.tgHealth(); line != "" {
+		out = append(out, deskLine{line, bad})
+	}
+	for _, g := range []struct{ name, what string }{
+		{"verifications_telegram_id", "one Telegram account can verify two Emissio accounts if the bot and the form race"},
+		{"verifications_one_live", "an account can hold two live verifications of one platform"},
+		{"arca_codes_paid_leaf", "one coin can be recorded as the payment of two codes"},
+	} {
+		var n int
+		a.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?", g.name).Scan(&n)
+		if n == 0 {
+			out = append(out, deskLine{"The database lacks its guard " + g.name + " (rows it refuses are already there; the log at start says which): " + g.what + ". Correct the rows and restart.", true})
+		}
+	}
+	var noID int
+	a.db.QueryRow("SELECT COUNT(*) FROM verifications WHERE platform = 'telegram' AND status = 'verified' AND evidence = ''").Scan(&noID)
+	if noID > 0 {
+		out = append(out, deskLine{fmt.Sprintf("%d verified Telegram accounts were checked by their bio and record no Telegram id: one of them renamed can vouch for a second Emissio account, as the id is what the bot keys on.", noID), true})
+	}
+	return out
 }
 
 func (a *App) handleAdminQueue(w http.ResponseWriter, r *http.Request) {
@@ -308,6 +343,7 @@ func (a *App) handleAdminQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.Recent = rec
+	d.Health = a.deskHealth()
 	a.render(w, r, "admin_queue", "Review queue", d)
 }
 
