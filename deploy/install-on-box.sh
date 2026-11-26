@@ -12,8 +12,16 @@ echo "== user and files =="
 # Emissio runs as its own system user, which owns its data and nothing else.
 id emissio >/dev/null 2>&1 || useradd --system --user-group --home-dir /var/lib/emissio --shell /usr/sbin/nologin emissio
 install -d -m 755 /opt/emissio
-install -m 755 emissio /opt/emissio/emissio.new && mv -f /opt/emissio/emissio.new /opt/emissio/emissio
 install -d -o emissio -g emissio -m 700 /var/lib/emissio
+
+echo "== guard-check =="
+# The new build reads the live database, as the service's user, before
+# anything is installed: rows that would keep it from starting stop the
+# deploy here, with the old revision still running.
+bash deploy/guard-check-before-install.sh emissio /var/lib/emissio/emissio.db emissio /opt/emissio
+
+echo "== install =="
+install -m 755 emissio /opt/emissio/emissio.new && mv -f /opt/emissio/emissio.new /opt/emissio/emissio
 chown -R emissio:emissio /var/lib/emissio
 find /var/lib/emissio -maxdepth 1 -type f -exec chmod 600 {} +
 install -d -m 755 /etc/emissio

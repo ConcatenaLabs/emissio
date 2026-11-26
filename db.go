@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -192,7 +194,8 @@ func openDB(path string) (*sql.DB, error) {
 	// cannot take the index, and Emissio does not run without it.
 	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS arca_codes_paid_leaf
 		ON arca_codes(paid_leaf) WHERE paid_leaf != ''`); err != nil {
-		e := errGuard{"arca_codes rows " + conflictRows(db, guardConflicts["arca_codes_paid_leaf"]) +
+		found, _ := guardConflicts(db)
+		e := errGuard{"arca_codes rows " + rowList(found["arca_codes_paid_leaf"]) +
 			" name one coin as the payment of each (arca_codes_paid_leaf cannot be created): give each code its own coin or clear paid_leaf on all but one, then start again"}
 		db.Close()
 		return nil, e
@@ -200,6 +203,8 @@ func openDB(path string) (*sql.DB, error) {
 	if _, err := db.Exec(tgSchema); err != nil {
 		panic(err)
 	}
+	db.Exec("ALTER TABLE tg_messages ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0")
+	db.Exec("ALTER TABLE tg_messages ADD COLUMN next_try_at INTEGER NOT NULL DEFAULT 0")
 	if err := migrateTelegramIDs(db); err != nil {
 		db.Close()
 		return nil, err
@@ -215,35 +220,125 @@ func openDB(path string) (*sql.DB, error) {
 	return db, nil
 }
 
-// guardConflicts are the queries that list, by row id only, the rows that
-// keep each guard of the ledger from being created. The Telegram one reads
-// a row's id as migrateTelegramIDs gives it, so it can be run before the
-// migration, on a database a deploy is about to start on.
-var guardConflicts = map[string]string{
-	"arca_codes_paid_leaf": `SELECT group_concat(id) FROM arca_codes WHERE paid_leaf != '' GROUP BY paid_leaf HAVING COUNT(*) > 1`,
-	"verifications_telegram_id": `WITH t AS (SELECT id, CASE WHEN evidence != '' THEN evidence
-		WHEN instr(check_note, '(id ') > 0 THEN 'telegram-id:' || substr(check_note, instr(check_note, '(id ') + 4,
-			instr(substr(check_note, instr(check_note, '(id ') + 4), ')') - 1)
-		ELSE '' END AS k FROM verifications WHERE platform = 'telegram' AND status = 'verified')
-		SELECT group_concat(id) FROM t WHERE k != '' GROUP BY k HAVING COUNT(*) > 1`,
-}
-
-// conflictRows runs a guard's conflict query: each group of row ids that
-// break it, as "3, 4; 9, 12".
-func conflictRows(db *sql.DB, query string) string {
-	rows, err := db.Query(query)
-	if err != nil {
-		return "(unreadable: " + err.Error() + ")"
-	}
-	defer rows.Close()
-	var groups []string
-	for rows.Next() {
-		var g string
-		if rows.Scan(&g) == nil {
-			groups = append(groups, strings.ReplaceAll(g, ",", ", "))
+// guardConflicts lists, for each guard of the ledger, the groups of row ids
+// that keep it from being created: one coin recorded as the payment of two
+// codes (arca_codes_paid_leaf), one Telegram account verifying two Emissio
+// accounts (verifications_telegram_id). A Telegram row's account is its
+// recorded id, or the id its check note names as migrateTelegramIDs reads
+// it, so the result is the same before the migration as after: the start-up
+// refusal and `emissio guard-check` both name rows from here.
+func guardConflicts(db *sql.DB) (map[string][][]int64, error) {
+	out := map[string][][]int64{}
+	group := func(index string, ids map[string][]int64, order []string) {
+		for _, k := range order {
+			if len(ids[k]) > 1 {
+				out[index] = append(out[index], ids[k])
+			}
 		}
 	}
-	return strings.Join(groups, "; ")
+	rows, err := db.Query("SELECT id, paid_leaf FROM arca_codes WHERE paid_leaf != '' ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	byLeaf, order := map[string][]int64{}, []string{}
+	for rows.Next() {
+		var id int64
+		var leaf string
+		if err := rows.Scan(&id, &leaf); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if byLeaf[leaf] == nil {
+			order = append(order, leaf)
+		}
+		byLeaf[leaf] = append(byLeaf[leaf], id)
+	}
+	rows.Close()
+	group("arca_codes_paid_leaf", byLeaf, order)
+	rows, err = db.Query("SELECT id, evidence, check_note FROM verifications WHERE platform = 'telegram' AND status = 'verified' ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	byID, order := map[string][]int64{}, []string{}
+	for rows.Next() {
+		var id int64
+		var evidence, note string
+		if err := rows.Scan(&id, &evidence, &note); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if evidence == "" {
+			evidence = tgEvidenceFromNote(note)
+		}
+		if evidence == "" {
+			continue
+		}
+		if byID[evidence] == nil {
+			order = append(order, evidence)
+		}
+		byID[evidence] = append(byID[evidence], id)
+	}
+	rows.Close()
+	group("verifications_telegram_id", byID, order)
+	return out, nil
+}
+
+// rowList says groups of row ids as "1, 2; 7, 9".
+func rowList(groups [][]int64) string {
+	var parts []string
+	for _, g := range groups {
+		var ids []string
+		for _, id := range g {
+			ids = append(ids, strconv.FormatInt(id, 10))
+		}
+		parts = append(parts, strings.Join(ids, ", "))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// guardCheck is `emissio guard-check`: it opens the database read-only,
+// changes nothing, and says for each guard of the ledger whether its index
+// exists and which rows break it, as the start-up refusal names them. Rows
+// that break a guard whose index is missing keep the start from going
+// ahead: exit 1. With the index standing the start goes ahead, so such rows
+// (legacy rows the backfill could not give an id, which the start logs) are
+// a warning: exit 0, as with no conflicts. Exit 2 when the database cannot
+// be read. deploy/install-on-box.sh runs it, with the new binary as the
+// service's user, before it installs anything.
+func guardCheck(path string, w io.Writer) int {
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=busy_timeout(5000)")
+	if err != nil {
+		fmt.Fprintf(w, "cannot open %s: %v\n", path, err)
+		return 2
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	found, err := guardConflicts(db)
+	if err != nil {
+		fmt.Fprintf(w, "cannot read %s: %v\n", path, err)
+		return 2
+	}
+	code := 0
+	for _, index := range []string{"arca_codes_paid_leaf", "verifications_telegram_id"} {
+		var n int
+		db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?", index).Scan(&n)
+		g := found[index]
+		switch {
+		case n > 0 && len(g) == 0:
+			fmt.Fprintf(w, "%s: index exists, no conflicts\n", index)
+		case n > 0:
+			fmt.Fprintf(w, "%s: index exists; warning: rows %s break it, which the start accepts and logs: reject all but one of each group\n", index, rowList(g))
+		case len(g) == 0:
+			fmt.Fprintf(w, "%s: index missing, no conflicts: the start creates it\n", index)
+		default:
+			fmt.Fprintf(w, "%s: index missing\n%s: rows %s: the start refuses until they are corrected\n", index, index, rowList(g))
+			code = 1
+		}
+	}
+	if code == 0 && len(found) == 0 {
+		fmt.Fprintln(w, "no conflicts")
+	}
+	return code
 }
 
 func now() int64 { return time.Now().Unix() }

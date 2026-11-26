@@ -386,6 +386,15 @@ func parsePrizes(s string) []int64 {
 
 func main() {
 	cfg := loadConfig()
+	if len(os.Args) > 1 && os.Args[1] == "guard-check" {
+		// Before mustOpenDB, which migrates the database and refuses to
+		// start over the conflicts this reports.
+		path := cfg.DBPath
+		if len(os.Args) > 2 {
+			path = os.Args[2]
+		}
+		os.Exit(guardCheck(path, os.Stdout))
+	}
 	db := mustOpenDB(cfg.DBPath)
 	defer db.Close()
 	seedDB(db)
@@ -401,6 +410,7 @@ func main() {
 	app.startPayoutFollower()
 	app.startArcaFollower()
 	app.startTelegramBot()
+	clearReservations(db)
 	log.Printf("emissio listening on %s (base path %q, db %s)", cfg.Listen, cfg.BasePath, cfg.DBPath)
 	srv := &http.Server{
 		Addr:              cfg.Listen,

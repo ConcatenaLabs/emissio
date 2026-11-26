@@ -42,6 +42,7 @@ func newArcaRig(t *testing.T) *arcaRig {
 // start opens the database and serves it, as the binary does on start.
 func (r *arcaRig) start() {
 	db := mustOpenDB(r.dbPath)
+	clearReservations(db) // as the serving process does before it listens
 	bin, _ := filepath.Abs("testdata/fake-arca.py")
 	r.app = NewApp(Config{RedditBase: "http://127.0.0.1:9", TelegramBase: "http://127.0.0.1:9", XBase: "http://127.0.0.1:9",
 		ArcaBin: bin, ArcaDatadir: r.dir}, db)

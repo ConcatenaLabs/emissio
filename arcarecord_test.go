@@ -16,6 +16,8 @@ import (
 // with the owner nonce that wallet keeps for the coin in its own store.
 type realRecord struct {
 	Name, Kind, Nonce, Record string
+	Owner                     string // the owner the library's own reader names
+	Library                   string // the library versions that read it
 }
 
 var (
@@ -98,24 +100,27 @@ func synthRecord(t *testing.T, input []byte, owner, nonce string, script []byte)
 	return hex.EncodeToString(w.Bytes())
 }
 
-// Every real record is read as the wallet reads it: the nonce of the coin's
-// own leaf is the one the wallet keeps for the coin, and a board names none.
+// Every vector is read as the arca library reads it: the owner and nonce
+// the library's own CoinRecord::owner names (at 1bc38878d2, the version on
+// the server, and at master, as the fixture records), for boards and
+// accumulator slots too. A fill's leaf credited to its maker, or its rest,
+// names its nonce alone here (the library takes its key from the order's
+// terms). The fixture holds records real wallets made and records built for
+// the tags those lack, each kept only if the library's reader accepts it.
 func TestOwnLeafOfRealRecords(t *testing.T) {
 	seen := map[string]int{}
 	for _, r := range realRecords(t) {
 		raw, _ := hex.DecodeString(r.Record)
-		l, ok, err := ownLeaf(raw)
+		l, named, err := ownLeaf(raw)
 		switch {
 		case err != nil:
-			t.Errorf("%s v%d: %v", r.Kind, raw[0], err)
-		case r.Kind == "board":
-			if ok {
-				t.Errorf("a board named a leaf owner")
-			}
-		case !ok || l.Nonce != r.Nonce:
-			t.Errorf("%s v%d: own nonce %q, the wallet's %s", r.Kind, raw[0], l.Nonce, r.Nonce)
+			t.Errorf("%s (%s): %v", r.Name, r.Kind, err)
+		case !named || l.Nonce != r.Nonce:
+			t.Errorf("%s (%s): nonce %q, the library's %s", r.Name, r.Kind, l.Nonce, r.Nonce)
+		case l.Owner != r.Owner && !(r.Kind == "fill" && l.Owner == ""):
+			t.Errorf("%s (%s): owner %q, the library's %s", r.Name, r.Kind, l.Owner, r.Owner)
 		}
-		seen[r.Kind+" v"+string('0'+rune(raw[0]))]++
+		seen[r.Kind]++
 	}
 	t.Logf("read %v", seen)
 	// The history is skipped by structure: the transfer whose input is

@@ -243,6 +243,20 @@ func (a *App) deskHealth() []deskLine {
 			out = append(out, deskLine{"The database lacks its guard " + g.name + " (rows it refuses are already there; the log at start says which): " + g.what + ". Correct the rows and restart.", true})
 		}
 	}
+	// A payment begun and never recorded: the wallet may have paid. Shown
+	// once it is older than a paying request can take (its wallet calls
+	// come to under twenty minutes, under one wallet lock).
+	if rows, err := a.db.Query("SELECT id, user_id, purpose, created_at FROM arca_sends WHERE state = 'begun' AND created_at < ? ORDER BY id", now()-20*60); err == nil {
+		for rows.Next() {
+			var id, uid, at int64
+			var purpose string
+			if rows.Scan(&id, &uid, &purpose, &at) == nil {
+				out = append(out, deskLine{fmt.Sprintf("Payment %d to account #%d for the %s task was begun %s and never recorded: the wallet may have paid. Check its payments, reconcile it by hand, and correct the row.",
+					id, uid, purpose, time.Unix(at, 0).UTC().Format("2006-01-02 15:04 UTC")), true})
+			}
+		}
+		rows.Close()
+	}
 	var noID int
 	a.db.QueryRow("SELECT COUNT(*) FROM verifications WHERE platform = 'telegram' AND status = 'verified' AND evidence = ''").Scan(&noID)
 	if noID > 0 {
