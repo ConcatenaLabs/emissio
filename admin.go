@@ -29,6 +29,7 @@ func (a *App) handleAdminSubmissions(w http.ResponseWriter, r *http.Request) {
 		a.serverError(w, err)
 		return
 	}
+	a.withWalletNotes(subs)
 	a.render(w, r, "admin_submissions", "Review submissions", subs)
 }
 

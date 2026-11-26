@@ -45,7 +45,7 @@
   <div class="table-scroll"><table class="table">
     <tr><th>#</th><th>Task</th><th>Status</th><th>Check</th><th></th></tr>
     {{range .Data.Subs}}
-    <tr><td>{{.ID}}</td><td>{{.TaskTitle}}{{if .Txid}}<div class="mono small">{{short .Txid}}</div>{{end}}</td><td><span class="pill {{.Status}}">{{.Status}}</span></td><td class="small">{{.ChainNote}}{{if .ReviewNote}}<div class="muted">{{.ReviewNote}}</div>{{end}}</td>
+    <tr><td>{{.ID}}</td><td>{{.TaskTitle}}{{if .Txid}}<div class="mono small">{{short .Txid}}</div>{{end}}</td><td><span class="pill {{.Status}}">{{.Status}}</span></td><td class="small">{{.ChainNote}}{{if .ReviewNote}}<div class="muted">{{.ReviewNote}}</div>{{end}}{{if .Wallet}}<div>{{.Wallet}}</div>{{end}}</td>
       <td>{{if eq .Status "approved"}}<form method="post" action="{{base}}/admin/submissions/{{.ID}}/revoke" class="inline-form"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="text" name="note" placeholder="reason" required minlength="8"><button class="btn danger small" type="submit">Revoke</button></form>{{end}}</td></tr>
     {{end}}
   </table></div>

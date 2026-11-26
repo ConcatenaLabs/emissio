@@ -346,68 +346,18 @@ func TestVerificationsDecidedByTheCheck(t *testing.T) {
 	}
 }
 
-// The Telegram check reads a message sent to the bot, and the account page
-// says exactly that, naming the bot.
+// The account page says the bot reads a message sent to it, naming the bot,
+// and that the message alone is enough (tgbot_test.go drives the bot).
 func TestTelegramBotVerification(t *testing.T) {
 	app, srv, _ := newTestServer(t)
 	c := &http.Client{Jar: newJar()}
 	from(t, c, "10.2.0.1", srv.URL+"/register", url.Values{"email": {"tg@example.com"}, "password": {"a-long-password"}})
-	var code string
-	app.db.QueryRow("SELECT claim_code FROM users WHERE email = 'tg@example.com'").Scan(&code)
-	var mu sync.Mutex
-	updates := []map[string]any{}
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		defer mu.Unlock()
-		switch {
-		case strings.HasSuffix(r.URL.Path, "/getMe"):
-			w.Write([]byte(`{"ok":true,"result":{"username":"EmissioCheckBot"}}`))
-		case strings.HasSuffix(r.URL.Path, "/getUpdates"):
-			json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": updates})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer api.Close()
-	app.cfg.TgBotToken, app.cfg.TgAPIBase = "123:test", api.URL
+	bot := newFakeBot(t)
+	app.cfg.TgBotToken, app.cfg.TgAPIBase = fakeToken, bot.srv.URL
 	page := get(t, c, srv.URL+"/account")
-	if !strings.Contains(page, "as a Telegram message to @EmissioCheckBot") || !strings.Contains(page, "not your profile or bio") || strings.Contains(page, "Telegram bio") {
+	if !strings.Contains(page, "as a Telegram message to @EmissioCheckBot") || !strings.Contains(page, "not your profile or bio") ||
+		!strings.Contains(page, "linked at once") || strings.Contains(page, "Telegram bio") {
 		t.Fatal("the account page does not say the check reads a message to the bot")
-	}
-	csrf := csrfOf(t, c, srv.URL+"/account")
-	verify := func(handle string) string {
-		return from(t, c, "10.2.0.1", srv.URL+"/account/verify", url.Values{"csrf": {csrf}, "platform": {"telegram"}, "handle": {handle}})
-	}
-	msg := func(id int64, user, text string) map[string]any {
-		return map[string]any{"message": map[string]any{"text": text, "from": map[string]any{"id": id, "username": user}}}
-	}
-	// No message to the bot: refused with what to do, nothing stored.
-	if m := verify("old_tg"); !strings.Contains(m, "Not verified: no message with your account code from @old_tg reached the bot") {
-		t.Fatalf("no message: %q", m)
-	}
-	var n int
-	app.db.QueryRow("SELECT COUNT(*) FROM verifications").Scan(&n)
-	if n != 0 {
-		t.Fatal("a refused Telegram verification was stored")
-	}
-	// An id newer than the newest anchor gives no age the check can vouch
-	// for: a reviewer decides.
-	mu.Lock()
-	updates = []map[string]any{msg(9000000000, "new_tg", "code "+code)}
-	mu.Unlock()
-	verify("new_tg")
-	var status, note string
-	app.db.QueryRow("SELECT status, check_note FROM verifications ORDER BY id DESC LIMIT 1").Scan(&status, &note)
-	if status != "pending" || !strings.Contains(note, "younger than this estimate") {
-		t.Fatalf("weak estimate: %s %q", status, note)
-	}
-	app.db.Exec("UPDATE verifications SET status = 'rejected'")
-	// A message from an old account: approved at once.
-	mu.Lock()
-	updates = []map[string]any{msg(54845238, "old_tg", "here is "+code)}
-	mu.Unlock()
-	if m := verify("old_tg"); !strings.Contains(m, "Verified: your Telegram account is linked") {
-		t.Fatalf("old account: %q", m)
 	}
 }
 

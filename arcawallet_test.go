@@ -60,9 +60,9 @@ func TestArcaTasks(t *testing.T) {
 		mb := []map[string]string{{"leaf_id": leaf, "asset": asset, "value": value}}
 		b, _ := json.Marshal(mb)
 		os.WriteFile(filepath.Join(dir, "mailbox.json"), b, 0o600)
-		rec := "00ff"
+		rec := synthRecord(t, nil, randHex(32), randHex(32), nil)
 		if c != nil {
-			rec += c.Owner + c.OwnerNonce + "11"
+			rec = synthRecord(t, nil, c.Owner, c.OwnerNonce, nil)
 		}
 		b, _ = json.Marshal(rec)
 		os.WriteFile(filepath.Join(dir, "rec-"+leaf+".json"), b, 0o600)
@@ -256,7 +256,7 @@ func TestPaymentNameTask(t *testing.T) {
 	write := func(leaf, value string) {
 		b, _ := json.Marshal([]map[string]string{{"leaf_id": leaf, "asset": asset, "value": value}})
 		os.WriteFile(filepath.Join(dir, "mailbox.json"), b, 0o600)
-		b, _ = json.Marshal("00ff" + back.Owner + back.OwnerNonce + "11")
+		b, _ = json.Marshal(synthRecord(t, nil, back.Owner, back.OwnerNonce, nil))
 		os.WriteFile(filepath.Join(dir, "rec-"+leaf+".json"), b, 0o600)
 		app.followArca()
 	}

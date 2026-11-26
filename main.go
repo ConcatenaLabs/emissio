@@ -200,6 +200,7 @@ type App struct {
 	tgNameOnce      sync.Once // the bot's username, read once (telegram.go)
 	tgName          string
 	arcaMu          sync.Mutex // one arca call at a time
+	tgMu            sync.Mutex // one read of the bot's messages at a time (tgbot.go)
 	capsMu          sync.Mutex // guards caps
 	caps            invoiceCaps
 }
@@ -245,6 +246,9 @@ func parseTemplates(cfg Config) map[string]*template.Template {
 		"handlefmt": func(platform, handle string) string {
 			if platform == "reddit" {
 				return "u/" + handle
+			}
+			if _, err := strconv.ParseInt(handle, 10, 64); err == nil && platform == "telegram" {
+				return "id " + handle // a Telegram account with no username
 			}
 			return "@" + handle
 		},
@@ -396,6 +400,7 @@ func main() {
 	app.startWaitPoller()
 	app.startPayoutFollower()
 	app.startArcaFollower()
+	app.startTelegramBot()
 	log.Printf("emissio listening on %s (base path %q, db %s)", cfg.Listen, cfg.BasePath, cfg.DBPath)
 	srv := &http.Server{
 		Addr:              cfg.Listen,

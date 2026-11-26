@@ -127,7 +127,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS ledger_verification ON ledger(kind, ref_id)
 	WHERE kind = 'verification';
 `
 
+// mustOpenDB opens the database, or stops the program: a schema guard the
+// database cannot take is a refusal to start, naming the rows in the way.
 func mustOpenDB(path string) *sql.DB {
+	db, err := openDB(path)
+	if err != nil {
+		log.Fatalf("emissio: not starting: %v", err)
+	}
+	return db
+}
+
+// errGuard is a schema guard the database could not take.
+type errGuard struct{ msg string }
+
+func (e errGuard) Error() string { return e.msg }
+
+// openDB opens the database and brings its schema up to date. It panics on
+// a schema it cannot write, as before, and returns an error when a guard of
+// the ledger cannot be created over rows that already break it.
+func openDB(path string) (*sql.DB, error) {
 	dsn := path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -155,7 +173,7 @@ func mustOpenDB(path string) *sql.DB {
 	db.Exec("ALTER TABLE tasks ADD COLUMN surface TEXT NOT NULL DEFAULT ''")
 	db.Exec("ALTER TABLE tasks ADD COLUMN check_kind TEXT NOT NULL DEFAULT ''")
 	db.Exec("ALTER TABLE submissions ADD COLUMN auto INTEGER NOT NULL DEFAULT 0")
-	if _, err := db.Exec(counterpartySchema + signalSchema + deskSchema + walletLinkSchema + arcaSchema + btcNodeSchema); err != nil {
+	if _, err := db.Exec(counterpartySchema + signalSchema + deskSchema + walletLinkSchema + arcaSchema + arcaCoinSchema + btcNodeSchema); err != nil {
 		panic(err)
 	}
 	if _, err := db.Exec(tokenSchema); err != nil {
@@ -170,6 +188,22 @@ func mustOpenDB(path string) *sql.DB {
 	if _, err := db.Exec(clearedSchema + referralSchema); err != nil {
 		panic(err)
 	}
+	// One coin pays one code. A database where two codes name one coin
+	// cannot take the index, and Emissio does not run without it.
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS arca_codes_paid_leaf
+		ON arca_codes(paid_leaf) WHERE paid_leaf != ''`); err != nil {
+		e := errGuard{"arca_codes rows " + conflictRows(db, guardConflicts["arca_codes_paid_leaf"]) +
+			" name one coin as the payment of each (arca_codes_paid_leaf cannot be created): give each code its own coin or clear paid_leaf on all but one, then start again"}
+		db.Close()
+		return nil, e
+	}
+	if _, err := db.Exec(tgSchema); err != nil {
+		panic(err)
+	}
+	if err := migrateTelegramIDs(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	// One live verification per account and platform. A database that
 	// already holds two cannot take the index; it is then left without it,
 	// loudly, and the per-account lock in handleVerify still serialises
@@ -178,7 +212,38 @@ func mustOpenDB(path string) *sql.DB {
 		ON verifications(user_id, platform) WHERE status != 'rejected'`); err != nil {
 		log.Printf("WARNING: verifications_one_live not created (%v): an account holds two live verifications of one platform; reject one and restart", err)
 	}
-	return db
+	return db, nil
+}
+
+// guardConflicts are the queries that list, by row id only, the rows that
+// keep each guard of the ledger from being created. The Telegram one reads
+// a row's id as migrateTelegramIDs gives it, so it can be run before the
+// migration, on a database a deploy is about to start on.
+var guardConflicts = map[string]string{
+	"arca_codes_paid_leaf": `SELECT group_concat(id) FROM arca_codes WHERE paid_leaf != '' GROUP BY paid_leaf HAVING COUNT(*) > 1`,
+	"verifications_telegram_id": `WITH t AS (SELECT id, CASE WHEN evidence != '' THEN evidence
+		WHEN instr(check_note, '(id ') > 0 THEN 'telegram-id:' || substr(check_note, instr(check_note, '(id ') + 4,
+			instr(substr(check_note, instr(check_note, '(id ') + 4), ')') - 1)
+		ELSE '' END AS k FROM verifications WHERE platform = 'telegram' AND status = 'verified')
+		SELECT group_concat(id) FROM t WHERE k != '' GROUP BY k HAVING COUNT(*) > 1`,
+}
+
+// conflictRows runs a guard's conflict query: each group of row ids that
+// break it, as "3, 4; 9, 12".
+func conflictRows(db *sql.DB, query string) string {
+	rows, err := db.Query(query)
+	if err != nil {
+		return "(unreadable: " + err.Error() + ")"
+	}
+	defer rows.Close()
+	var groups []string
+	for rows.Next() {
+		var g string
+		if rows.Scan(&g) == nil {
+			groups = append(groups, strings.ReplaceAll(g, ",", ", "))
+		}
+	}
+	return strings.Join(groups, "; ")
 }
 
 func now() int64 { return time.Now().Unix() }
@@ -217,6 +282,10 @@ func getUserByEmail(db *sql.DB, email string) (*User, error) {
 
 func getUserByID(db *sql.DB, id int64) (*User, error) {
 	return scanUser(db.QueryRow("SELECT "+userCols+" FROM users WHERE id = ?", id))
+}
+
+func getUserByClaimCode(db *sql.DB, code string) (*User, error) {
+	return scanUser(db.QueryRow("SELECT "+userCols+" FROM users WHERE claim_code = ?", code))
 }
 
 func createUser(db *sql.DB, email, passHash, claimCode, regIP string) (int64, error) {
@@ -339,7 +408,8 @@ type Submission struct {
 	TaskReward int64
 	UserEmail  string
 	ClaimCode  string
-	VerifCount int64 // submitter's verified platforms (pending queue only)
+	VerifCount int64  // submitter's verified platforms (pending queue only)
+	Wallet     string // a web wallet task: what Emissio's wallet holds for it (walletNote)
 }
 
 // latestSubmission returns the user's most recent submission for a task, or nil.

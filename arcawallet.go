@@ -207,6 +207,56 @@ func (a *App) codeOf(userID int64, purpose string) *arcaCode {
 	return &c
 }
 
+// codesOf lists the account's codes for one purpose made at or after
+// since, newest first.
+func (a *App) codesOf(userID int64, purpose string, since int64) []*arcaCode {
+	rows, err := a.db.Query(`SELECT id, purpose, request, owner, owner_nonce, ark_address, want_asset, want_atoms, paid_asset, paid_atoms, paid_at, btc_sats, created_at
+		FROM arca_codes WHERE user_id = ? AND purpose = ? AND created_at >= ? ORDER BY id DESC`, userID, purpose, since)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []*arcaCode
+	for rows.Next() {
+		var c arcaCode
+		if rows.Scan(&c.ID, &c.Purpose, &c.Request, &c.Owner, &c.OwnerNonce, &c.Ark, &c.WantAsset, &c.WantAtoms, &c.PaidAsset, &c.PaidAtoms, &c.PaidAt, &c.BtcSats, &c.CreatedAt) == nil {
+			out = append(out, &c)
+		}
+	}
+	return out
+}
+
+// Which code counts. Every code is the account's own: its owner key was made
+// for that account and task alone, so a payment to any of them shows the
+// account's wallet paid Emissio, and the newest is only the one the page
+// shows. A tester who paid a code and then asked for a new one (because the
+// page had not seen the payment yet, or the wallet would not pay the old
+// one) keeps the credit. For the round trip the return is of the newest
+// payment Emissio made, so the codes made since that payment count.
+const (
+	codeRenewAfter = 10 * 60 // seconds an unpaid code is kept before a new one can be had
+	codesPerDay    = 5       // codes per account and task per day
+)
+
+// renewable says whether an unpaid code can be replaced now, or from when.
+func (a *App) renewable(userID int64, purpose string, c *arcaCode) (ok bool, from int64) {
+	if c == nil {
+		return true, 0
+	}
+	var today int64
+	a.db.QueryRow("SELECT COUNT(*) FROM arca_codes WHERE user_id = ? AND purpose = ? AND created_at > ?", userID, purpose, now()-86400).Scan(&today)
+	if today >= codesPerDay {
+		var oldest int64
+		a.db.QueryRow("SELECT MIN(created_at) FROM (SELECT created_at FROM arca_codes WHERE user_id = ? AND purpose = ? AND created_at > ? ORDER BY created_at DESC LIMIT ?)",
+			userID, purpose, now()-86400, codesPerDay).Scan(&oldest)
+		return false, oldest + 86400
+	}
+	if c.PaidAt == 0 && c.BtcSats == 0 && now()-c.CreatedAt < codeRenewAfter {
+		return false, c.CreatedAt + codeRenewAfter
+	}
+	return true, 0
+}
+
 // receiveCode is the code shown to the account: Emissio's on-chain address
 // first, as any Bitcoin wallet reads it, then the ark and Sequentia parts.
 func (a *App) receiveCode(c *arcaCode) string {
@@ -227,8 +277,6 @@ func (a *App) followArca() time.Duration {
 		Mailbox struct {
 			Accepted []struct {
 				LeafID string `json:"leaf_id"`
-				Asset  string `json:"asset"`
-				Value  string `json:"value"`
 			} `json:"accepted"`
 		} `json:"mailbox"`
 		Schedule struct {
@@ -237,13 +285,16 @@ func (a *App) followArca() time.Duration {
 		} `json:"schedule"`
 	}
 	wait := time.Minute
+	var first []string
 	if err := a.arca(10*time.Minute, &s, "sync"); err != nil {
+		// What another command accepted is reconciled all the same.
 		log.Printf("arca: sync: %v", err)
-		return wait
+	} else {
+		for _, c := range s.Mailbox.Accepted {
+			first = append(first, c.LeafID)
+		}
 	}
-	for _, c := range s.Mailbox.Accepted {
-		a.attribute(c.LeafID, c.Asset, c.Value)
-	}
+	a.reconcileCoins(first)
 	a.followArk()
 	a.followInvoices()
 	if s.Schedule.NextSyncAt != nil {
@@ -257,43 +308,251 @@ func (a *App) followArca() time.Duration {
 	return wait
 }
 
-// attribute finds the request a coin paid: its record carries the
-// request's owner key and nonce side by side.
-func (a *App) attribute(leaf, asset, value string) {
-	var rec struct {
-		Record string `json:"record"`
+// The reconciliation. Whichever command accepted a coin (the follower's own
+// sync, a send's, a sync run by hand) and whenever, the coin is in the
+// wallet's list of every coin it holds or held. A follow reads that list
+// (`arca coins`), and each coin not read before has its record read (`arca
+// record`) and kept in arca_coins with the code it pays: the code whose
+// owner key and nonce are those of the coin's own leaf, read from the record
+// field by field (arcarecord.go), never found by searching it, since a
+// transfer's record carries every coin of its history ahead of its own leaf.
+// A code takes the first coin that pays it, and a coin pays one code, once
+// (arca_codes_paid_leaf). The coin's read and its code's payment are one
+// write. A record the wallet does not give, or that this reader cannot
+// read, is asked for again on later follows for as long as it takes, less
+// often as its failures grow, and the desk names it meanwhile.
+//
+// Per follow: one listing, and at most reconcileBatch records, those the
+// follow's own sync accepted first, then reconcileOldest of the oldest
+// unread and the newest for the rest, so a payment is read in the follow
+// it arrives in and no backlog keeps an older one waiting. The listing is
+// the wallet's whole history, with work per coin in the wallet, so a follow
+// with no code open, nothing unread and nothing accepted lists it at most
+// once an hour.
+const arcaCoinSchema = `
+CREATE TABLE IF NOT EXISTS arca_coins (
+	leaf_id TEXT PRIMARY KEY,
+	code_id INTEGER NOT NULL DEFAULT 0,
+	counted INTEGER NOT NULL DEFAULT 0,
+	asset TEXT NOT NULL DEFAULT '',
+	atoms INTEGER NOT NULL DEFAULT 0,
+	tries INTEGER NOT NULL DEFAULT 0,
+	error TEXT NOT NULL DEFAULT '',
+	next_at INTEGER NOT NULL DEFAULT 0,
+	read_at INTEGER NOT NULL DEFAULT 0,
+	seen_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS arca_coins_code ON arca_coins(code_id) WHERE code_id != 0;
+CREATE INDEX IF NOT EXISTS arca_coins_unread ON arca_coins(read_at) WHERE read_at = 0;
+`
+
+const (
+	reconcileBatch  = 50         // records read per follow
+	reconcileOldest = 10         // of them, the oldest unread
+	recordBackoff   = 6 * 3600   // seconds, the longest wait before a failed record is asked for again
+	codeLife        = 30 * 86400 // seconds a code is followed as open (a code works for 20 days)
+	quietListing    = 3600       // seconds between listings when nothing can be owed
+)
+
+// recordWait is how long to wait after a coin's record failed n times: a
+// minute, doubling up to recordBackoff.
+func recordWait(n int) int64 {
+	return min(int64(60)<<min(max(n-1, 0), 20), recordBackoff)
+}
+
+// owedNow says whether a coin may be owed to a code: a code open, a coin
+// unread at the last listing, or a coin this follow accepted.
+func (a *App) owedNow(first []string) bool {
+	if _, unread := a.reconciled(); len(first) > 0 || unread > 0 {
+		return true
 	}
-	if err := a.arca(time.Minute, &rec, "record", leaf); err != nil {
-		log.Printf("arca: record %s: %v", leaf, err)
+	var n int64
+	a.db.QueryRow(`SELECT (SELECT COUNT(*) FROM arca_coins WHERE read_at = 0)
+		+ (SELECT COUNT(*) FROM arca_codes WHERE paid_at = 0 AND created_at > ?)`, now()-codeLife).Scan(&n)
+	return n > 0
+}
+
+// reconcileCoins matches the wallet's coins not read before to the codes
+// they pay. first are the coins this follow's own sync accepted.
+func (a *App) reconcileCoins(first []string) {
+	var listed int64
+	a.db.QueryRow("SELECT CAST(value AS INTEGER) FROM kv WHERE key = 'arca_listed'").Scan(&listed)
+	if !a.owedNow(first) && now()-listed < quietListing {
 		return
 	}
-	rows, err := a.db.Query("SELECT id, owner, owner_nonce FROM arca_codes WHERE paid_at = 0")
+	var coins []struct {
+		LeafID string `json:"leaf_id"`
+		Asset  string `json:"asset"`
+		Value  string `json:"value"`
+	}
+	if err := a.arca(5*time.Minute, &coins, "coins"); err != nil {
+		log.Printf("arca: coins: %v", err)
+		return
+	}
+	a.db.Exec("INSERT INTO kv (key, value) VALUES ('arca_listed', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", strconv.FormatInt(now(), 10))
+	type state struct {
+		read   bool
+		tries  int
+		nextAt int64
+	}
+	known := map[string]state{}
+	rows, err := a.db.Query("SELECT leaf_id, read_at, tries, next_at FROM arca_coins")
 	if err != nil {
 		return
 	}
-	type open struct {
-		id   int64
-		mark string
-	}
-	var opens []open
 	for rows.Next() {
-		var o open
-		var owner, nonce string
-		rows.Scan(&o.id, &owner, &nonce)
-		o.mark = strings.ToLower(owner + nonce)
-		opens = append(opens, o)
+		var leaf string
+		var readAt, nextAt int64
+		var n int
+		rows.Scan(&leaf, &readAt, &n, &nextAt)
+		known[leaf] = state{readAt != 0, n, nextAt}
 	}
 	rows.Close()
-	r := strings.ToLower(rec.Record)
-	atoms, _ := strconv.ParseInt(value, 10, 64)
-	for _, o := range opens {
-		if strings.Contains(r, o.mark) {
-			a.db.Exec("UPDATE arca_codes SET paid_leaf = ?, paid_asset = ?, paid_atoms = ?, paid_at = ? WHERE id = ? AND paid_at = 0",
-				leaf, asset, atoms, now(), o.id)
-			return
+	type coin struct{ leaf, asset, value string }
+	var unread []coin // oldest first, as the wallet lists them
+	inList := map[string]bool{}
+	for _, c := range coins {
+		if c.LeafID == "" || inList[c.LeafID] || known[c.LeafID].read {
+			continue
+		}
+		inList[c.LeafID] = true
+		unread = append(unread, coin{c.LeafID, c.Asset, c.Value})
+	}
+	due := func(c coin) bool { return known[c.leaf].nextAt <= now() }
+	var batch []coin
+	taken := map[string]bool{}
+	add := func(c coin) {
+		if len(batch) < reconcileBatch && !taken[c.leaf] && due(c) {
+			taken[c.leaf] = true
+			batch = append(batch, c)
 		}
 	}
-	log.Printf("arca: coin %s (%s atoms of %s) paid no open request", leaf, value, short(asset))
+	byLeaf := map[string]coin{}
+	for _, c := range unread {
+		byLeaf[c.leaf] = c
+	}
+	for _, l := range first {
+		if c, ok := byLeaf[l]; ok {
+			add(c)
+		}
+	}
+	for i, n := 0, 0; i < len(unread) && n < reconcileOldest; i++ {
+		if !taken[unread[i].leaf] && due(unread[i]) {
+			add(unread[i])
+			n++
+		}
+	}
+	for i := len(unread) - 1; i >= 0; i-- {
+		add(unread[i])
+	}
+	left := len(unread)
+	for _, c := range batch {
+		atoms, _ := strconv.ParseInt(c.value, 10, 64)
+		a.db.Exec("INSERT OR IGNORE INTO arca_coins (leaf_id, asset, atoms, seen_at) VALUES (?,?,?,?)", c.leaf, c.asset, atoms, now())
+		var rec struct {
+			Record string `json:"record"`
+		}
+		err := a.arca(time.Minute, &rec, "record", c.leaf)
+		var raw []byte
+		if err == nil {
+			if raw, err = hex.DecodeString(rec.Record); err != nil {
+				err = errors.New("the wallet gave a record that is not hex")
+			}
+		}
+		if err == nil {
+			var own recLeaf
+			var named bool
+			if own, named, err = ownLeaf(raw); err == nil {
+				if err = a.attribute(c.leaf, c.asset, atoms, own, named); err == nil {
+					left--
+					continue
+				}
+			} else {
+				err = errors.New("a record in a format this Emissio does not read: update Emissio")
+			}
+		}
+		n := known[c.leaf].tries + 1
+		msg := err.Error()
+		if len(msg) > 200 {
+			msg = msg[:200]
+		}
+		a.db.Exec("UPDATE arca_coins SET tries = ?, error = ?, next_at = ? WHERE leaf_id = ? AND read_at = 0", n, msg, now()+recordWait(n), c.leaf)
+		if n&(n-1) == 0 { // the 1st, 2nd, 4th, 8th... failure
+			log.Printf("arca: coin %s not read (%d times so far, asked for again later): %s", c.leaf, n, msg)
+		}
+	}
+	a.db.Exec("INSERT INTO kv (key, value) VALUES ('arca_reconciled', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+		fmt.Sprintf("%d %d", now(), left))
+}
+
+// reconciled says when the wallet's coins were last read, and how many it
+// had then whose records were still to read.
+func (a *App) reconciled() (at int64, unread int64) {
+	var v string
+	a.db.QueryRow("SELECT value FROM kv WHERE key = 'arca_reconciled'").Scan(&v)
+	fmt.Sscanf(v, "%d %d", &at, &unread)
+	return at, unread
+}
+
+// attribute keeps, in one write, that a coin's record was read and the code
+// its own leaf pays, if any. A code takes its first coin only, with one
+// exception: a code whose recorded coin is not a coin read from the wallet
+// whose own leaf pays it (a code marked paid by hand, or by an earlier
+// matcher that searched the record) takes the coin that does pay it as its
+// payment, staying paid as it was, so the tester's coin is never shown as a
+// problem. Nothing is credited here: the code was paid already.
+func (a *App) attribute(leaf, asset string, atoms int64, own recLeaf, named bool) error {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var id int64
+	if named && own.Owner != "" {
+		tx.QueryRow("SELECT id FROM arca_codes WHERE lower(owner) = ? AND lower(owner_nonce) = ? ORDER BY id LIMIT 1", own.Owner, own.Nonce).Scan(&id)
+	}
+	counted := false
+	if id != 0 {
+		res, err := tx.Exec("UPDATE arca_codes SET paid_leaf = ?, paid_asset = ?, paid_atoms = ?, paid_at = ? WHERE id = ? AND paid_at = 0",
+			leaf, asset, atoms, now(), id)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 1 {
+			counted = true
+		} else {
+			var paidLeaf string
+			var genuine int
+			tx.QueryRow("SELECT paid_leaf FROM arca_codes WHERE id = ?", id).Scan(&paidLeaf)
+			tx.QueryRow("SELECT COUNT(*) FROM arca_coins WHERE leaf_id = ? AND code_id = ? AND read_at != 0", paidLeaf, id).Scan(&genuine)
+			switch {
+			case paidLeaf == leaf:
+				counted = true
+			case genuine == 0:
+				if _, err := tx.Exec("UPDATE arca_codes SET paid_leaf = ? WHERE id = ?", leaf, id); err != nil {
+					return err
+				}
+				if paidLeaf != "" {
+					tx.Exec("UPDATE arca_coins SET counted = 0 WHERE leaf_id = ?", paidLeaf)
+				}
+				counted = true
+			}
+		}
+	}
+	if _, err := tx.Exec("UPDATE arca_coins SET code_id = ?, counted = ?, read_at = ?, error = '', next_at = 0 WHERE leaf_id = ?",
+		id, counted, now(), leaf); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	switch {
+	case id == 0 && named:
+		log.Printf("arca: coin %s (%d atoms of %s) paid no code", leaf, atoms, short(asset))
+	case id != 0 && !counted:
+		log.Printf("arca: coin %s paid code %d, which another coin paid already: not counted", leaf, id)
+	}
+	return nil
 }
 
 // followArk reads what arrived at each account's Bitcoin ark address.
@@ -484,10 +743,14 @@ func (a *App) handleArcaRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	purpose := arcaPurpose(task.CheckKind)
+	// One request of an account's task at a time, from its limits' check to
+	// the code or payment it makes; and one paying request of a network
+	// address at a time, for the address's daily limit.
+	defer a.claims.lock(fmt.Sprintf("arca:%d:%s", user.ID, purpose))()
 	switch task.CheckKind {
 	case "arca-pay-code", "arca-pay-btc", "arca-swap":
-		if c := a.codeOf(user.ID, purpose); c != nil && c.PaidAt == 0 && c.BtcSats == 0 && now()-c.CreatedAt < 20*86400 {
-			a.redirect(w, r, back, "", "Your receive code from Emissio is below; it works for 20 days.")
+		if ok, from := a.renewable(user.ID, purpose, a.codeOf(user.ID, purpose)); !ok {
+			a.redirect(w, r, back, "", "Your receive code from Emissio is below. A new one can be had from "+time.Unix(from, 0).UTC().Format("15:04 UTC")+"; a payment to any of your codes for this task counts.")
 			return
 		}
 		if _, err := a.newCode(user.ID, purpose, "", 0); err != nil {
@@ -497,6 +760,11 @@ func (a *App) handleArcaRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		a.redirect(w, r, back, "Your receive code from Emissio is below.", "")
 	case "arca-roundtrip", "arca-invoice", "arca-name":
+		if r.FormValue("renew") == "1" && task.CheckKind != "arca-invoice" {
+			a.renewReturnCode(w, r, user, back, purpose)
+			return
+		}
+		defer a.claims.lock("arca-ip:" + clientIP(r))()
 		var mine, ipToday int64
 		a.db.QueryRow("SELECT COUNT(*) FROM arca_sends WHERE user_id = ? AND purpose = ?", user.ID, purpose).Scan(&mine)
 		a.db.QueryRow("SELECT COUNT(*) FROM arca_sends WHERE ip = ? AND created_at > ?", clientIP(r), now()-86400).Scan(&ipToday)
@@ -517,6 +785,26 @@ func (a *App) handleArcaRequest(w http.ResponseWriter, r *http.Request) {
 			a.payInvoice(w, r, user, back, purpose)
 		}
 	}
+}
+
+// renewReturnCode makes a new code to return Emissio's newest payment to,
+// for a wallet that will not pay the one shown. No new payment is made.
+func (a *App) renewReturnCode(w http.ResponseWriter, r *http.Request, user *User, back, purpose string) {
+	var sentAt int64
+	if a.db.QueryRow("SELECT created_at FROM arca_sends WHERE user_id = ? AND purpose = ? ORDER BY id DESC LIMIT 1", user.ID, purpose).Scan(&sentAt) != nil {
+		a.redirect(w, r, back, "", "Emissio has not paid you yet for this task.")
+		return
+	}
+	if ok, from := a.renewable(user.ID, purpose, a.codeOf(user.ID, purpose)); !ok {
+		a.redirect(w, r, back, "", "A new code can be had from "+time.Unix(from, 0).UTC().Format("15:04 UTC")+"; a return to any of your codes since Emissio's payment counts.")
+		return
+	}
+	if _, err := a.newCode(user.ID, purpose, "", 0); err != nil {
+		log.Printf("arca: return code for user %d: %v", user.ID, err)
+		a.redirect(w, r, back, "", "Emissio could not make a code just now. Try again later.")
+		return
+	}
+	a.redirect(w, r, back, "Your new code is below. Send back what arrived to it; a return to the earlier one still counts.", "")
 }
 
 func isArcaTask(kind string) bool {
@@ -558,6 +846,14 @@ func (a *App) payCode(w http.ResponseWriter, r *http.Request, user *User, back, 
 	}
 	if op := a.arcaOperator(); op != "" && !strings.EqualFold(op, d.Operator) {
 		a.redirect(w, r, back, "", "That receive code is for another server than Emissio's.")
+		return
+	}
+	// Emissio never pays itself: a code of its own, paid, would credit the
+	// account with Emissio's own coin.
+	var mine int64
+	a.db.QueryRow("SELECT COUNT(*) FROM arca_codes WHERE lower(owner) = ?", strings.ToLower(d.Owner)).Scan(&mine)
+	if mine > 0 {
+		a.redirect(w, r, back, "", "That is one of Emissio's own receive codes. Paste the receive code your web wallet shows under Receive.")
 		return
 	}
 	if d.Until != 0 && d.Until < time.Now().Unix()+3600 {
@@ -830,49 +1126,72 @@ func (a *App) arcaCheck(kind string, user *User) checkResult {
 		return wait("Emissio's payment of your invoice is %s, not yet paid: keep your wallet open", state)
 	case "arca-roundtrip", "arca-name":
 		var asset string
-		var atoms int64
-		if a.db.QueryRow("SELECT asset, atoms FROM arca_sends WHERE user_id = ? AND purpose = ? ORDER BY id DESC LIMIT 1", user.ID, purpose).Scan(&asset, &atoms) != nil {
+		var atoms, sentAt int64
+		if a.db.QueryRow("SELECT asset, atoms, created_at FROM arca_sends WHERE user_id = ? AND purpose = ? ORDER BY id DESC LIMIT 1", user.ID, purpose).Scan(&asset, &atoms, &sentAt) != nil {
 			return fail("Emissio has not paid your receive code yet: paste it above and ask Emissio to pay you")
 		}
-		c := a.codeOf(user.ID, purpose)
-		switch {
-		case c == nil || c.PaidAt == 0:
-			return wait("nothing has reached Emissio's code yet; Emissio checks every few minutes")
-		case c.PaidAsset != asset || c.PaidAtoms > atoms || atoms-c.PaidAtoms > returnShortAtoms:
+		var wrong *arcaCode
+		for _, c := range a.codesOf(user.ID, purpose, sentAt) {
+			switch {
+			case c.PaidAt == 0:
+			case c.PaidAsset != asset || c.PaidAtoms > atoms || atoms-c.PaidAtoms > returnShortAtoms:
+				if wrong == nil {
+					wrong = c
+				}
+			case c.PaidAtoms < atoms:
+				return pass("received what Emissio paid and sent %s of %s back, %s short for the transfer's fees (OK)", amountText(c.PaidAtoms), short(asset), amountText(atoms-c.PaidAtoms))
+			default:
+				return pass("received what Emissio paid and sent exactly %s of %s back (OK)", amountText(atoms), short(asset))
+			}
+		}
+		if wrong != nil {
 			return fail("Emissio's code received %s of %s, not what Emissio sent you (a return may fall short by up to %s, what a wallet keeps back for its transfer's fees)",
-				amountText(c.PaidAtoms), short(c.PaidAsset), amountText(returnShortAtoms))
+				amountText(wrong.PaidAtoms), short(wrong.PaidAsset), amountText(returnShortAtoms))
 		}
-		if c.PaidAtoms < atoms {
-			return pass("received what Emissio paid and sent %s of %s back, %s short for the transfer's fees (OK)", amountText(c.PaidAtoms), short(asset), amountText(atoms-c.PaidAtoms))
-		}
-		return pass("received what Emissio paid and sent exactly %s of %s back (OK)", amountText(atoms), short(asset))
+		return wait("nothing has reached Emissio's code yet; Emissio checks every few minutes")
 	case "arca-pay-btc":
-		c := a.codeOf(user.ID, purpose)
-		switch {
-		case c == nil:
+		codes := a.codesOf(user.ID, purpose, 0)
+		if len(codes) == 0 {
 			return fail("ask Emissio for your receive code above first")
-		case c.BtcSats == 0:
-			return wait("no BTC has reached your code's Bitcoin part yet; Emissio checks every few minutes")
 		}
-		return pass("%d sats reached this account's own Bitcoin ark address at Emissio (OK)", c.BtcSats)
+		for _, c := range codes {
+			if c.BtcSats > 0 {
+				return pass("%d sats reached this account's own Bitcoin ark address at Emissio (OK)", c.BtcSats)
+			}
+		}
+		return wait("no BTC has reached your code's Bitcoin part yet; Emissio checks every few minutes")
 	case "arca-pay-code", "arca-swap":
-		c := a.codeOf(user.ID, purpose)
-		switch {
-		case c == nil:
+		codes := a.codesOf(user.ID, purpose, 0)
+		if len(codes) == 0 {
 			return fail("ask Emissio for your receive code above first")
-		case c.PaidAt == 0:
-			return wait("nothing has reached your Emissio code yet; Emissio checks every few minutes")
 		}
-		if kind == "arca-swap" {
-			want, _ := strconv.ParseInt(proofTag(user.ClaimCode), 10, 64)
-			if c.PaidAtoms%proofAtoms != want {
-				return fail("received %s of %s, which does not end in your proof decimals .%s", amountText(c.PaidAtoms), short(c.PaidAsset), proofTag(user.ClaimCode))
+		var refusal *checkResult
+		for _, c := range codes {
+			if c.PaidAt == 0 {
+				continue
 			}
-			if c.PaidAsset == a.cfg.PolicyAsset {
-				return fail("paid in tSEQ: pay in the asset your swap got you")
+			if kind == "arca-swap" {
+				want, _ := strconv.ParseInt(proofTag(user.ClaimCode), 10, 64)
+				var why checkResult
+				switch {
+				case c.PaidAtoms%proofAtoms != want:
+					why = fail("received %s of %s, which does not end in your proof decimals .%s", amountText(c.PaidAtoms), short(c.PaidAsset), proofTag(user.ClaimCode))
+				case c.PaidAsset == a.cfg.PolicyAsset:
+					why = fail("paid in tSEQ: pay in the asset your swap got you")
+				}
+				if why.Verdict == vFail {
+					if refusal == nil {
+						refusal = &why
+					}
+					continue
+				}
 			}
+			return pass("this account's own Emissio code received %s of %s (OK)", amountText(c.PaidAtoms), short(c.PaidAsset))
 		}
-		return pass("this account's own Emissio code received %s of %s (OK)", amountText(c.PaidAtoms), short(c.PaidAsset))
+		if refusal != nil {
+			return *refusal
+		}
+		return wait("nothing has reached your Emissio code yet; Emissio checks every few minutes")
 	}
 	return review("reviewed by hand")
 }
@@ -889,6 +1208,8 @@ type arcaView struct {
 	Linked    bool
 	Available bool
 	Caps      string // the invoice task: the most Emissio pays, in each asset
+	Renew     bool   // a new code can be had now
+	RenewAt   int64  // or from when, while the code shown is unpaid
 }
 
 func (a *App) arcaViewFor(user *User, task *Task) *arcaView {
@@ -907,6 +1228,8 @@ func (a *App) arcaViewFor(user *User, task *Task) *arcaView {
 	if c := a.codeOf(user.ID, purpose); c != nil {
 		v.Code = a.receiveCode(c)
 		v.Spent = c.PaidAt != 0
+		ok, from := a.renewable(user.ID, purpose, c)
+		v.Renew, v.RenewAt = ok, from
 	}
 	a.db.QueryRow("SELECT created_at FROM arca_sends WHERE user_id = ? AND purpose = ? ORDER BY id DESC LIMIT 1", user.ID, purpose).Scan(&v.SentAt)
 	v.Sent = v.SentAt > 0
@@ -918,4 +1241,100 @@ func (a *App) arcaViewFor(user *User, task *Task) *arcaView {
 		}
 	}
 	return v
+}
+
+// ---------- what a reviewer sees ----------
+
+// walletNote says what Emissio's wallet holds for an account's web wallet
+// task, from the wallet's own coins as the follower last read them: each of
+// the account's codes for the task, the coin that paid it, any coin that
+// names one of them and is not counted, and when the coins were read. A
+// reviewer reads it beside a waiting, rejected or queued submission, so
+// "nothing arrived" is never said from an old note. Empty for a task that
+// takes no payment to a code.
+func (a *App) walletNote(userID int64, kind string) string {
+	switch kind {
+	case "arca-pay-code", "arca-pay-btc", "arca-swap", "arca-roundtrip", "arca-name":
+	default:
+		return ""
+	}
+	when := func(ts int64) string { return time.Unix(ts, 0).UTC().Format("2006-01-02 15:04 UTC") }
+	codes := a.codesOf(userID, arcaPurpose(kind), 0)
+	if len(codes) == 0 {
+		return "Emissio's wallet: no code made for this account and task."
+	}
+	var parts []string
+	ids := map[int64]bool{}
+	for i := len(codes) - 1; i >= 0; i-- {
+		c := codes[i]
+		ids[c.ID] = true
+		p := fmt.Sprintf("code #%d made %s", c.ID, when(c.CreatedAt))
+		switch {
+		case kind == "arca-pay-btc" && c.BtcSats > 0:
+			p += fmt.Sprintf(": %d sats at its Bitcoin part", c.BtcSats)
+		case c.PaidAt != 0:
+			var leaf string
+			a.db.QueryRow("SELECT paid_leaf FROM arca_codes WHERE id = ?", c.ID).Scan(&leaf)
+			p += fmt.Sprintf(": paid %s by coin %s, %s of %s", when(c.PaidAt), short(leaf), amountText(c.PaidAtoms), short(c.PaidAsset))
+		default:
+			p += ": unpaid"
+		}
+		parts = append(parts, p)
+	}
+	note := "Emissio's wallet: " + strings.Join(parts, "; ") + "."
+	var extra []string
+	rows, err := a.db.Query("SELECT leaf_id, code_id, asset, atoms FROM arca_coins WHERE code_id != 0 AND counted = 0")
+	if err == nil {
+		for rows.Next() {
+			var leaf, asset string
+			var id, atoms int64
+			if rows.Scan(&leaf, &id, &asset, &atoms) == nil && ids[id] {
+				extra = append(extra, fmt.Sprintf("coin %s, %s of %s, names code #%d, which another coin paid", short(leaf), amountText(atoms), short(asset), id))
+			}
+		}
+		rows.Close()
+	}
+	if len(extra) > 0 {
+		note += " Not counted: " + strings.Join(extra, "; ") + "."
+	}
+	if rows, err := a.db.Query("SELECT leaf_id, tries, error FROM arca_coins WHERE read_at = 0 AND tries > 0 ORDER BY seen_at LIMIT 10"); err == nil {
+		var bad []string
+		for rows.Next() {
+			var leaf, why string
+			var n int
+			if rows.Scan(&leaf, &n, &why) == nil {
+				bad = append(bad, fmt.Sprintf("coin %s (%d tries: %s)", leaf, n, why))
+			}
+		}
+		rows.Close()
+		if len(bad) > 0 {
+			var all int
+			a.db.QueryRow("SELECT COUNT(*) FROM arca_coins WHERE read_at = 0 AND tries > 0").Scan(&all)
+			note += fmt.Sprintf(" %d coins' records could not be read yet and are asked for again: %s. Any of them may be this account's payment: do not say that nothing arrived.",
+				all, strings.Join(bad, "; "))
+		}
+	}
+	at, unread := a.reconciled()
+	switch {
+	case at == 0:
+		note += " The wallet's coins have not been read yet: do not say that nothing arrived."
+	case unread > 0:
+		note += fmt.Sprintf(" The wallet's coins were read %s, with %d records still to read: do not say that nothing arrived until they are.", when(at), unread)
+	default:
+		note += fmt.Sprintf(" The wallet's coins were all read %s.", when(at))
+	}
+	return note
+}
+
+// withWalletNotes fills the wallet note of each web wallet submission.
+func (a *App) withWalletNotes(subs []*Submission) {
+	kinds := map[int64]string{}
+	for _, s := range subs {
+		k, ok := kinds[s.TaskID]
+		if !ok {
+			a.db.QueryRow("SELECT check_kind FROM tasks WHERE id = ?", s.TaskID).Scan(&k)
+			kinds[s.TaskID] = k
+		}
+		s.Wallet = a.walletNote(s.UserID, k)
+	}
 }

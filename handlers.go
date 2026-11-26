@@ -817,6 +817,11 @@ func (a *App) handleVerify(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		handle = strings.ToLower(handle)
+		if platform == "telegram" && a.cfg.TgBotToken != "" {
+			// The bot's message is the evidence, checked as the bot checks it (tgbot.go).
+			a.verifyTelegramForm(w, r, user, handle)
+			return
+		}
 	}
 	// One live request per platform per account: the query, the check, the
 	// insert and the approval run as one step for this account and

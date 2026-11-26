@@ -8,6 +8,7 @@
   <div class="inner">
     {{if .Txid}}<p class="mono small">txid: {{.Txid}}</p>{{end}}
     <p class="small">chain check: <em>{{.ChainNote}}</em> · account code: <code>{{.ClaimCode}}</code> · {{if .VerifCount}}<span class="pill approved">{{.VerifCount}} verified</span>{{else}}<span class="pill">unverified</span>{{end}}</p>
+    {{if .Wallet}}<p class="small">{{.Wallet}}</p>{{end}}
     {{if .Notes}}<p class="small u-white-space-pre-wrap">{{.Notes}}</p>{{end}}
     <form class="u-display-flex-gap-6rem-align-items-flex-end-flex" method="post" action="{{base}}/admin/submissions/{{.ID}}/review">
       <input type="hidden" name="csrf" value="{{$.CSRF}}">
