@@ -120,7 +120,7 @@ func TestBotPassesTheEmailGate(t *testing.T) {
 	if bal != 0 {
 		t.Fatalf("ledger %d", bal)
 	}
-	if a := g.bot.last(oldTG); !strings.Contains(a, "Nothing was linked") {
+	if a := g.bot.last(oldTG); !strings.Contains(a, "it is linked now") {
 		t.Fatalf("answer: %q", a)
 	}
 	g.app.db.Exec("UPDATE users SET email_verified_at = 1 WHERE id = ?", id)
@@ -368,13 +368,13 @@ func TestBotRevealsNoStateToAStranger(t *testing.T) {
 	g.poll(t)
 	g.bot.send(60000001, "stranger", code, 0)
 	g.poll(t)
-	if a := g.bot.last(60000001); strings.Contains(a, "verified") || strings.Contains(a, "waiting") || !strings.Contains(a, "Nothing was linked") {
+	if a := g.bot.last(60000001); strings.Contains(a, "already") || strings.Contains(a, "waiting") || !strings.Contains(a, "it is linked now") {
 		t.Fatalf("to a stranger: %q", a)
 	}
 	g.bot.send(oldTG, "old_tg", code, 0)
 	g.poll(t)
-	if a := g.bot.last(oldTG); !strings.Contains(a, "already verified with this Telegram account") {
-		t.Fatalf("to the owner: %q", a)
+	if a := g.bot.last(oldTG); !strings.Contains(a, "it is linked now") {
+		t.Fatalf("to the Telegram account on file: %q", a)
 	}
 }
 

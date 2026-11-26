@@ -87,8 +87,8 @@ func TestCoinHeldByAnotherCodesRecord(t *testing.T) {
 	}
 }
 
-// #90. Chats that blocked the bot are given up at the first refusal, and do
-// not keep a refused answer elsewhere from being sent again.
+// #90. Chats that blocked the bot wait out their backoff (the block can be
+// lifted) and do not keep a refused answer elsewhere from being sent again.
 func TestBlockedChatsDoNotStarveRetries(t *testing.T) {
 	g := newTgRig(t)
 	_, code, _ := g.account(t, "public@example.com", "10.8.1.1")
@@ -108,7 +108,7 @@ func TestBlockedChatsDoNotStarveRetries(t *testing.T) {
 	g.bot.send(9200000000, "", code, 0)
 	for i := 0; i < 5; i++ {
 		g.app.pollTelegram(0)
-		g.app.db.Exec("UPDATE tg_messages SET next_try_at = 0") // each wait has passed
+		g.app.db.Exec("UPDATE tg_messages SET next_try_at = 0 WHERE chat_id = 9200000000") // its minute has passed; the blocked chats' have not
 	}
 	if n := g.bot.answers(9200000000); n != 1 {
 		t.Fatalf("the refused answer was sent %d times", n)

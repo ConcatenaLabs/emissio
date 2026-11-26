@@ -178,6 +178,11 @@ func openDB(path string) (*sql.DB, error) {
 	if _, err := db.Exec(counterpartySchema + signalSchema + deskSchema + walletLinkSchema + arcaSchema + arcaCoinSchema + btcNodeSchema); err != nil {
 		panic(err)
 	}
+	// A payment's place reserved by a request that a stop ended: nothing can
+	// still be paying it, as one process serves a database and this runs
+	// before it serves. Only `reserved` rows: a payment the wallet made is
+	// filled in or marked unrecorded, and kept.
+	db.Exec("DELETE FROM arca_sends WHERE state = 'reserved'")
 	if _, err := db.Exec(tokenSchema); err != nil {
 		panic(err)
 	}
@@ -297,10 +302,14 @@ func rowList(groups [][]int64) string {
 }
 
 // guardCheck is `emissio guard-check`: it opens the database read-only,
-// changes nothing, and prints each guard's conflicting rows as the start-up
-// refusal names them, or "no conflicts". The exit status is 0 with none, 1
-// with some, 2 when the database cannot be read. Run it before a deploy, so
-// that the refusal is never the first thing the deploy meets.
+// changes nothing, and says for each guard of the ledger whether its index
+// exists and which rows break it, as the start-up refusal names them. Rows
+// that break a guard whose index is missing keep the start from going
+// ahead: exit 1. With the index standing the start goes ahead, so such rows
+// (legacy rows the backfill could not give an id, which the start logs) are
+// a warning: exit 0, as with no conflicts. Exit 2 when the database cannot
+// be read. deploy/install-on-box.sh runs it, with the new binary as the
+// service's user, before it installs anything.
 func guardCheck(path string, w io.Writer) int {
 	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=busy_timeout(5000)")
 	if err != nil {
@@ -314,16 +323,27 @@ func guardCheck(path string, w io.Writer) int {
 		fmt.Fprintf(w, "cannot read %s: %v\n", path, err)
 		return 2
 	}
-	if len(found) == 0 {
-		fmt.Fprintln(w, "no conflicts")
-		return 0
-	}
+	code := 0
 	for _, index := range []string{"arca_codes_paid_leaf", "verifications_telegram_id"} {
-		if g := found[index]; len(g) > 0 {
-			fmt.Fprintf(w, "%s: rows %s\n", index, rowList(g))
+		var n int
+		db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?", index).Scan(&n)
+		g := found[index]
+		switch {
+		case n > 0 && len(g) == 0:
+			fmt.Fprintf(w, "%s: index exists, no conflicts\n", index)
+		case n > 0:
+			fmt.Fprintf(w, "%s: index exists; warning: rows %s break it, which the start accepts and logs: reject all but one of each group\n", index, rowList(g))
+		case len(g) == 0:
+			fmt.Fprintf(w, "%s: index missing, no conflicts: the start creates it\n", index)
+		default:
+			fmt.Fprintf(w, "%s: index missing\n%s: rows %s: the start refuses until they are corrected\n", index, index, rowList(g))
+			code = 1
 		}
 	}
-	return 1
+	if code == 0 && len(found) == 0 {
+		fmt.Fprintln(w, "no conflicts")
+	}
+	return code
 }
 
 func now() int64 { return time.Now().Unix() }

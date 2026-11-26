@@ -30,7 +30,9 @@ type fakeBot struct {
 	gets    int
 	down    bool
 	failing int             // sendMessage calls still to refuse
-	blocked map[string]bool // chats that blocked the bot: refused for ever
+	blocked map[string]bool // chats that blocked the bot: refused while they stay so
+	gone    map[string]bool // chats that no longer exist
+	proxy   map[string]bool // chats a proxy in front of the Bot API refuses with its own 403
 	sends   map[string]int  // sendMessage calls, by chat
 	srv     *httptest.Server
 }
@@ -80,6 +82,16 @@ func newFakeBot(t *testing.T) *fakeBot {
 				f.sends = map[string]int{}
 			}
 			f.sends[r.Form.Get("chat_id")]++
+			if f.proxy[r.Form.Get("chat_id")] {
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte("<html>403 Forbidden</html>"))
+				return
+			}
+			if f.gone[r.Form.Get("chat_id")] {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte(`{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}`))
+				return
+			}
 			if f.blocked[r.Form.Get("chat_id")] {
 				w.WriteHeader(http.StatusForbidden)
 				w.Write([]byte(`{"ok":false,"error_code":403,"description":"Forbidden: bot was blocked by the user"}`))
@@ -233,8 +245,8 @@ func TestBotVerifiesOnTheMessage(t *testing.T) {
 	// The same message sent again: already verified.
 	g.bot.send(oldTG, "old_tg", code, 0)
 	g.poll(t)
-	if a := g.bot.last(oldTG); !strings.Contains(a, "already verified") {
-		t.Fatalf("again: %q", a)
+	if a := g.bot.last(oldTG); !strings.Contains(a, "it is linked now") {
+		t.Fatalf("again: the shared answer, not %q", a)
 	}
 }
 
@@ -275,8 +287,8 @@ func TestBotOneTelegramOneAccount(t *testing.T) {
 	if st, _, _ := g.verif(b); st != "" {
 		t.Fatalf("the second account got %s", st)
 	}
-	if a := g.bot.last(oldTG); !strings.Contains(a, "already vouches for another Emissio account") {
-		t.Fatalf("answer: %q", a)
+	if a := g.bot.last(oldTG); !strings.Contains(a, "it is linked now") {
+		t.Fatalf("answer: the shared answer, not %q", a)
 	}
 	if _, err := g.app.db.Exec(`INSERT INTO verifications (user_id, platform, handle, evidence, status, created_at) VALUES (?, 'telegram', 'other_name', 'telegram-id:54845238', 'verified', 0)`, b); err == nil {
 		t.Fatal("the schema took a second verified row for one Telegram id")

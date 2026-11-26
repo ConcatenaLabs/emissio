@@ -117,7 +117,11 @@ func migrateTelegramIDs(db *sql.DB) error {
 		}
 		rows.Close()
 		for _, f := range fixes {
-			db.Exec("UPDATE verifications SET evidence = ? WHERE id = ? AND evidence = ''", f.ev, f.id)
+			if _, err := db.Exec("UPDATE verifications SET evidence = ? WHERE id = ? AND evidence = ''", f.ev, f.id); err != nil {
+				// The id vouches already for a verified row: with the index
+				// standing, this row keeps no id (guard-check names it).
+				log.Printf("WARNING: verification %d not given its Telegram id %s (%v): another verified row holds it; reject one of them", f.id, f.ev, err)
+			}
 		}
 	}
 	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS verifications_telegram_id ON verifications(evidence)
@@ -161,7 +165,8 @@ func (a *App) tgCall(method string, params url.Values, wait time.Duration, out a
 		return fmt.Errorf("%s: HTTP %d, an answer that is not the Bot API's", method, resp.StatusCode)
 	}
 	if !body.OK {
-		return a.tgError(fmt.Errorf("%s: HTTP %d: %s", method, resp.StatusCode, body.Description))
+		// The Bot API's own refusal: its description carries no token.
+		return &tgAPIError{Method: method, Status: resp.StatusCode, Description: body.Description}
 	}
 	if out == nil {
 		return nil
@@ -323,6 +328,9 @@ func (a *App) tgHandle(u tgUpdate) {
 	a.db.Exec("UPDATE tg_messages SET answer = ? WHERE update_id = ?", text, u.UpdateID)
 	log.Printf("telegram: message %d: %s", u.UpdateID, o.Kind)
 	a.tgAnswer(u.UpdateID, m.Chat.ID, text)
+	if o.credited {
+		tgCreditWork(a, user.ID)
+	}
 }
 
 // tgAnswer sends a kept message's answer and marks it answered.
@@ -364,12 +372,45 @@ func tgAnswerWait(n int) int64 {
 	return min(int64(60)<<min(max(n-1, 0), 20), 3600)
 }
 
-// tgRefusedForGood is whether the Bot API refuses an answer in a way that
-// will not change: the chat blocked the bot, its user is gone, or there is
-// no such chat.
+// tgAPIError is a refusal the Bot API itself gave, with its description.
+type tgAPIError struct {
+	Method      string
+	Status      int
+	Description string
+}
+
+func (e *tgAPIError) Error() string {
+	return fmt.Sprintf("%s: HTTP %d: %s", e.Method, e.Status, e.Description)
+}
+
+// tgFinal are the Bot API's descriptions of a refusal to send to a chat
+// that cannot change. Its documented errors for sendMessage include, among
+// those that can change: "Forbidden: bot was blocked by the user" (the user
+// can unblock), "Forbidden: bot can't initiate conversation with a user",
+// "Forbidden: bot was kicked from the group chat" (it can be added again),
+// "Too Many Requests: retry after N". These cannot: the chat does not
+// exist, its user deleted the account, the group was deleted.
+var tgFinal = []string{
+	"chat not found",
+	"user is deactivated",
+	"the group chat was deleted",
+}
+
+// tgRefusedForGood is whether an answer was refused in a way that will not
+// change: only the Bot API's own refusal, with one of the descriptions
+// above. A status alone (a proxy's 403, an HTML page) never is.
 func tgRefusedForGood(err error) bool {
-	e := err.Error()
-	return strings.Contains(e, "HTTP 403") || strings.Contains(e, "chat not found") || strings.Contains(e, "user is deactivated")
+	var api *tgAPIError
+	if !errors.As(err, &api) {
+		return false
+	}
+	d := strings.ToLower(api.Description)
+	for _, f := range tgFinal {
+		if strings.Contains(d, f) {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *App) tgSendErr(chat int64, text string) error {
@@ -403,10 +444,11 @@ func (s tgSender) handle() string {
 
 // tgOutcome is what came of a message, or of the form, for one account.
 type tgOutcome struct {
-	Kind    string // verified, held, pending, form, review, young, already, waiting, blocked, taken, error
-	Code    string
-	Handle  string
-	Created time.Time
+	Kind     string // verified, held, pending, form, review, young, already, waiting, blocked, taken, error
+	credited bool   // a credit was made: tgCreditWork is due once the sender is answered
+	Code     string
+	Handle   string
+	Created  time.Time
 }
 
 // tgVerify files and, where the check passes, credits the Telegram
@@ -523,10 +565,14 @@ func (a *App) tgVerify(user *User, s tgSender, consent bool) tgOutcome {
 		o.Kind = "pending"
 		return o
 	}
-	a.processReferrals(user.ID)
-	o.Kind = "verified"
+	o.Kind, o.credited = "verified", true
 	return o
 }
+
+// tgCreditWork is the work a verification's credit brings (the referrals it
+// may qualify). It runs after the bot has answered, so the answer's timing
+// says nothing of the outcome.
+var tgCreditWork = func(a *App, userID int64) { a.processReferrals(userID) }
 
 // tgAfterCheck runs between tgVerify's check that a Telegram account has no
 // live request and the request it files: a test widens the window there.
@@ -557,10 +603,14 @@ func tgName(s tgSender) string {
 // code exists is said, as codes are public (the referral link carries one).
 func tgWords(kind string, o *tgOutcome) string {
 	switch kind {
-	case "verified", "held":
-		// One answer for both: the sender need not be the account's owner,
-		// and a different one would tell them the account is held or
-		// shares a signal.
+	case "verified", "held", "already", "taken", "blocked":
+		// One answer for all of these: the sender need not be the account's
+		// owner, and a different one, to this message or to a later one,
+		// would tell them whether the account is held or shares a signal
+		// (a verified account answers "already" to the next message, and
+		// the Telegram account that verified it "taken" for another code),
+		// or whether it is verified by another Telegram account or its email
+		// is unconfirmed ("blocked").
 		return fmt.Sprintf("Received. If the Emissio account with code %s can take this Telegram account, it is linked now, with %s SEQ in its ledger. If a person must look first, only the account's owner can ask for that: sign in to Emissio and, under Verified accounts, Telegram, enter %s and press Request verification, within a day. The account page shows which.", o.Code, formatSEQ(verificationBonus), o.name())
 	case "pending":
 		return "Received. A reviewer confirms this verification before it counts; the Emissio account page shows when that is done."
@@ -568,14 +618,8 @@ func tgWords(kind string, o *tgOutcome) string {
 		return fmt.Sprintf("Received. The age of this Telegram account cannot be read from its id, so a person must look at it, and only the account's owner can ask for that: sign in to Emissio and, under Verified accounts, Telegram, enter %s and press Request verification, within a day.", o.name())
 	case "young":
 		return fmt.Sprintf("Received, but this Telegram account looks under %d years old (made about %s), and Emissio links only accounts at least %d years old. Nothing was linked.", verifMinAgeYears, o.Created.Format("January 2006"), verifMinAgeYears)
-	case "already":
-		return "That Emissio account is already verified with this Telegram account. There is nothing more to do."
 	case "waiting":
 		return "That Emissio account's verification with this Telegram account is waiting for a reviewer. There is nothing more to do."
-	case "blocked":
-		return "Nothing was linked: the Emissio account with that code cannot take a Telegram verification from this message. If the account is yours, sign in: your account page says why."
-	case "taken":
-		return "This Telegram account already vouches for another Emissio account, and a Telegram account can vouch for one only. Nothing was linked."
 	case "unknown":
 		return fmt.Sprintf("No Emissio account has the code %s. Send the account code shown at the top of your Emissio account page, from the Telegram account you want to verify.", o.Code)
 	case "stale":
@@ -623,6 +667,9 @@ func (a *App) verifyTelegramForm(w http.ResponseWriter, r *http.Request, user *U
 		a.redirect(w, r, "/account", "", fmt.Sprintf("Not verified: that Telegram account looks under %d years old (made about %s).", verifMinAgeYears, o.Created.Format("January 2006")))
 	default:
 		a.redirect(w, r, "/account", "", "Emissio could not take this just now. Try again in a few minutes.")
+	}
+	if o.credited {
+		tgCreditWork(a, user.ID)
 	}
 }
 

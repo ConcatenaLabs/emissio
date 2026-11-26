@@ -1,0 +1,288 @@
+package main
+
+import (
+	"bytes"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/url"
+	"os"
+	"os/exec"
+	"os/user"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+// theirCode is a receive code of a tester's wallet for Emissio to pay.
+func theirCode() string {
+	det, _ := json.Marshal(map[string]any{"kind": "request", "operator": strings.Repeat("aa", 32), "owner": strings.Repeat("0c", 32), "owner_nonce": strings.Repeat("0d", 32), "until": 9999999999})
+	return "arca:" + hex.EncodeToString(det)
+}
+
+// 1. A payment's reserved place left by a stop (no deferred release ran)
+// binds nothing: one older than a request can take is not counted, and a
+// start removes every one before serving.
+func TestStaleReservationsFreed(t *testing.T) {
+	r := newArcaRig(t)
+	reserve := func(age int64) {
+		for i := 0; i < paymentsPerTask; i++ {
+			r.app.db.Exec("INSERT INTO arca_sends (user_id, purpose, target, asset, atoms, state, ref, ip, created_at) VALUES (1, 'roundtrip', '', '', 0, 'reserved', '', '10.7.7.7', ?)", now()-age)
+		}
+	}
+	reserve(31 * 60)
+	if m := r.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}}); !strings.Contains(m, "Emissio has paid your receive code") {
+		t.Fatalf("with old reserved places: %q", m)
+	}
+	r.app.db.Exec("DELETE FROM arca_sends")
+	reserve(0) // fresh: a request could still be under way
+	r.restart()
+	var n int
+	r.app.db.QueryRow("SELECT COUNT(*) FROM arca_sends WHERE state = 'reserved'").Scan(&n)
+	if n != 0 {
+		t.Fatalf("%d reserved places outlived a start", n)
+	}
+	if m := r.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}}); !strings.Contains(m, "Emissio has paid your receive code") {
+		t.Fatalf("after a start: %q", m)
+	}
+}
+
+// 2. A payment the wallet made keeps its row when the row cannot be filled
+// in: marked for reconciliation, counted by the limits, its id logged.
+func TestUnrecordedPaymentKept(t *testing.T) {
+	r := newArcaRig(t)
+	var logs bytes.Buffer
+	log.SetOutput(&logs)
+	defer log.SetOutput(os.Stderr)
+	r.app.db.Exec("CREATE TRIGGER no_fill BEFORE UPDATE ON arca_sends WHEN NEW.state = 'sent' BEGIN SELECT RAISE(ABORT, 'refused'); END")
+	r.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}})
+	if r.calls("send") != 1 {
+		t.Fatal("no payment made")
+	}
+	var id int64
+	var state string
+	r.app.db.QueryRow("SELECT id, state FROM arca_sends").Scan(&id, &state)
+	if id == 0 || state != "unrecorded" {
+		t.Fatalf("the payment's row: id %d, state %q", id, state)
+	}
+	if !strings.Contains(logs.String(), fmt.Sprintf("payment %d made but not recorded", id)) {
+		t.Fatalf("not logged with its row id:\n%s", logs.String())
+	}
+	// Neither write can be made: the row is still not given back.
+	r.app.db.Exec("DELETE FROM arca_sends")
+	r.app.db.Exec("DROP TRIGGER no_fill")
+	r.app.db.Exec("CREATE TRIGGER no_write BEFORE UPDATE ON arca_sends BEGIN SELECT RAISE(ABORT, 'refused'); END")
+	r.post("web-wallet-roundtrip", "wallet", url.Values{"code": {theirCode()}})
+	var n int
+	r.app.db.QueryRow("SELECT COUNT(*) FROM arca_sends").Scan(&n)
+	if r.calls("send") != 2 || n != 1 || !strings.Contains(logs.String(), "could not be marked unrecorded either") {
+		t.Fatalf("with no write possible: %d payments, %d rows", r.calls("send"), n)
+	}
+}
+
+// 3. The deploy runs the new binary's guard-check, as the service's user,
+// between the build and the install, and stops on a conflict; a box with no
+// database yet has nothing to check.
+func TestDeployRunsGuardCheck(t *testing.T) {
+	script, err := os.ReadFile("deploy/install-on-box.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(script)
+	build, check, install := strings.Index(s, "go build"), strings.Index(s, "guard-check-before-install.sh"), strings.Index(s, "/opt/emissio/emissio.new")
+	if build < 0 || check < build || install < check || !strings.Contains(s, "guard-check-before-install.sh emissio /var/lib/emissio/emissio.db emissio /opt/emissio") {
+		t.Fatalf("install-on-box.sh does not run the check between build and install (build %d, check %d, install %d)", build, check, install)
+	}
+	gobin, err := exec.LookPath("go")
+	if err != nil {
+		t.Skip("no go on the path to build the binary")
+	}
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "emissio")
+	if out, err := exec.Command(gobin, "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("build: %v %s", err, out)
+	}
+	me, _ := user.Current()
+	run := func(db string) (string, error) {
+		out, err := exec.Command("bash", "deploy/guard-check-before-install.sh", bin, db, me.Username, dir).CombinedOutput()
+		return string(out), err
+	}
+	if out, err := run(filepath.Join(dir, "none.db")); err != nil || !strings.Contains(out, "no database") {
+		t.Fatalf("no database: %v %q", err, out)
+	}
+	path := filepath.Join(dir, "live.db")
+	db, err := openDB(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := run(path); err != nil || !strings.Contains(out, "no conflicts") {
+		t.Fatalf("clean: %v %q", err, out)
+	}
+	db.Exec("DROP INDEX arca_codes_paid_leaf")
+	u, _ := createUser(db, "d@example.com", "h", "0123456789", "")
+	for i := 0; i < 2; i++ {
+		db.Exec(`INSERT INTO arca_codes (user_id, purpose, request, owner, owner_nonce, paid_leaf, paid_at, created_at) VALUES (?, 'code', 'r', 'o', 'n', 'same', 1, 0)`, u)
+	}
+	db.Close()
+	out, err := run(path)
+	if err == nil || !strings.Contains(out, "arca_codes_paid_leaf: rows 1, 2") || !strings.Contains(out, "not installed") {
+		t.Fatalf("conflict: %v %q", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "emissio.check")); !os.IsNotExist(err) {
+		t.Fatal("the check's copy of the binary was left behind")
+	}
+}
+
+// 4. With the guard's index standing, rows the backfill could not give an
+// id are a warning, not a refusal: guard-check says the index exists and
+// exits 0, as the start does, and the start logs each such row.
+func TestGuardCheckWithTheIndexStanding(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "standing.db")
+	db, err := openDB(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := createUser(db, "a@example.com", "h", "0123456780", "")
+	b, _ := createUser(db, "b@example.com", "h", "0123456781", "")
+	db.Exec(`INSERT INTO verifications (user_id, platform, handle, evidence, status, check_note, created_at) VALUES (?, 'telegram', 'ha', 'telegram-id:42', 'verified', '', 0)`, a)
+	db.Exec(`INSERT INTO verifications (user_id, platform, handle, status, check_note, created_at) VALUES (?, 'telegram', 'hb', 'verified', 'message verified from @hb (id 42)', 0)`, b)
+	db.Close()
+	var out bytes.Buffer
+	if code := guardCheck(path, &out); code != 0 || !strings.Contains(out.String(), "verifications_telegram_id: index exists") || !strings.Contains(out.String(), "rows 1, 2") {
+		t.Fatalf("guard-check: exit %d, %q", code, out.String())
+	}
+	var logs bytes.Buffer
+	log.SetOutput(&logs)
+	defer log.SetOutput(os.Stderr)
+	db, err = openDB(path)
+	if err != nil {
+		t.Fatalf("the start refused what guard-check passed: %v", err)
+	}
+	db.Close()
+	if !strings.Contains(logs.String(), "verification 2") {
+		t.Fatalf("the failed backfill was not logged:\n%s", logs.String())
+	}
+}
+
+// 5. A stranger learns nothing from a second or a third message: the same
+// answer whether the first verified the account or was held back.
+func TestStrangerLearnsNothingFromLaterMessages(t *testing.T) {
+	g := newTgRig(t)
+	_, codeA, _ := g.account(t, "cleana@example.com", "10.9.1.1")
+	_, codeB, _ := g.account(t, "cleanb@example.com", "10.9.1.2")
+	_, codeC, c := g.account(t, "heldc@example.com", "10.9.1.3")
+	_, codeD, d := g.account(t, "heldd@example.com", "10.9.1.4")
+	g.app.db.Exec("UPDATE users SET held = 1 WHERE id IN (?, ?)", c, d)
+	run := func(chat int64, name string, codes ...string) []string {
+		var out []string
+		for _, code := range codes {
+			g.bot.send(chat, name, code, 0)
+			g.poll(t)
+			out = append(out, strings.NewReplacer(codeA, "CODE", codeB, "CODE", codeC, "CODE", codeD, "CODE", "@"+name, "@NAME").Replace(g.bot.last(chat)))
+		}
+		return out
+	}
+	if codeA == "" || codeB == "" || codeC == "" || codeD == "" {
+		t.Fatal("accounts not registered")
+	}
+	clean := run(60000030, "sa", codeA, codeA, codeB)
+	held := run(60000031, "sb", codeC, codeC, codeD)
+	for i := range clean {
+		if clean[i] != held[i] {
+			t.Fatalf("message %d:\n%q\n%q", i+1, clean[i], held[i])
+		}
+	}
+}
+
+// 5. The answer is sent before the work a verification brings (the
+// referrals it may qualify), whose length depends on the outcome.
+func TestBotAnswersBeforeCreditWork(t *testing.T) {
+	g := newTgRig(t)
+	_, code, _ := g.account(t, "order@example.com", "10.9.2.1")
+	var mu sync.Mutex
+	var order []string
+	tgCreditWork = func(a *App, userID int64) {
+		mu.Lock()
+		order = append(order, fmt.Sprintf("work (%d answers)", g.bot.answers(oldTG)))
+		mu.Unlock()
+	}
+	defer func() { tgCreditWork = func(a *App, userID int64) { a.processReferrals(userID) } }()
+	g.bot.send(oldTG, "old_tg", code, 0)
+	g.poll(t)
+	if len(order) != 1 || order[0] != "work (1 answers)" {
+		t.Fatalf("the work ran %v", order)
+	}
+}
+
+// 6. Only the Bot API's own refusals that cannot change are final: a chat
+// that blocked the bot and lifts the block gets its answer; a proxy's 403 is
+// not the Bot API's; a chat that no longer exists is given up.
+func TestOnlyFinalRefusalsGiveUp(t *testing.T) {
+	g := newTgRig(t)
+	_, code, _ := g.account(t, "final@example.com", "10.9.3.1")
+	g.bot.mu.Lock()
+	g.bot.blocked = map[string]bool{"9300000001": true}
+	g.bot.proxy = map[string]bool{"9300000002": true}
+	g.bot.gone = map[string]bool{"9300000003": true}
+	g.bot.mu.Unlock()
+	for i := int64(1); i <= 3; i++ {
+		g.bot.send(9300000000+i, "", code, 0)
+	}
+	g.app.pollTelegram(0)
+	g.bot.mu.Lock()
+	g.bot.blocked, g.bot.proxy = nil, nil // the user lifts the block; the proxy lets it through
+	g.bot.mu.Unlock()
+	for i := 0; i < 3; i++ {
+		g.app.db.Exec("UPDATE tg_messages SET next_try_at = 0")
+		g.app.pollTelegram(0)
+	}
+	if g.bot.answers(9300000001) != 1 || g.bot.answers(9300000002) != 1 {
+		t.Fatalf("after the block lifted: %d; after the proxy let it through: %d", g.bot.answers(9300000001), g.bot.answers(9300000002))
+	}
+	g.bot.mu.Lock()
+	defer g.bot.mu.Unlock()
+	if g.bot.sends["9300000003"] != 1 {
+		t.Fatalf("a chat that no longer exists was asked %d times", g.bot.sends["9300000003"])
+	}
+}
+
+// 7. A code's record moved to another coin takes that coin's amount and
+// asset; moved to none, it keeps none, and the desk says its coin is not
+// found yet.
+func TestRepointCarriesTheCoinsAmount(t *testing.T) {
+	r := newArcaRig(t)
+	r.post("web-wallet-pay", "wallet", url.Values{})
+	a := r.app.codeOf(1, "code")
+	c := r.addCode("swap", randHex(32), randHex(32))
+	r.coin("x", "186718345", c)
+	r.app.db.Exec("UPDATE arca_codes SET paid_at = 1764000000, paid_leaf = 'x', paid_asset = 'ab', paid_atoms = 186718345 WHERE id = ?", a.ID)
+	r.app.followArca()
+	if got := r.app.codeOf(1, "code"); got.PaidAtoms != 0 || got.PaidAsset != "" || got.PaidAt != 1764000000 {
+		t.Fatalf("released: %d of %q, paid_at %d", got.PaidAtoms, got.PaidAsset, got.PaidAt)
+	}
+	r.post("web-wallet-pay", "submit", url.Values{})
+	r.app.db.Exec("UPDATE users SET is_admin = 1 WHERE id = 1")
+	if desk := get(t, r.client, r.srv.URL+"/admin/users/1"); !strings.Contains(desk, "its coin not found yet") {
+		t.Fatal("the desk does not say the code's coin is not found yet")
+	}
+	r.rec("a-own", synthRecord(t, nil, a.Owner, a.OwnerNonce, nil))
+	b, _ := json.Marshal([]map[string]string{{"leaf_id": "a-own", "asset": strings.Repeat("cd", 32), "value": "100000123"}})
+	os.WriteFile(filepath.Join(r.dir, "mailbox.json"), b, 0o600)
+	r.app.followArca()
+	if got := r.app.codeOf(1, "code"); got.PaidAtoms != 100000123 || got.PaidAsset != strings.Repeat("cd", 32) {
+		t.Fatalf("moved to its own coin: %d of %q", got.PaidAtoms, got.PaidAsset)
+	}
+}
+
+// 8. The README says what the desk shows of coins not read: the ten waiting
+// longest, and the count of all.
+func TestReadmeNamesTheDeskLimit(t *testing.T) {
+	b, _ := os.ReadFile("README.md")
+	if strings.Contains(string(b), "every coin whose record could not be read yet") {
+		t.Fatal("the README promises every coin, and the desk names ten")
+	}
+	_ = time.Now
+}
