@@ -155,7 +155,7 @@ func mustOpenDB(path string) *sql.DB {
 	db.Exec("ALTER TABLE tasks ADD COLUMN surface TEXT NOT NULL DEFAULT ''")
 	db.Exec("ALTER TABLE tasks ADD COLUMN check_kind TEXT NOT NULL DEFAULT ''")
 	db.Exec("ALTER TABLE submissions ADD COLUMN auto INTEGER NOT NULL DEFAULT 0")
-	if _, err := db.Exec(counterpartySchema + signalSchema + deskSchema + walletLinkSchema + arcaSchema + btcNodeSchema); err != nil {
+	if _, err := db.Exec(counterpartySchema + signalSchema + deskSchema + walletLinkSchema + arcaSchema + arcaCoinSchema + btcNodeSchema); err != nil {
 		panic(err)
 	}
 	if _, err := db.Exec(tokenSchema); err != nil {
@@ -170,6 +170,17 @@ func mustOpenDB(path string) *sql.DB {
 	if _, err := db.Exec(clearedSchema + referralSchema); err != nil {
 		panic(err)
 	}
+	// One coin pays one code. A database where two codes name one coin
+	// cannot take the index; it is then left without it, loudly, and a
+	// code still takes only a coin that pays it while it is unpaid.
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS arca_codes_paid_leaf
+		ON arca_codes(paid_leaf) WHERE paid_leaf != ''`); err != nil {
+		log.Printf("WARNING: arca_codes_paid_leaf not created (%v): two codes name one coin as their payment; correct one and restart", err)
+	}
+	if _, err := db.Exec(tgSchema); err != nil {
+		panic(err)
+	}
+	migrateTelegramIDs(db)
 	// One live verification per account and platform. A database that
 	// already holds two cannot take the index; it is then left without it,
 	// loudly, and the per-account lock in handleVerify still serialises
@@ -217,6 +228,10 @@ func getUserByEmail(db *sql.DB, email string) (*User, error) {
 
 func getUserByID(db *sql.DB, id int64) (*User, error) {
 	return scanUser(db.QueryRow("SELECT "+userCols+" FROM users WHERE id = ?", id))
+}
+
+func getUserByClaimCode(db *sql.DB, code string) (*User, error) {
+	return scanUser(db.QueryRow("SELECT "+userCols+" FROM users WHERE claim_code = ?", code))
 }
 
 func createUser(db *sql.DB, email, passHash, claimCode, regIP string) (int64, error) {
@@ -339,7 +354,8 @@ type Submission struct {
 	TaskReward int64
 	UserEmail  string
 	ClaimCode  string
-	VerifCount int64 // submitter's verified platforms (pending queue only)
+	VerifCount int64  // submitter's verified platforms (pending queue only)
+	Wallet     string // a web wallet task: what Emissio's wallet holds for it (walletNote)
 }
 
 // latestSubmission returns the user's most recent submission for a task, or nil.

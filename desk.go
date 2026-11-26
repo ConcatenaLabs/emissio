@@ -241,6 +241,7 @@ func (a *App) handleAdminQueue(w http.ResponseWriter, r *http.Request) {
 	if hrows != nil {
 		hrows.Close()
 	}
+	a.withWalletNotes(subs)
 	for _, s := range subs {
 		add(queueItem{Kind: "task", ID: s.ID, Title: s.TaskTitle, Detail: s.ChainNote, UserID: s.UserID, Email: s.UserEmail, Held: held[s.UserID], At: s.CreatedAt, Sub: s})
 	}
@@ -416,6 +417,7 @@ func (a *App) handleAdminUser(w http.ResponseWriter, r *http.Request) {
 	d.Balance, _ = balanceOf(a.db, id)
 	d.Ledger, _ = ledgerOf(a.db, id)
 	d.Subs, _ = querySubmissions(a.db, "WHERE s.user_id = ? ORDER BY s.id DESC", id)
+	a.withWalletNotes(d.Subs)
 	d.Bugs, _ = queryBugs(a.db, "WHERE b.user_id = ? ORDER BY b.id DESC LIMIT 100", id)
 	d.Verifs, _ = verificationsOf(a.db, id)
 	d.Linked, _ = linkedAccounts(a.db, id)

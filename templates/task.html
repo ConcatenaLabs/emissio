@@ -43,6 +43,13 @@
           <div class="kv u-word-break-break-all" data-emissio-code>{{.Code}}</div>
           <p class="small muted">The amount is not shown here on purpose: only the wallet that received it knows it, and that is what the task proves. Every payment has a small fee, which comes out of what you hold: if the wallet says you can send a little less than what arrived, or Max fills in a little less, send that. Emissio accepts a return up to 0.001 short.</p>
           <p class="small muted">Not yet: {{.Next}}. <a href="{{base}}/tasks/{{$.Data.Task.Slug}}">Check again</a></p>
+          {{if .Renew}}
+          <form method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/wallet">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="renew" value="1">
+            <p class="small muted">Your wallet will not pay this code? <button class="btn ghost small" type="submit">Get a new code</button> A return to any of your codes since Emissio's payment counts.</p>
+          </form>
+          {{end}}
         </div>
         {{end}}
         {{if and (not .Ready) (or (not $.Data.Mine) (eq $.Data.Mine.Status "rejected") (eq $.Data.Mine.Status "waiting"))}}
@@ -66,11 +73,28 @@
         {{else}}
         <p class="small muted">Not yet: {{.Next}}. <a href="{{base}}/tasks/{{$.Data.Task.Slug}}">Check again</a></p>
         {{if .Spent}}
-        <p class="small">This code has been paid already, and a receive code takes one payment: a wallet refuses to pay it again. Get a new code and pay that one; only the newest code counts.</p>
+        <p class="small">This code has been paid already, and a receive code takes one payment: a wallet refuses to pay it again. Get a new code and pay that one; a payment to any of your codes for this task counts.</p>
+        {{if .Renew}}
         <form method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/wallet">
           <input type="hidden" name="csrf" value="{{$.CSRF}}">
           <button class="btn" type="submit">Get a new receive code</button>
         </form>
+        {{else}}
+        <p class="small muted">A new code can be had from {{datetime .RenewAt}}.</p>
+        {{end}}
+        {{else if .Renew}}
+        <details>
+          <summary>Paid this code, or your wallet will not pay it?</summary>
+          <div class="inner">
+            <p class="small">Emissio reads every coin its wallet receives, every few minutes, so a payment that reached this code is counted without anything more from you. If your wallet will not pay this code, get a new one and pay that: a payment to any of your codes for this task counts, so a payment already made is not lost.</p>
+            <form method="post" action="{{base}}/tasks/{{$.Data.Task.Slug}}/wallet">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <button class="btn ghost" type="submit">Get a new receive code</button>
+            </form>
+          </div>
+        </details>
+        {{else if .RenewAt}}
+        <p class="small muted">If your wallet will not pay this code, a new one can be had from {{datetime .RenewAt}}; a payment to any of your codes for this task counts.</p>
         {{end}}
         {{end}}
       {{else}}

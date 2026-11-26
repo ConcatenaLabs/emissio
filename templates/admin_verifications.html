@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="eyebrow">Admin</div>
 <h1>Pending verifications</h1>
-<p class="small muted">Approve when the user's account code is where only the owner could put it and the account is at least two years old. Reddit tokens from the r/sequentia app are verified cryptographically at submission (Reddit authenticated the user); X posts are checked automatically: the check line says whether the post or profile is by this account, whether it contains the code, and the account age (X's is derived from the account id, exact for accounts made since 2016). Approve on a clean check line; on "manual review" open the link yourself. Telegram does not publish age, use judgment.</p>
+<p class="small muted">Approve when the user's account code is where only the owner could put it and the account is at least two years old. Reddit tokens from the r/sequentia app are verified cryptographically at submission (Reddit authenticated the user); X posts are checked automatically: the check line says whether the post or profile is by this account, whether it contains the code, and the account age (X's is derived from the account id, exact for accounts made since 2016). Approve on a clean check line; on "manual review" open the link yourself. Telegram does not publish age: with the bot, the check line names the account that messaged it and the age estimated from its id, and an id beyond the newest anchor means the account is younger than that estimate, so use judgment; a Telegram request reaches this page only when a hold, a shared signal or such an id stopped the automatic credit.</p>
 {{if not .Data}}<p class="muted">Queue is empty.</p>{{end}}
 {{range .Data}}
 <details open>
